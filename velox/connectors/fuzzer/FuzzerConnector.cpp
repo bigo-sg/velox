@@ -19,6 +19,31 @@
 
 namespace facebook::velox::connector::fuzzer {
 
+folly::dynamic FuzzerTableHandle::serialize() const {
+  folly::dynamic obj = ConnectorTableHandle::serializeBase("FuzzerTableHandle");
+  obj["fuzzerSeed"] = fuzzerSeed;
+
+  return obj;
+}
+
+ConnectorTableHandlePtr FuzzerTableHandle::create(
+    const folly::dynamic& obj,
+    void* context) {
+  auto connectorId = obj["connectorId"].asString();
+  auto fuzzerSeed = obj["fuzzerSeed"].asInt();
+
+  VectorFuzzer::Options options;
+  return std::make_shared<const FuzzerTableHandle>(
+      connectorId,
+      options,
+      (size_t) fuzzerSeed);
+}
+
+void FuzzerTableHandle::registerSerDe() {
+  auto& registry = DeserializationWithContextRegistryForSharedPtr();
+  registry.Register("FuzzerTableHandle", create);
+}
+
 FuzzerDataSource::FuzzerDataSource(
     const std::shared_ptr<const RowType>& outputType,
     const std::shared_ptr<connector::ConnectorTableHandle>& tableHandle,
