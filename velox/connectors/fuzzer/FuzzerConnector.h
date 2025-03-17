@@ -17,6 +17,7 @@
 
 #include "velox/common/config/Config.h"
 #include "velox/connectors/Connector.h"
+#include "velox/connectors/fuzzer/DiscardDataSink.h"
 #include "velox/connectors/fuzzer/FuzzerConnectorSplit.h"
 #include "velox/vector/fuzzer/VectorFuzzer.h"
 
@@ -47,6 +48,14 @@ class FuzzerTableHandle : public ConnectorTableHandle {
   std::string toString() const override {
     return "fuzzer-mock-table";
   }
+
+  folly::dynamic serialize() const override;
+
+  static ConnectorTableHandlePtr create(
+      const folly::dynamic& obj,
+      void* context);
+
+  static void registerSerDe();
 
   const VectorFuzzer::Options fuzzerOptions;
   size_t fuzzerSeed;
@@ -125,7 +134,7 @@ class FuzzerConnector final : public Connector {
           ConnectorInsertTableHandle> /*connectorInsertTableHandle*/,
       ConnectorQueryCtx* /*connectorQueryCtx*/,
       CommitStrategy /*commitStrategy*/) override final {
-    VELOX_NYI("FuzzerConnector does not support data sink.");
+    return std::make_unique<DiscardDataSink>();
   }
 };
 
