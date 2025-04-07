@@ -25,6 +25,25 @@ struct FuzzerConnectorSplit : public connector::ConnectorSplit {
 
   // Row many rows to generate.
   size_t numRows;
+
+  folly::dynamic serialize() const override {
+    folly::dynamic obj = folly::dynamic::object;
+    obj["name"] = "FuzzerConnectorSplit";
+    obj["connectorId"] = connectorId;
+    obj["numRows"] = numRows;
+    return obj;
+  }
+
+  static std::shared_ptr<FuzzerConnectorSplit> create(const folly::dynamic& obj) {
+    const auto connectorId = obj["connectorId"].asString();
+    const auto numRows = obj["numRows"].asInt();
+    return std::make_shared<FuzzerConnectorSplit>(connectorId, numRows);
+  }
+
+  static void registerSerDe() {
+    auto& registry = DeserializationRegistryForSharedPtr();
+    registry.Register("FuzzerConnectorSplit", FuzzerConnectorSplit::create);
+  }
 };
 
 } // namespace facebook::velox::connector::fuzzer
