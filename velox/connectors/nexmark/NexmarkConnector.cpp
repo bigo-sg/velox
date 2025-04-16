@@ -85,7 +85,7 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
   auto outputVector = nexmarkGenerator_->nextEvent(outputRows);
   completedRows_ += outputVector->size();
   completedBytes_ += outputVector->retainedSize();
-  return outputVector;
+  return std::dynamic_pointer_cast<RowVector>(outputVector);
 }
 
 } // namespace facebook::velox::connector::nexmark
