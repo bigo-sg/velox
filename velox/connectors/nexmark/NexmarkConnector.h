@@ -33,10 +33,9 @@ class NexmarkTableHandle : public ConnectorTableHandle {
   explicit NexmarkTableHandle(
       std::string connectorId,
       NexmarkGenerator::Options options)
-      : ConnectorTableHandle(std::move(connectorId)),
-        nexmarkOptions(options) {}
+      : ConnectorTableHandle(std::move(connectorId)), nexmarkOptions(options) {}
 
-  ~NexmarkTableHandle() override {}
+  ~NexmarkTableHandle() override = default;
 
   std::string toString() const override {
     return "nexmark-table";
