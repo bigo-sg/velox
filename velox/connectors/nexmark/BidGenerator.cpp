@@ -29,7 +29,7 @@ Bid BidGenerator::nextBid(
     int64_t eventId,
     std::mt19937& random,
     int64_t timestamp,
-    const NexmarkGeneratorConfig& config) {
+    const GeneratorConfig& config) {
   int64_t auction;
   if (random() % config.getHotAuctionRatio() > 0) {
     auction = (AuctionGenerator::lastBase0AuctionId(config, eventId) /
@@ -38,7 +38,7 @@ Bid BidGenerator::nextBid(
   } else {
     auction = AuctionGenerator::nextBase0AuctionId(eventId, random, config);
   }
-  auction += NexmarkGeneratorConfig::FIRST_AUCTION_ID;
+  auction += GeneratorConfig::FIRST_AUCTION_ID;
 
   int64_t bidder;
   if (random() % config.getHotBiddersRatio() > 0) {
@@ -49,7 +49,7 @@ Bid BidGenerator::nextBid(
   } else {
     bidder = PersonGenerator::nextBase0PersonId(eventId, random, config);
   }
-  bidder += NexmarkGeneratorConfig::FIRST_PERSON_ID;
+  bidder += GeneratorConfig::FIRST_PERSON_ID;
 
   int64_t price = PriceGenerator::nextPrice(random);
 

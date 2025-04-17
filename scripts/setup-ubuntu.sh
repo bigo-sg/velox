@@ -182,13 +182,13 @@ function install_protobuf {
 }
 
 function install_folly {
-  wget_and_untar https://github.com/facebook/folly/archive/refs/tags/${FB_OS_VERSION}.tar.gz folly
+  #wget_and_untar https://github.com/facebook/folly/archive/refs/tags/${FB_OS_VERSION}.tar.gz folly
   cmake_install_dir folly -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS="$VELOX_BUILD_SHARED" -DFOLLY_HAVE_INT128_T=ON
 }
 
 function install_fizz {
-  wget_and_untar https://github.com/facebookincubator/fizz/archive/refs/tags/${FB_OS_VERSION}.tar.gz fizz
-  cmake_install_dir fizz/fizz -DBUILD_TESTS=OFF
+  #wget_and_untar https://github.com/facebookincubator/fizz/archive/refs/tags/${FB_OS_VERSION}.tar.gz fizz
+  cmake_install_dir fizz/fizz -DBUILD_TESTS=OFF -DBUILD_EXAMPLES=OFF
 }
 
 function install_wangle {
@@ -202,7 +202,7 @@ function install_mvfst {
 }
 
 function install_fbthrift {
-  wget_and_untar https://github.com/facebook/fbthrift/archive/refs/tags/${FB_OS_VERSION}.tar.gz fbthrift
+  #wget_and_untar https://github.com/facebook/fbthrift/archive/refs/tags/${FB_OS_VERSION}.tar.gz fbthrift
   cmake_install_dir fbthrift -Denable_tests=OFF -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF
 }
 
@@ -314,14 +314,14 @@ function install_geos {
 }
 
 function install_velox_deps {
-  run_and_time install_velox_deps_from_apt
-  run_and_time install_fmt
-  run_and_time install_protobuf
-  run_and_time install_boost
-  run_and_time install_folly
-  run_and_time install_fizz
-  run_and_time install_wangle
-  run_and_time install_mvfst
+#  run_and_time install_velox_deps_from_apt
+#  run_and_time install_fmt
+#  run_and_time install_protobuf
+#  run_and_time install_boost
+#  run_and_time install_folly
+#  run_and_time install_fizz
+#  run_and_time install_wangle
+#  run_and_time install_mvfst
   run_and_time install_fbthrift
   run_and_time install_conda
   run_and_time install_duckdb

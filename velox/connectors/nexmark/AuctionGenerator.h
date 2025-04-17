@@ -76,7 +76,7 @@ struct Auction {
         extra(extra) {}
 };
 
-class NexmarkGeneratorConfig;
+class GeneratorConfig;
 
 /** AuctionGenerator */
 class AuctionGenerator {
@@ -102,21 +102,21 @@ class AuctionGenerator {
       int64_t eventId,
       std::mt19937& random,
       int64_t timestamp,
-      const NexmarkGeneratorConfig& config);
+      const GeneratorConfig& config);
 
   /**
    * Return the last valid auction id (ignoring FIRST_AUCTION_ID).
    * Will be the current auction id if due to generate an auction.
    */
   static int64_t lastBase0AuctionId(
-      const NexmarkGeneratorConfig& config,
+      const GeneratorConfig& config,
       int64_t eventId);
 
   /** Return a random auction id (base 0). */
   static int64_t nextBase0AuctionId(
       int64_t nextEventId,
       std::mt19937& random,
-      const NexmarkGeneratorConfig& config);
+      const GeneratorConfig& config);
 
  private:
   /** Return a random time delay, in milliseconds, for length of auctions. */
@@ -124,7 +124,7 @@ class AuctionGenerator {
       int64_t eventsCountSoFar,
       std::mt19937& random,
       int64_t timestamp,
-      const NexmarkGeneratorConfig& config);
+      const GeneratorConfig& config);
 };
 
 } // namespace facebook::velox::connector::nexmark
