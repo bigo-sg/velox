@@ -15,172 +15,120 @@
  */
 #pragma once
 
-#include "velox/vector/BaseVector.h"
+#include <memory>
+
+#include "velox/connectors/nexmark/PersonGenerator.h"
+#include "velox/connectors/nexmark/AuctionGenerator.h"
+#include "velox/connectors/nexmark/BidGenerator.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 
 namespace facebook::velox::connector::nexmark {
 
-/// `RateUnit` defines the unit of the event rate.
-enum class RateUnit { PER_SECOND = 1'000'000L, PER_MINUTE = 60'000'000L };
-
-/// Helper function to calculate the number of microseconds between events at a
-/// given rate.
-inline int64_t rateToPeriodUs(RateUnit rateUnit, int64_t rate) {
-  int64_t usPerUnit = static_cast<int64_t>(rateUnit);
-  return (usPerUnit + rate / 2) / rate;
-}
-
-/// `RateShape` defines the shape of the event rate.
-enum class RateShape { SQUARE, SINE };
-
-inline int calcStepLengthSec(RateShape shape, int ratePeriodSec) {
-  int n = 0;
-  switch (shape) {
-    case RateShape::SQUARE:
-      n = 2;
-      break;
-    case RateShape::SINE:
-      n = 10; // Replace `N` with the actual value
-      break;
-  }
-  return (ratePeriodSec + n - 1) / n;
-}
-
-/// defines the configuration options for the NexmarkGenerator.
-struct NexmarkConfiguration {
-  int64_t numEvents = 0;
-  int numEventGenerators = 1;
-  RateShape rateShape = RateShape::SQUARE;
-  int firstEventRate = 10000;
-  int nextEventRate = 10000;
-  RateUnit rateUnit = RateUnit::PER_SECOND;
-  int ratePeriodSec = 600;
-  int preloadSeconds = 0;
-  int streamTimeout = 240;
-  bool isRateLimited = false;
-  bool useWallclockEventTime = false;
-  int personProportion = 1;
-  int auctionProportion = 3;
-  int bidProportion = 46;
-  int avgPersonByteSize = 200;
-  int avgAuctionByteSize = 500;
-  int avgBidByteSize = 100;
-  int hotAuctionRatio = 2;
-  int hotSellersRatio = 4;
-  int hotBiddersRatio = 4;
-  int64_t windowSizeSec = 10;
-  int64_t windowPeriodSec = 5;
-  int64_t watermarkHoldbackSec = 0;
-  int numInFlightAuctions = 100;
-  int numActivePeople = 1000;
-  int64_t occasionalDelaySec = 3;
-  double probDelayedEvent = 0.1;
-  int64_t outOfOrderGroupSize = 1;
-};
-
-/// `GeneratorConfig` defines the configuration parameters for the [[NexmarkGenerator]].
-struct GeneratorConfig {
+/// Represents an event containing either a Person, an Auction, or a Bid.
+class Event {
  public:
-  static constexpr int64_t FIRST_AUCTION_ID = 1000L;
-  static constexpr int64_t FIRST_PERSON_ID = 1000L;
-  static constexpr int64_t FIRST_CATEGORY_ID = 10L;
+  enum class Type { PERSON = 0, AUCTION = 1, BID = 2 };
+
+  Event() = default;
+
+  Event(Person newPerson)
+      : newPerson_(std::make_unique<Person>(std::move(newPerson))),
+        newAuction_(nullptr),
+        bid_(nullptr),
+        type_(Type::PERSON) {}
+
+  Event(Auction newAuction)
+      : newPerson_(nullptr),
+        newAuction_(std::make_unique<Auction>(std::move(newAuction))),
+        bid_(nullptr),
+        type_(Type::AUCTION) {}
+
+  Event(Bid bid)
+      : newPerson_(nullptr),
+        newAuction_(nullptr),
+        bid_(std::make_unique<Bid>(std::move(bid))),
+        type_(Type::BID) {}
+
+  Type getType() const {
+    return type_; }
+
+    const Person* getPerson() const { return newPerson_.get(); }
+    const Auction* getAuction() const { return newAuction_.get(); }
+    const Bid* getBid() const { return bid_.get(); }
 
  private:
-  NexmarkConfiguration configuration;
-  std::vector<double> interEventDelayUs;
-  int64_t stepLengthSec;
-  int64_t eventsPerEpoch;
+    std::unique_ptr<Person> newPerson_;
+    std::unique_ptr<Auction> newAuction_;
+    std::unique_ptr<Bid> bid_;
+    Type type_;
+};
 
+/// Represents the next event to be emitted, including its wallclock timestamp,
+/// event timestamp, the event itself, and the watermark.
+class NextEvent {
  public:
-  int personProportion;
-  int auctionProportion;
-  int bidProportion;
-  int totalProportion;
+  NextEvent(
+      int64_t wallclockTimestamp,
+      int64_t eventTimestamp,
+      Event event,
+      int64_t watermark)
+      : wallclockTimestamp_(wallclockTimestamp),
+        eventTimestamp_(eventTimestamp),
+        event_(std::move(event)),
+        watermark_(watermark) {}
 
-  int64_t baseTime;
-  int64_t firstEventId;
-  int64_t maxEvents;
-  int64_t firstEventNumber;
-  int64_t epochPeriodMs;
-
- public:
-  GeneratorConfig(
-      NexmarkConfiguration configuration_,
-      int64_t baseTime_,
-      int64_t firstEventId_,
-      int64_t maxEventsOrZero_,
-      int64_t firstEventNumber_)
-      : configuration(std::move(configuration_)),
-        baseTime(baseTime_),
-        firstEventId(firstEventId_),
-        firstEventNumber(firstEventNumber_) {
-    auctionProportion = configuration_.auctionProportion;
-    personProportion = configuration_.personProportion;
-    bidProportion = configuration_.bidProportion;
-    totalProportion = auctionProportion + personProportion + bidProportion;
-
-    interEventDelayUs.resize(1);
-    interEventDelayUs[0] = 1'000'000.0 / configuration_.firstEventRate *
-        configuration_.numEventGenerators;
-    stepLengthSec = calcStepLengthSec(
-        configuration_.rateShape, configuration_.ratePeriodSec);
-
-    if (maxEventsOrZero_ == 0) {
-      maxEvents = std::numeric_limits<int64_t>::max() /
-          (totalProportion *
-           std::max(
-               {configuration_.avgPersonByteSize,
-                configuration_.avgAuctionByteSize,
-                configuration_.avgBidByteSize}));
-    } else {
-      maxEvents = maxEventsOrZero_;
-    }
-
-    eventsPerEpoch = 0;
-    epochPeriodMs = 0;
+  /// When, in wallclock time, should this event be emitted?
+  int64_t getWallclockTimestamp() const {
+    return wallclockTimestamp_;
   }
 
-  int getAvgPersonByteSize() const {
-    return configuration.avgPersonByteSize;
+  /// When, in event time, should this event be considered to have occurred?
+  int64_t getEventTimestamp() const {
+    return eventTimestamp_;
   }
 
-  int getNumActivePeople() const {
-    return configuration.numActivePeople;
+  /// The event itself.
+  const Event& getEvent() const {
+    return event_;
   }
 
-  int getHotSellersRatio() const {
-    return configuration.hotSellersRatio;
+  /// The minimum of this and all future event timestamps.
+  int64_t getWatermark() const {
+    return watermark_;
   }
 
-  /** Return the next event number for a generator which has so far emitted
-   * {@code numEvents}. */
-  int64_t nextEventNumber(int64_t numEvents) const {
-    return firstEventNumber + numEvents;
-  }
-
-  /// Return the next event number for a generator which has so far emitted
-  /// `numEvents`, but adjusted to account for `outOfOrderGroupSize`.
-  int64_t nextAdjustedEventNumber(int64_t numEvents) const {
-    int64_t n = configuration.outOfOrderGroupSize;
-    int64_t eventNumber = nextEventNumber(numEvents);
-    int64_t base = (eventNumber / n) * n;
-    int64_t offset = (eventNumber * 953) % n;
-    return base + offset;
-  }
+ private:
+  int64_t wallclockTimestamp_;
+  int64_t eventTimestamp_;
+  Event event_;
+  int64_t watermark_;
 };
 
 /// `NexmarkGenerator` is the c++ implements of Flink NexmarkGenerator.
 /// https://github.com/nexmark/nexmark/blob/master/nexmark-flink/src/main/java/com/github/nexmark/flink/generator/NexmarkGenerator.java
 class NexmarkGenerator {
  public:
-  NexmarkGenerator(GeneratorConfig config, velox::memory::MemoryPool* pool)
-      : config_(std::move(config)), pool_(pool) {}
+  NexmarkGenerator(
+      NexmarkGeneratorConfig config,
+      int64_t eventsCountSoFar,
+      int64_t wallclockBaseTime)
+      : config_(std::move(config)),
+        eventsCountSoFar_(eventsCountSoFar),
+        wallclockBaseTime_(wallclockBaseTime) {}
+
   ~NexmarkGenerator() = default;
 
-  VectorPtr nextEvent(int rows);
+//   VectorPtr nextEvent(int rows);
 
  private:
-  GeneratorConfig config_;
-  memory::MemoryPool* pool_;
+  NextEvent nextEvent();
+
+  NexmarkGeneratorConfig config_;
+  int64_t eventsCountSoFar_;
+  int64_t wallclockBaseTime_;
+  std::mt19937 random_;
 };
+
+
 
 } // namespace facebook::velox::connector::nexmark

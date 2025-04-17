@@ -15,6 +15,9 @@
  */
 
 #include "velox/connectors/nexmark/AuctionGenerator.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
+#include "velox/connectors/nexmark/StringsGenerator.h"
+#include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 #include "velox/connectors/nexmark/PriceGenerator.h"
 
@@ -25,9 +28,9 @@ Auction AuctionGenerator::nextAuction(
     int64_t eventId,
     std::mt19937& random,
     int64_t timestamp,
-    const GeneratorConfig& config) {
+    const NexmarkGeneratorConfig& config) {
 
-  int64_t id = lastBase0AuctionId(config, eventId) + GeneratorConfig::FIRST_AUCTION_ID;
+  int64_t id = lastBase0AuctionId(config, eventId) + NexmarkGeneratorConfig::FIRST_AUCTION_ID;
 
   int64_t seller;
   // Here P(auction will be for a hot seller) = 1 - 1/hotSellersRatio.
@@ -38,10 +41,10 @@ Auction AuctionGenerator::nextAuction(
   } else {
     seller = PersonGenerator::nextBase0PersonId(eventId, random, config);
   }
-  seller += GeneratorConfig::FIRST_PERSON_ID;
+  seller += NexmarkGeneratorConfig::FIRST_PERSON_ID;
 
   std::uniform_int_distribution<int> categoryDist(0, NUM_CATEGORIES - 1);
-  int64_t category = GeneratorConfig::FIRST_CATEGORY_ID + categoryDist(random);
+  int64_t category = NexmarkGeneratorConfig::FIRST_CATEGORY_ID + categoryDist(random);
   int64_t initialBid = PriceGenerator::nextPrice(random);
   int64_t expires = timestamp + nextAuctionLengthMs(eventsCountSoFar, random, timestamp, config);
   std::string name = StringsGenerator::nextString(random, 20);
@@ -63,7 +66,7 @@ Auction AuctionGenerator::nextAuction(
       extra);
 }
 
-int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfig& config, int64_t eventId) {
+int64_t AuctionGenerator::lastBase0AuctionId(const NexmarkGeneratorConfig& config, int64_t eventId) {
   int64_t epoch = eventId / config.totalProportion;
   int64_t offset = eventId % config.totalProportion;
   if (offset < config.personProportion) {
@@ -85,7 +88,7 @@ int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfig& config, int6
 int64_t AuctionGenerator::nextBase0AuctionId(
     int64_t nextEventId,
     std::mt19937& random,
-    const GeneratorConfig& config) {
+    const NexmarkGeneratorConfig& config) {
 
   // Choose a random auction for any of those which are likely to still be in flight,
   // plus a few 'leads'.
@@ -101,7 +104,7 @@ int64_t AuctionGenerator::nextAuctionLengthMs(
     int64_t eventsCountSoFar,
     std::mt19937& random,
     int64_t timestamp,
-    const GeneratorConfig& config) {
+    const NexmarkGeneratorConfig& config) {
 
   // What's our current event number?
   int64_t currentEventNumber = config.nextAdjustedEventNumber(eventsCountSoFar);
