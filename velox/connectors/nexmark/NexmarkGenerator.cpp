@@ -1,4 +1,5 @@
 #include "velox/connectors/nexmark/NexmarkGenerator.h"
+#include <vector/ComplexVector.h>
 
 #include <chrono>
 
