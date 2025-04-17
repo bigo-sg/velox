@@ -146,6 +146,26 @@ struct GeneratorConfig {
   int getNumActivePeople() const {
     return configuration.numActivePeople;
   }
+
+  int getHotSellersRatio() const {
+    return configuration.hotSellersRatio;
+  }
+
+  /** Return the next event number for a generator which has so far emitted
+   * {@code numEvents}. */
+  int64_t nextEventNumber(int64_t numEvents) const {
+    return firstEventNumber + numEvents;
+  }
+
+  /// Return the next event number for a generator which has so far emitted
+  /// `numEvents`, but adjusted to account for `outOfOrderGroupSize`.
+  int64_t nextAdjustedEventNumber(int64_t numEvents) const {
+    int64_t n = configuration.outOfOrderGroupSize;
+    int64_t eventNumber = nextEventNumber(numEvents);
+    int64_t base = (eventNumber / n) * n;
+    int64_t offset = (eventNumber * 953) % n;
+    return base + offset;
+  }
 };
 
 /// `NexmarkGenerator` is the c++ implements of Flink NexmarkGenerator.
