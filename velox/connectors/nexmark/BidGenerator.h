@@ -48,7 +48,7 @@ struct Bid {
   std::string extra;
 };
 
-class NexmarkGeneratorConfig;
+class GeneratorConfig;
 
 class BidGenerator {
  public:
@@ -56,7 +56,7 @@ class BidGenerator {
       int64_t eventId,
       std::mt19937& random,
       int64_t timestamp,
-      const NexmarkGeneratorConfig& config);
+      const GeneratorConfig& config);
 
  private:
   static std::string getBaseUrl(std::mt19937& random);

@@ -49,9 +49,9 @@ Person PersonGenerator::nextPerson(
     int64_t nextEventId,
     std::mt19937& random,
     int64_t timestamp,
-    const NexmarkGeneratorConfig& config) {
+    const GeneratorConfig& config) {
 
-  int64_t id = lastBase0PersonId(config, nextEventId) + NexmarkGeneratorConfig::FIRST_PERSON_ID;
+  int64_t id = lastBase0PersonId(config, nextEventId) + GeneratorConfig::FIRST_PERSON_ID;
   std::string name = nextPersonName(random);
   std::string email = nextEmail(random);
   std::string creditCard = nextCreditCard(random);
@@ -67,7 +67,7 @@ Person PersonGenerator::nextPerson(
 int64_t PersonGenerator::nextBase0PersonId(
     int64_t eventId,
     std::mt19937& random,
-    const NexmarkGeneratorConfig& config) {
+    const GeneratorConfig& config) {
   // Choose a random person from any of the 'active' people, plus a few 'leads'.
   // By limiting to 'active' we ensure the density of bids or auctions per person
   // does not decrease over time for int64_t running jobs.
@@ -79,7 +79,7 @@ int64_t PersonGenerator::nextBase0PersonId(
   return numPeople - activePeople + n;
 }
 
-int64_t PersonGenerator::lastBase0PersonId(const NexmarkGeneratorConfig& config, int64_t eventId) {
+int64_t PersonGenerator::lastBase0PersonId(const GeneratorConfig& config, int64_t eventId) {
   int64_t epoch = eventId / config.totalProportion;
   int64_t offset = eventId % config.totalProportion;
   if (offset >= config.personProportion) {

@@ -21,7 +21,7 @@
 
 namespace facebook::velox::connector::nexmark {
 
-NexmarkGeneratorConfig::NexmarkGeneratorConfig(
+GeneratorConfig::GeneratorConfig(
     NexmarkConfiguration configuration_,
     int64_t baseTime_,
     int64_t firstEventId_,
@@ -58,51 +58,51 @@ NexmarkGeneratorConfig::NexmarkGeneratorConfig(
   epochPeriodMs = 0;
 }
 
-int NexmarkGeneratorConfig::getAvgPersonByteSize() const {
+int GeneratorConfig::getAvgPersonByteSize() const {
   return configuration.avgPersonByteSize;
 }
 
-int NexmarkGeneratorConfig::getNumActivePeople() const {
+int GeneratorConfig::getNumActivePeople() const {
   return configuration.numActivePeople;
 }
 
-int NexmarkGeneratorConfig::getHotSellersRatio() const {
+int GeneratorConfig::getHotSellersRatio() const {
   return configuration.hotSellersRatio;
 }
 
-int NexmarkGeneratorConfig::getNumInFlightAuctions() const {
+int GeneratorConfig::getNumInFlightAuctions() const {
   return configuration.numInFlightAuctions;
 }
 
-int NexmarkGeneratorConfig::getHotAuctionRatio() const {
+int GeneratorConfig::getHotAuctionRatio() const {
   return configuration.hotAuctionRatio;
 }
 
-int NexmarkGeneratorConfig::getHotBiddersRatio() const {
+int GeneratorConfig::getHotBiddersRatio() const {
   return configuration.hotBiddersRatio;
 }
 
-int NexmarkGeneratorConfig::getAvgBidByteSize() const {
+int GeneratorConfig::getAvgBidByteSize() const {
   return configuration.avgBidByteSize;
 }
 
-int NexmarkGeneratorConfig::getAvgAuctionByteSize() const {
+int GeneratorConfig::getAvgAuctionByteSize() const {
   return configuration.avgAuctionByteSize;
 }
 
-double NexmarkGeneratorConfig::getProbDelayedEvent() const {
+double GeneratorConfig::getProbDelayedEvent() const {
   return configuration.probDelayedEvent;
 }
 
-int64_t NexmarkGeneratorConfig::getOccasionalDelaySec() const {
+int64_t GeneratorConfig::getOccasionalDelaySec() const {
   return configuration.occasionalDelaySec;
 }
 
-int64_t NexmarkGeneratorConfig::getEstimatedSizeBytes() const {
+int64_t GeneratorConfig::getEstimatedSizeBytes() const {
   return estimatedBytesForEvents(maxEvents);
 }
 
-int64_t NexmarkGeneratorConfig::estimatedBytesForEvents(int64_t numEvents) const {
+int64_t GeneratorConfig::estimatedBytesForEvents(int64_t numEvents) const {
   int64_t numPersons = (numEvents * personProportion) / totalProportion;
   int64_t numAuctions = (numEvents * auctionProportion) / totalProportion;
   int64_t numBids = (numEvents * bidProportion) / totalProportion;
@@ -111,19 +111,19 @@ int64_t NexmarkGeneratorConfig::estimatedBytesForEvents(int64_t numEvents) const
       numBids * configuration.avgBidByteSize;
 }
 
-int64_t NexmarkGeneratorConfig::getStartEventId() const {
+int64_t GeneratorConfig::getStartEventId() const {
   return firstEventId + firstEventNumber;
 }
 
-int64_t NexmarkGeneratorConfig::getStopEventId() const {
+int64_t GeneratorConfig::getStopEventId() const {
   return firstEventId + firstEventNumber + maxEvents;
 }
 
-int64_t NexmarkGeneratorConfig::nextEventNumber(int64_t numEvents) const {
+int64_t GeneratorConfig::nextEventNumber(int64_t numEvents) const {
   return firstEventNumber + numEvents;
 }
 
-int64_t NexmarkGeneratorConfig::nextAdjustedEventNumber(int64_t numEvents) const {
+int64_t GeneratorConfig::nextAdjustedEventNumber(int64_t numEvents) const {
   int64_t n = configuration.outOfOrderGroupSize;
   int64_t eventNumber = nextEventNumber(numEvents);
   int64_t base = (eventNumber / n) * n;
@@ -131,13 +131,13 @@ int64_t NexmarkGeneratorConfig::nextAdjustedEventNumber(int64_t numEvents) const
   return base + offset;
 }
 
-int64_t NexmarkGeneratorConfig::nextEventNumberForWatermark(int64_t numEvents) const {
+int64_t GeneratorConfig::nextEventNumberForWatermark(int64_t numEvents) const {
   int64_t n = configuration.outOfOrderGroupSize;
   int64_t eventNumber = nextEventNumber(numEvents);
   return (eventNumber / n) * n;
 }
 
-int64_t NexmarkGeneratorConfig::timestampForEvent(int64_t eventNumber) const {
+int64_t GeneratorConfig::timestampForEvent(int64_t eventNumber) const {
   return baseTime +
       static_cast<int64_t>(eventNumber * interEventDelayUs[0]) / 1000L;
 }

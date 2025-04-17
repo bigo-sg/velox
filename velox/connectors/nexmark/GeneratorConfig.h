@@ -78,7 +78,7 @@ struct NexmarkConfiguration {
   int64_t outOfOrderGroupSize = 1;
 };
 
-class NexmarkGeneratorConfig {
+class GeneratorConfig {
  public:
   static constexpr int64_t FIRST_AUCTION_ID = 1000L;
   static constexpr int64_t FIRST_PERSON_ID = 1000L;
@@ -102,7 +102,7 @@ class NexmarkGeneratorConfig {
   int64_t firstEventNumber;
   int64_t epochPeriodMs;
 
-  NexmarkGeneratorConfig(
+  GeneratorConfig(
       NexmarkConfiguration configuration_,
       int64_t baseTime_,
       int64_t firstEventId_,

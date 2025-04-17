@@ -208,8 +208,10 @@ function cmake_install {
   COMPILER_FLAGS+=${OS_CXXFLAGS}
 
   # CMAKE_POSITION_INDEPENDENT_CODE is required so that Velox can be built into dynamic libraries \
-  cmake -Wno-dev ${CMAKE_OPTIONS} -B"${BINARY_DIR}" \
+  cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=YES -Wno-dev ${CMAKE_OPTIONS} -B"${BINARY_DIR}" \
     -GNinja \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_C_COMPILER=/usr/bin/gcc-11 -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     "${INSTALL_PREFIX+-DCMAKE_PREFIX_PATH=}${INSTALL_PREFIX-}" \
     "${INSTALL_PREFIX+-DCMAKE_INSTALL_PREFIX=}${INSTALL_PREFIX-}" \

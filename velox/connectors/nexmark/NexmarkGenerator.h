@@ -109,7 +109,7 @@ class NextEvent {
 class NexmarkGenerator {
  public:
   NexmarkGenerator(
-      NexmarkGeneratorConfig config,
+      GeneratorConfig config,
       int64_t eventsCountSoFar,
       int64_t wallclockBaseTime)
       : config_(std::move(config)),
@@ -123,7 +123,7 @@ class NexmarkGenerator {
  private:
   NextEvent nextEvent();
 
-  NexmarkGeneratorConfig config_;
+  GeneratorConfig config_;
   int64_t eventsCountSoFar_;
   int64_t wallclockBaseTime_;
   std::mt19937 random_;
