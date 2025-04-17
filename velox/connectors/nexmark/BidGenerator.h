@@ -17,6 +17,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <random>
 
 namespace facebook::velox::connector::nexmark {
 
@@ -44,6 +46,31 @@ struct Bid {
 
   /** Additional arbitrary payload for performance testing. */
   std::string extra;
+};
+
+class NexmarkGeneratorConfig;
+
+class BidGenerator {
+ public:
+  static Bid nextBid(
+      int64_t eventId,
+      std::mt19937& random,
+      int64_t timestamp,
+      const NexmarkGeneratorConfig& config);
+
+ private:
+  static std::string getBaseUrl(std::mt19937& random);
+  static std::pair<std::string, std::string> getNextChannelAndUrl(
+      std::mt19937& random);
+  static void createChannelUrlCache(std::mt19937& random);
+
+  static constexpr int HOT_AUCTION_RATIO = 100;
+  static constexpr int HOT_BIDDER_RATIO = 100;
+  static constexpr int HOT_CHANNELS_RATIO = 2;
+  static constexpr int CHANNELS_NUMBER = 10000;
+
+  static inline const std::vector<std::string> HOT_CHANNELS = {"Google", "Facebook", "Baidu", "Apple"};
+  static inline std::vector<std::pair<std::string, std::string>> CHANNEL_URL_CACHE;
 };
 
 } // namespace facebook::velox::connector::nexmark

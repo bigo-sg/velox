@@ -16,13 +16,13 @@
 
 #pragma once
 
-#include <connectors/nexmark/NexmarkGenerator.h>
-#include <chrono>
 #include <string>
 #include <vector>
 #include <random>
 
 namespace facebook::velox::connector::nexmark {
+
+class NexmarkGeneratorConfig;
 
 /** A person either creating an auction or making a bid. */
 struct Person {
@@ -70,20 +70,20 @@ public:
       int64_t nextEventId,
       std::mt19937& random,
       int64_t timestamp,
-      const GeneratorConfig & config);
+      const NexmarkGeneratorConfig & config);
 
   /** Return a random person id (base 0). */
   static int64_t nextBase0PersonId(
       int64_t eventId,
       std::mt19937& random,
-      const GeneratorConfig& config);
+      const NexmarkGeneratorConfig& config);
 
   /**
    * Return the last valid person id (ignoring FIRST_PERSON_ID). Will be the current person id if
    * due to generate a person.
    */
   static int64_t lastBase0PersonId(
-      const GeneratorConfig& config,
+      const NexmarkGeneratorConfig& config,
       int64_t eventId);
 
 private:
