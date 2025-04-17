@@ -77,8 +77,7 @@ struct NexmarkConfiguration {
   int64_t outOfOrderGroupSize = 1;
 };
 
-/// `GeneratorConfig` defines the configuration parameters for the
-/// NexmarkGenerator.
+/// `GeneratorConfig` defines the configuration parameters for the [[NexmarkGenerator]].
 struct GeneratorConfig {
  public:
   static constexpr int64_t FIRST_AUCTION_ID = 1000L;
@@ -138,6 +137,14 @@ struct GeneratorConfig {
 
     eventsPerEpoch = 0;
     epochPeriodMs = 0;
+  }
+
+  int getAvgPersonByteSize() const {
+    return configuration.avgPersonByteSize;
+  }
+
+  int getNumActivePeople() const {
+    return configuration.numActivePeople;
   }
 };
 
