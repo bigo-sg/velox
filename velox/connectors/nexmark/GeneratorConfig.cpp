@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
+#include "velox/connectors/nexmark/GeneratorConfig.h"
 
 #include <cstdint>
 #include <limits>

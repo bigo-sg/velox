@@ -15,7 +15,7 @@
  */
 #include "velox/connectors/nexmark/BidGenerator.h"
 #include "velox/connectors/nexmark/AuctionGenerator.h"
-#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
+#include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 #include "velox/connectors/nexmark/PriceGenerator.h"
 #include "velox/connectors/nexmark/StringsGenerator.h"
