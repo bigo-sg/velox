@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <folly/json/dynamic.h>
 #include <cstdint>
 #include <vector>
 
@@ -76,6 +77,77 @@ struct NexmarkConfiguration {
   int64_t occasionalDelaySec = 3;
   double probDelayedEvent = 0.1;
   int64_t outOfOrderGroupSize = 1;
+
+  folly::dynamic serialize() const {
+    folly::dynamic obj;
+    obj["numEvents"] = numEvents;
+    obj["numEventGenerators"] = numEventGenerators;
+    obj["rateShape"] = rateShape == RateShape::SQUARE ? "SQUARE" : "SINE";
+    obj["firstEventRate"] = firstEventRate;
+    obj["nextEventRate"] = nextEventRate;
+    obj["rateUnit"] =
+        rateUnit == RateUnit::PER_SECOND ? "PER_SECOND" : "PER_MINUTE";
+    obj["ratePeriodSec"] = ratePeriodSec;
+    obj["preloadSeconds"] = preloadSeconds;
+    obj["streamTimeout"] = streamTimeout;
+    obj["isRateLimited"] = isRateLimited;
+    obj["useWallclockEventTime"] = useWallclockEventTime;
+    obj["personProportion"] = personProportion;
+    obj["auctionProportion"] = auctionProportion;
+    obj["bidProportion"] = bidProportion;
+    obj["avgPersonByteSize"] = avgPersonByteSize;
+    obj["avgAuctionByteSize"] = avgAuctionByteSize;
+    obj["avgBidByteSize"] = avgBidByteSize;
+    obj["hotAuctionRatio"] = hotAuctionRatio;
+    obj["hotSellersRatio"] = hotSellersRatio;
+    obj["hotBiddersRatio"] = hotBiddersRatio;
+    obj["windowSizeSec"] = windowSizeSec;
+    obj["windowPeriodSec"] = windowPeriodSec;
+    obj["watermarkHoldbackSec"] = watermarkHoldbackSec;
+    obj["numInFlightAuctions"] = numInFlightAuctions;
+    obj["numActivePeople"] = numActivePeople;
+    obj["occasionalDelaySec"] = occasionalDelaySec;
+    obj["probDelayedEvent"] = probDelayedEvent;
+    obj["outOfOrderGroupSize"] = outOfOrderGroupSize;
+    return obj;
+  }
+
+  static NexmarkConfiguration deserialize(const folly::dynamic& obj) {
+    NexmarkConfiguration config;
+    config.numEvents = obj["numEvents"].asInt();
+    config.numEventGenerators = obj["numEventGenerators"].asInt();
+    config.rateShape = obj["rateShape"].asString() == "SQUARE"
+                           ? RateShape::SQUARE
+                           : RateShape::SINE;
+    config.firstEventRate = obj["firstEventRate"].asInt();
+    config.nextEventRate = obj["nextEventRate"].asInt();
+    config.rateUnit = obj["rateUnit"].asString() == "PER_SECOND"
+                          ? RateUnit::PER_SECOND
+                          : RateUnit::PER_MINUTE;
+    config.ratePeriodSec = obj["ratePeriodSec"].asInt();
+    config.preloadSeconds = obj["preloadSeconds"].asInt();
+    config.streamTimeout = obj["streamTimeout"].asInt();
+    config.isRateLimited = obj["isRateLimited"].asBool();
+    config.useWallclockEventTime = obj["useWallclockEventTime"].asBool();
+    config.personProportion = obj["personProportion"].asInt();
+    config.auctionProportion = obj["auctionProportion"].asInt();
+    config.bidProportion = obj["bidProportion"].asInt();
+    config.avgPersonByteSize = obj["avgPersonByteSize"].asInt();
+    config.avgAuctionByteSize = obj["avgAuctionByteSize"].asInt();
+    config.avgBidByteSize = obj["avgBidByteSize"].asInt();
+    config.hotAuctionRatio = obj["hotAuctionRatio"].asInt();
+    config.hotSellersRatio = obj["hotSellersRatio"].asInt();
+    config.hotBiddersRatio = obj["hotBiddersRatio"].asInt();
+    config.windowSizeSec = obj["windowSizeSec"].asInt();
+    config.windowPeriodSec = obj["windowPeriodSec"].asInt();
+    config.watermarkHoldbackSec = obj["watermarkHoldbackSec"].asInt();
+    config.numInFlightAuctions = obj["numInFlightAuctions"].asInt();
+    config.numActivePeople = obj["numActivePeople"].asInt();
+    config.occasionalDelaySec = obj["occasionalDelaySec"].asInt();
+    config.probDelayedEvent = obj["probDelayedEvent"].asDouble();
+    config.outOfOrderGroupSize = obj["outOfOrderGroupSize"].asInt();
+    return config;
+  }
 };
 
 class GeneratorConfig {
@@ -98,6 +170,7 @@ class GeneratorConfig {
 
   int64_t baseTime;
   int64_t firstEventId;
+  int64_t maxEventsOrZero;
   int64_t maxEvents;
   int64_t firstEventNumber;
   int64_t epochPeriodMs;
@@ -108,6 +181,32 @@ class GeneratorConfig {
       int64_t firstEventId_,
       int64_t maxEventsOrZero_,
       int64_t firstEventNumber_);
+
+  folly::dynamic serialize() const {
+    folly::dynamic obj;
+    obj["configuration"] = configuration.serialize();
+    obj["baseTime"] = baseTime;
+    obj["firstEventId"] = firstEventId;
+    obj["maxEventsOrZero"] = maxEventsOrZero;
+    obj["firstEventNumber"] = firstEventNumber;
+    return obj;
+  }
+
+  static GeneratorConfig deserialize(const folly::dynamic& obj) {
+    NexmarkConfiguration configuration =
+        NexmarkConfiguration::deserialize(obj["configuration"]);
+    int64_t baseTime = obj["baseTime"].asInt();
+    int64_t firstEventId = obj["firstEventId"].asInt();
+    int64_t maxEventsOrZero = obj["maxEventsOrZero"].asInt();
+    int64_t firstEventNumber = obj["firstEventNumber"].asInt();
+
+    return GeneratorConfig(
+        std::move(configuration),
+        baseTime,
+        firstEventId,
+        maxEventsOrZero,
+        firstEventNumber);
+  }
 
   int getAvgPersonByteSize() const;
   int getNumActivePeople() const;

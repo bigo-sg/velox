@@ -196,7 +196,7 @@ class NextEvent {
   }
 
   static void fillVector(
-      RowVectorPtr nextEventVector,
+      RowVector* nextEventVector,
       int index,
       const NextEvent& nextEvent) {
     auto wallclockVector = nextEventVector->childAt(0)->asFlatVector<int64_t>();
@@ -222,14 +222,15 @@ class NextEvent {
 class NexmarkGenerator {
  public:
   NexmarkGenerator(
-      GeneratorConfig config,
+      const GeneratorConfig& config,
       int64_t eventsCountSoFar,
-      int64_t wallclockBaseTime,
-      memory::MemoryPool* pool)
-      : config_(std::move(config)),
+      int64_t wallclockBaseTime)
+      // memory::MemoryPool* pool)
+      : config_(config),
         eventsCountSoFar_(eventsCountSoFar),
-        wallclockBaseTime_(wallclockBaseTime),
-        pool_(pool) {}
+        wallclockBaseTime_(wallclockBaseTime)
+  // pool_(pool)
+  {}
 
   ~NexmarkGenerator() = default;
 
@@ -240,10 +241,10 @@ class NexmarkGenerator {
   NextEvent nextEvent();
 
  private:
-  GeneratorConfig config_;
+  const GeneratorConfig config_;
   int64_t eventsCountSoFar_;
   int64_t wallclockBaseTime_;
-  memory::MemoryPool* pool_;
+  // memory::MemoryPool* pool_;
   std::mt19937 random_;
 };
 

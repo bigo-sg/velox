@@ -30,6 +30,7 @@ GeneratorConfig::GeneratorConfig(
     : configuration(std::move(configuration_)),
       baseTime(baseTime_),
       firstEventId(firstEventId_),
+      maxEventsOrZero(maxEventsOrZero_),
       firstEventNumber(firstEventNumber_) {
   auctionProportion = configuration.auctionProportion;
   personProportion = configuration.personProportion;
