@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <type/Type.h>
+#include <vector/ComplexVector.h>
+#include <vector/FlatVector.h>
 #include <string>
 #include <vector>
 #include <random>
@@ -57,6 +60,78 @@ struct Person {
         state(std::move(state)),
         dateTime(dateTime),
         extra(std::move(extra)) {}
+
+  // Person RowType
+  static TypePtr createType() {
+    return ROW(
+        {
+            "id", // Person ID
+            "name", // Name
+            "email", // Email
+            "creditCard", // Credit Card
+            "city", // City
+            "state", // State/Province
+            "extra" // Extra Information
+        },
+        {
+            BIGINT(), // id
+            VARCHAR(), // name
+            VARCHAR(), // email
+            VARCHAR(), // creditCard
+            VARCHAR(), // city
+            VARCHAR(), // state
+            VARCHAR() // extra
+        });
+  }
+
+  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
+    auto idVector = BaseVector::create(BIGINT(), rows, pool);
+    auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto emailVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto creditCardVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto cityVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto stateVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
+
+    return std::make_shared<RowVector>(
+        pool,
+        createType(),
+        nullptr,
+        rows,
+        std::vector<VectorPtr>{
+            idVector,
+            nameVector,
+            emailVector,
+            creditCardVector,
+            cityVector,
+            stateVector,
+            extraVector});
+  }
+
+  static void
+  fillVector(RowVector* personVector, int index, const Person* person) {
+    if (!person) {
+      personVector->setNull(index, true);
+      return;
+    }
+
+    auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
+    auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
+    auto emailVector = personVector->childAt(2)->asFlatVector<StringView>();
+    auto creditCardVector =
+        personVector->childAt(3)->asFlatVector<StringView>();
+    auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
+    auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
+    auto extraVector = personVector->childAt(6)->asFlatVector<StringView>();
+
+    idVector->set(index, person->id);
+    nameVector->set(index, StringView(person->name));
+    emailVector->set(index, StringView(person->emailAddress));
+    creditCardVector->set(index, StringView(person->creditCard));
+    cityVector->set(index, StringView(person->city));
+    stateVector->set(index, StringView(person->state));
+    extraVector->set(index, StringView(person->extra));
+  }
 };
 
 /** Generates people. */

@@ -17,10 +17,11 @@
 
 #include <memory>
 
-#include "velox/connectors/nexmark/PersonGenerator.h"
 #include "velox/connectors/nexmark/AuctionGenerator.h"
 #include "velox/connectors/nexmark/BidGenerator.h"
 #include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/PersonGenerator.h"
+#include "velox/vector/BaseVector.h"
 
 namespace facebook::velox::connector::nexmark {
 
@@ -31,36 +32,103 @@ class Event {
 
   Event() = default;
 
-  Event(Person newPerson)
-      : newPerson_(std::make_unique<Person>(std::move(newPerson))),
-        newAuction_(nullptr),
+  Event(Person person)
+      : person_(std::make_unique<Person>(std::move(person))),
+        auction_(nullptr),
         bid_(nullptr),
         type_(Type::PERSON) {}
 
-  Event(Auction newAuction)
-      : newPerson_(nullptr),
-        newAuction_(std::make_unique<Auction>(std::move(newAuction))),
+  Event(Auction auction)
+      : person_(nullptr),
+        auction_(std::make_unique<Auction>(std::move(auction))),
         bid_(nullptr),
         type_(Type::AUCTION) {}
 
   Event(Bid bid)
-      : newPerson_(nullptr),
-        newAuction_(nullptr),
+      : person_(nullptr),
+        auction_(nullptr),
         bid_(std::make_unique<Bid>(std::move(bid))),
         type_(Type::BID) {}
 
   Type getType() const {
-    return type_; }
+    return type_;
+  }
 
-    const Person* getPerson() const { return newPerson_.get(); }
-    const Auction* getAuction() const { return newAuction_.get(); }
-    const Bid* getBid() const { return bid_.get(); }
+  const Person* getPerson() const {
+    return person_.get();
+  }
+  const Auction* getAuction() const {
+    return auction_.get();
+  }
+  const Bid* getBid() const {
+    return bid_.get();
+  }
+
+  // Event RowType
+  static TypePtr createType() {
+    return ROW(
+        {
+            "type", // Event type
+            "person", // Person object
+            "auction", // Auction object
+            "bid" // Bid object
+        },
+        {
+            INTEGER(), // type (Event::Type enum)
+            Person::createType(), // person
+            Auction::createType(), // auction
+            Bid::createType() // bid
+        });
+  }
+
+  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
+    auto typeVector = BaseVector::create(INTEGER(), rows, pool);
+    auto personVector = Person::createVector(rows, pool);
+    auto auctionVector = Auction::createVector(rows, pool);
+    auto bidVector = Bid::createVector(rows, pool);
+
+    return std::make_shared<RowVector>(
+        pool,
+        createType(),
+        nullptr,
+        rows,
+        std::vector<VectorPtr>{typeVector, personVector, auctionVector, bidVector});
+  }
+
+  static void fillVector(RowVector* eventVector, int index, const Event& event) {
+    auto typeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
+    auto personVector = eventVector->childAt(1)->as<RowVector>();
+    auto auctionVector = eventVector->childAt(2)->as<RowVector>();
+    auto bidVector = eventVector->childAt(3)->as<RowVector>();
+
+    typeVector->set(index, static_cast<int32_t>(event.getType()));
+
+    switch (event.getType()) {
+      case Event::Type::PERSON:
+        Person::fillVector(personVector, index, event.getPerson());
+        auctionVector->setNull(index, true);
+        bidVector->setNull(index, true);
+        break;
+
+      case Event::Type::AUCTION:
+        personVector->setNull(index, true);
+        Auction::fillVector(auctionVector, index, event.getAuction());
+        bidVector->setNull(index, true);
+        break;
+
+      case Event::Type::BID:
+        personVector->setNull(index, true);
+        auctionVector->setNull(index, true);
+        Bid::fillVector(bidVector, index, event.getBid());
+        break;
+    }
+  }
 
  private:
-    std::unique_ptr<Person> newPerson_;
-    std::unique_ptr<Auction> newAuction_;
-    std::unique_ptr<Bid> bid_;
-    Type type_;
+  std::unique_ptr<Person> person_;
+  std::unique_ptr<Auction> auction_;
+  std::unique_ptr<Bid> bid_;
+  Type type_;
 };
 
 /// Represents the next event to be emitted, including its wallclock timestamp,
@@ -97,6 +165,51 @@ class NextEvent {
     return watermark_;
   }
 
+  // NextEvent RowType
+  static TypePtr createType() {
+    return ROW(
+        {"wallclockTimestamp", "eventTimestamp", "event", "watermark"},
+        {
+            BIGINT(), // wallclockTimestamp
+            BIGINT(), // eventTimestamp
+            Event::createType(), // event
+            BIGINT() // watermark
+        });
+  }
+
+  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
+    auto wallclockTimestampVector = BaseVector::create(BIGINT(), rows, pool);
+    auto eventTimestampVector = BaseVector::create(BIGINT(), rows, pool);
+    auto eventVector = Event::createVector(rows, pool);
+    auto watermarkVector = BaseVector::create(BIGINT(), rows, pool);
+
+    return std::make_shared<RowVector>(
+        pool,
+        createType(),
+        nullptr,
+        rows,
+        std::vector<VectorPtr>{
+            wallclockTimestampVector,
+            eventTimestampVector,
+            eventVector,
+            watermarkVector});
+  }
+
+  static void fillVector(
+      RowVectorPtr nextEventVector,
+      int index,
+      const NextEvent& nextEvent) {
+    auto wallclockVector = nextEventVector->childAt(0)->asFlatVector<int64_t>();
+    auto eventTimeVector = nextEventVector->childAt(1)->asFlatVector<int64_t>();
+    auto eventVector = nextEventVector->childAt(2)->as<RowVector>();
+    auto watermarkVector = nextEventVector->childAt(3)->asFlatVector<int64_t>();
+
+    wallclockVector->set(index, nextEvent.getWallclockTimestamp());
+    eventTimeVector->set(index, nextEvent.getEventTimestamp());
+    Event::fillVector(eventVector, index, nextEvent.getEvent());
+    watermarkVector->set(index, nextEvent.getWatermark());
+  }
+
  private:
   int64_t wallclockTimestamp_;
   int64_t eventTimestamp_;
@@ -111,24 +224,27 @@ class NexmarkGenerator {
   NexmarkGenerator(
       GeneratorConfig config,
       int64_t eventsCountSoFar,
-      int64_t wallclockBaseTime)
+      int64_t wallclockBaseTime,
+      memory::MemoryPool* pool)
       : config_(std::move(config)),
         eventsCountSoFar_(eventsCountSoFar),
-        wallclockBaseTime_(wallclockBaseTime) {}
+        wallclockBaseTime_(wallclockBaseTime),
+        pool_(pool) {}
 
   ~NexmarkGenerator() = default;
 
-//   VectorPtr nextEvent(int rows);
+  bool hasNext() const {
+    return eventsCountSoFar_ < config_.maxEvents;
+  }
 
- private:
   NextEvent nextEvent();
 
+ private:
   GeneratorConfig config_;
   int64_t eventsCountSoFar_;
   int64_t wallclockBaseTime_;
+  memory::MemoryPool* pool_;
   std::mt19937 random_;
 };
-
-
 
 } // namespace facebook::velox::connector::nexmark

@@ -16,6 +16,9 @@
 
 #pragma once
 
+#include <type/Type.h>
+#include <vector/ComplexVector.h>
+#include <vector/FlatVector.h>
 #include <random>
 #include <string>
 
@@ -74,6 +77,98 @@ struct Auction {
         seller(seller),
         category(category),
         extra(extra) {}
+
+  // Auction RowType
+  static TypePtr createType() {
+    return ROW(
+        {
+            "id", // Auction ID
+            "name", // Auction name
+            "description", // Description
+            "initialBid", // Initial bid
+            "reserve", // Reserve price
+            "timestamp", // Timestamp
+            "expires", // Expiration time
+            "seller", // Seller ID
+            "category", // Category
+            "extra" // Additional information
+        },
+        {
+            BIGINT(), // id
+            VARCHAR(), // name
+            VARCHAR(), // description
+            BIGINT(), // initialBid
+            BIGINT(), // reserve
+            BIGINT(), // timestamp
+            BIGINT(), // expires
+            BIGINT(), // seller
+            BIGINT(), // category
+            VARCHAR() // extra
+        });
+  }
+
+  // 创建 Auction Vector
+  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
+    auto idVector = BaseVector::create(BIGINT(), rows, pool);
+    auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto descVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto initialBidVector = BaseVector::create(BIGINT(), rows, pool);
+    auto reserveVector = BaseVector::create(BIGINT(), rows, pool);
+    auto timestampVector = BaseVector::create(BIGINT(), rows, pool);
+    auto expiresVector = BaseVector::create(BIGINT(), rows, pool);
+    auto sellerVector = BaseVector::create(BIGINT(), rows, pool);
+    auto categoryVector = BaseVector::create(BIGINT(), rows, pool);
+    auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
+
+    return std::make_shared<RowVector>(
+        pool,
+        createType(),
+        nullptr,
+        rows,
+        std::vector<VectorPtr>{
+            idVector,
+            nameVector,
+            descVector,
+            initialBidVector,
+            reserveVector,
+            timestampVector,
+            expiresVector,
+            sellerVector,
+            categoryVector,
+            extraVector});
+  }
+
+  static void fillVector(
+      RowVector* auctionVector,
+      int index,
+      const Auction* auction) {
+    if (!auction) {
+      auctionVector->setNull(index, true);
+      return;
+    }
+
+    auto idVector = auctionVector->childAt(0)->asFlatVector<int64_t>();
+    auto nameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
+    auto descVector = auctionVector->childAt(2)->asFlatVector<StringView>();
+    auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
+    auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
+    auto timestampVector = auctionVector->childAt(5)->asFlatVector<int64_t>();
+    auto expiresVector = auctionVector->childAt(6)->asFlatVector<int64_t>();
+    auto sellerVector = auctionVector->childAt(7)->asFlatVector<int64_t>();
+    auto categoryVector = auctionVector->childAt(8)->asFlatVector<int64_t>();
+    auto extraVector = auctionVector->childAt(9)->asFlatVector<StringView>();
+
+    idVector->set(index, auction->id);
+    nameVector->set(index, StringView(auction->itemName));
+    descVector->set(index, StringView(auction->description));
+    initialBidVector->set(index, auction->initialBid);
+    reserveVector->set(index, auction->reserve);
+    timestampVector->set(index, auction->dateTime);
+    expiresVector->set(index, auction->expires);
+    sellerVector->set(index, auction->seller);
+    categoryVector->set(index, auction->category);
+    extraVector->set(index, StringView(auction->extra));
+  }
 };
 
 class GeneratorConfig;
