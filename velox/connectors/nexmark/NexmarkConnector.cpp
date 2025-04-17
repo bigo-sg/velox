@@ -20,8 +20,7 @@ namespace facebook::velox::connector::nexmark {
 
 folly::dynamic NexmarkTableHandle::serialize() const {
   folly::dynamic obj = ConnectorTableHandle::serializeBase("NexmarkTableHandle");
-  //obj["nexmarkSeed"] = nexmarkSeed;
-
+  obj["config"] = config_.serialize();
   return obj;
 }
 
@@ -29,11 +28,10 @@ ConnectorTableHandlePtr NexmarkTableHandle::create(
     const folly::dynamic& obj,
     void* context) {
   auto connectorId = obj["connectorId"].asString();
+  auto config = GeneratorConfig::deserialize(obj["config"]);
 
-  NexmarkGenerator::Options options;
   return std::make_shared<const NexmarkTableHandle>(
-      connectorId,
-      options);
+      connectorId, std::move(config));
 }
 
 void NexmarkTableHandle::registerSerDe() {
@@ -52,8 +50,8 @@ NexmarkDataSource::NexmarkDataSource(
       nexmarkTableHandle,
       "TableHandle must be an instance of NexmarkTableHandle");
 
-  nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
-      nexmarkTableHandle->nexmarkOptions, pool_);
+  nexmarkGenerator_ =
+      std::make_unique<NexmarkGenerator>(nexmarkTableHandle->config_, 0, -1);
 }
 
 void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
@@ -75,17 +73,24 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
       currentSplit_, "No split to process. Call addSplit() first.");
 
   // Split exhausted.
-  if (splitOffset_ >= splitEnd_) {
+  if (splitOffset_ >= splitEnd_ || !nexmarkGenerator_->hasNext()) {
     return nullptr;
   }
 
   const size_t outputRows = std::min(size, (splitEnd_ - splitOffset_));
-  splitOffset_ += outputRows;
+  auto outputVector = NextEvent::createVector(outputRows, pool_);
 
-  auto outputVector = nexmarkGenerator_->nextEvent(outputRows);
+  size_t i = 0;
+  for (; i < outputRows && nexmarkGenerator_->hasNext(); ++i) {
+    auto nextEvent = nexmarkGenerator_->nextEvent();
+    NextEvent::fillVector(outputVector.get(), i, nextEvent);
+  }
+  outputVector->resize(i);
+
+  splitOffset_ += outputVector->size();
   completedRows_ += outputVector->size();
   completedBytes_ += outputVector->retainedSize();
-  return std::dynamic_pointer_cast<RowVector>(outputVector);
+  return outputVector;
 }
 
 } // namespace facebook::velox::connector::nexmark
