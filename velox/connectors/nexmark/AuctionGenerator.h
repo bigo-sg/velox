@@ -87,7 +87,7 @@ struct Auction {
             "description", // Description
             "initialBid", // Initial bid
             "reserve", // Reserve price
-            "timestamp", // Timestamp
+            "dateTime", // Timestamp
             "expires", // Expiration time
             "seller", // Seller ID
             "category", // Category
@@ -99,8 +99,8 @@ struct Auction {
             VARCHAR(), // description
             BIGINT(), // initialBid
             BIGINT(), // reserve
-            BIGINT(), // timestamp
-            BIGINT(), // expires
+            TIMESTAMP(), // timestamp
+            TIMESTAMP (), // expires
             BIGINT(), // seller
             BIGINT(), // category
             VARCHAR() // extra
@@ -114,8 +114,8 @@ struct Auction {
     auto descVector = BaseVector::create(VARCHAR(), rows, pool);
     auto initialBidVector = BaseVector::create(BIGINT(), rows, pool);
     auto reserveVector = BaseVector::create(BIGINT(), rows, pool);
-    auto timestampVector = BaseVector::create(BIGINT(), rows, pool);
-    auto expiresVector = BaseVector::create(BIGINT(), rows, pool);
+    auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
+    auto expiresVector = BaseVector::create(TIMESTAMP(), rows, pool);
     auto sellerVector = BaseVector::create(BIGINT(), rows, pool);
     auto categoryVector = BaseVector::create(BIGINT(), rows, pool);
     auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
@@ -131,7 +131,7 @@ struct Auction {
             descVector,
             initialBidVector,
             reserveVector,
-            timestampVector,
+            dateTimeVector,
             expiresVector,
             sellerVector,
             categoryVector,
@@ -152,8 +152,8 @@ struct Auction {
     auto descVector = auctionVector->childAt(2)->asFlatVector<StringView>();
     auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
     auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
-    auto timestampVector = auctionVector->childAt(5)->asFlatVector<int64_t>();
-    auto expiresVector = auctionVector->childAt(6)->asFlatVector<int64_t>();
+    auto dateTimeVector = auctionVector->childAt(5)->asFlatVector<Timestamp>();
+    auto expiresVector = auctionVector->childAt(6)->asFlatVector<Timestamp>();
     auto sellerVector = auctionVector->childAt(7)->asFlatVector<int64_t>();
     auto categoryVector = auctionVector->childAt(8)->asFlatVector<int64_t>();
     auto extraVector = auctionVector->childAt(9)->asFlatVector<StringView>();
@@ -163,8 +163,12 @@ struct Auction {
     descVector->set(index, StringView(auction->description));
     initialBidVector->set(index, auction->initialBid);
     reserveVector->set(index, auction->reserve);
-    timestampVector->set(index, auction->dateTime);
-    expiresVector->set(index, auction->expires);
+    dateTimeVector->set(
+        index,
+        Timestamp(auction->dateTime / 1000, (auction->dateTime) % 1000 * 1000));
+    expiresVector->set(
+        index,
+        Timestamp(auction->expires / 1000, (auction->expires) % 1000 * 1000));
     sellerVector->set(index, auction->seller);
     categoryVector->set(index, auction->category);
     extraVector->set(index, StringView(auction->extra));

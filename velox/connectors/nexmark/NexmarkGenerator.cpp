@@ -5,10 +5,12 @@
 
 namespace facebook::velox::connector::nexmark {
 
-NextEvent NexmarkGenerator::nextEvent() {
+NextEvent NexmarkGenerator::next() {
   if (wallclockBaseTime_ < 0) {
     wallclockBaseTime_ =
-        std::chrono::system_clock::now().time_since_epoch().count();
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count();
   }
 
   // When, in event time, we should generate the event. Monotonic.

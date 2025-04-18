@@ -165,50 +165,50 @@ class NextEvent {
     return watermark_;
   }
 
-  // NextEvent RowType
-  static TypePtr createType() {
-    return ROW(
-        {"wallclockTimestamp", "eventTimestamp", "event", "watermark"},
-        {
-            BIGINT(), // wallclockTimestamp
-            BIGINT(), // eventTimestamp
-            Event::createType(), // event
-            BIGINT() // watermark
-        });
-  }
+  // // NextEvent RowType
+  // static TypePtr createType() {
+  //   return ROW(
+  //       {"wallclockTimestamp", "eventTimestamp", "event", "watermark"},
+  //       {
+  //           BIGINT(), // wallclockTimestamp
+  //           BIGINT(), // eventTimestamp
+  //           Event::createType(), // event
+  //           BIGINT() // watermark
+  //       });
+  // }
 
-  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
-    auto wallclockTimestampVector = BaseVector::create(BIGINT(), rows, pool);
-    auto eventTimestampVector = BaseVector::create(BIGINT(), rows, pool);
-    auto eventVector = Event::createVector(rows, pool);
-    auto watermarkVector = BaseVector::create(BIGINT(), rows, pool);
+  // static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
+  //   auto wallclockTimestampVector = BaseVector::create(BIGINT(), rows, pool);
+  //   auto eventTimestampVector = BaseVector::create(BIGINT(), rows, pool);
+  //   auto eventVector = Event::createVector(rows, pool);
+  //   auto watermarkVector = BaseVector::create(BIGINT(), rows, pool);
 
-    return std::make_shared<RowVector>(
-        pool,
-        createType(),
-        nullptr,
-        rows,
-        std::vector<VectorPtr>{
-            wallclockTimestampVector,
-            eventTimestampVector,
-            eventVector,
-            watermarkVector});
-  }
+  //   return std::make_shared<RowVector>(
+  //       pool,
+  //       createType(),
+  //       nullptr,
+  //       rows,
+  //       std::vector<VectorPtr>{
+  //           wallclockTimestampVector,
+  //           eventTimestampVector,
+  //           eventVector,
+  //           watermarkVector});
+  // }
 
-  static void fillVector(
-      RowVector* nextEventVector,
-      int index,
-      const NextEvent& nextEvent) {
-    auto wallclockVector = nextEventVector->childAt(0)->asFlatVector<int64_t>();
-    auto eventTimeVector = nextEventVector->childAt(1)->asFlatVector<int64_t>();
-    auto eventVector = nextEventVector->childAt(2)->as<RowVector>();
-    auto watermarkVector = nextEventVector->childAt(3)->asFlatVector<int64_t>();
+  // static void fillVector(
+  //     RowVector* nextEventVector,
+  //     int index,
+  //     const NextEvent& nextEvent) {
+  //   auto wallclockVector = nextEventVector->childAt(0)->asFlatVector<int64_t>();
+  //   auto eventTimeVector = nextEventVector->childAt(1)->asFlatVector<int64_t>();
+  //   auto eventVector = nextEventVector->childAt(2)->as<RowVector>();
+  //   auto watermarkVector = nextEventVector->childAt(3)->asFlatVector<int64_t>();
 
-    wallclockVector->set(index, nextEvent.getWallclockTimestamp());
-    eventTimeVector->set(index, nextEvent.getEventTimestamp());
-    Event::fillVector(eventVector, index, nextEvent.getEvent());
-    watermarkVector->set(index, nextEvent.getWatermark());
-  }
+  //   wallclockVector->set(index, nextEvent.getWallclockTimestamp());
+  //   eventTimeVector->set(index, nextEvent.getEventTimestamp());
+  //   Event::fillVector(eventVector, index, nextEvent.getEvent());
+  //   watermarkVector->set(index, nextEvent.getWatermark());
+  // }
 
  private:
   int64_t wallclockTimestamp_;
@@ -225,7 +225,6 @@ class NexmarkGenerator {
       const GeneratorConfig& config,
       int64_t eventsCountSoFar,
       int64_t wallclockBaseTime)
-      // memory::MemoryPool* pool)
       : config_(config),
         eventsCountSoFar_(eventsCountSoFar),
         wallclockBaseTime_(wallclockBaseTime)
@@ -238,13 +237,12 @@ class NexmarkGenerator {
     return eventsCountSoFar_ < config_.maxEvents;
   }
 
-  NextEvent nextEvent();
+  NextEvent next();
 
  private:
   const GeneratorConfig config_;
   int64_t eventsCountSoFar_;
   int64_t wallclockBaseTime_;
-  // memory::MemoryPool* pool_;
   std::mt19937 random_;
 };
 
