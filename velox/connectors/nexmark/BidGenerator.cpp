@@ -85,15 +85,19 @@ std::string BidGenerator::getBaseUrl(std::mt19937& random) {
       '/' + randomString(5) + '/' + "item.htm?query=1";
 }
 
-void BidGenerator::createChannelUrlCache(std::mt19937& random) {
-  CHANNEL_URL_CACHE.resize(CHANNELS_NUMBER);
+std::vector<std::pair<std::string, std::string>>
+BidGenerator::createChannelUrlCache() {
+  std::mt19937 random;
+  std::vector<std::pair<std::string, std::string>> cache;
+  cache.resize(CHANNELS_NUMBER);
   for (int i = 0; i < CHANNELS_NUMBER; ++i) {
     std::string url = getBaseUrl(random);
     if (random() % 10 > 0) {
       url += "&channel_id=" + std::to_string(std::abs(~i));
     }
-    CHANNEL_URL_CACHE[i] = {"channel-" + std::to_string(i), url};
+    cache[i] = {"channel-" + std::to_string(i), url};
   }
+  return cache;
 }
 
 std::pair<std::string, std::string> BidGenerator::getNextChannelAndUrl(
