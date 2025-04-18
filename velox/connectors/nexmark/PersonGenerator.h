@@ -39,7 +39,7 @@ struct Person {
   std::string creditCard;
   std::string city;
   std::string state;
-  int64_t dateTime;
+  int64_t dateTime; // unit: ms
 
   /** Additional arbitrary payload for performance testing. */
   std::string extra;
@@ -67,10 +67,11 @@ struct Person {
         {
             "id", // Person ID
             "name", // Name
-            "email", // Email
+            "emailAddress", // Email
             "creditCard", // Credit Card
             "city", // City
             "state", // State/Province
+            "dateTime", // State/Province
             "extra" // Extra Information
         },
         {
@@ -80,6 +81,7 @@ struct Person {
             VARCHAR(), // creditCard
             VARCHAR(), // city
             VARCHAR(), // state
+            TIMESTAMP(), // dateTime
             VARCHAR() // extra
         });
   }
@@ -91,6 +93,7 @@ struct Person {
     auto creditCardVector = BaseVector::create(VARCHAR(), rows, pool);
     auto cityVector = BaseVector::create(VARCHAR(), rows, pool);
     auto stateVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
     auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
 
     return std::make_shared<RowVector>(
@@ -105,6 +108,7 @@ struct Person {
             creditCardVector,
             cityVector,
             stateVector,
+            dateTimeVector,
             extraVector});
   }
 
@@ -122,7 +126,8 @@ struct Person {
         personVector->childAt(3)->asFlatVector<StringView>();
     auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
     auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
-    auto extraVector = personVector->childAt(6)->asFlatVector<StringView>();
+    auto dateTimeVector = personVector->childAt(6)->asFlatVector<Timestamp>();
+    auto extraVector = personVector->childAt(7)->asFlatVector<StringView>();
 
     idVector->set(index, person->id);
     nameVector->set(index, StringView(person->name));
@@ -130,6 +135,9 @@ struct Person {
     creditCardVector->set(index, StringView(person->creditCard));
     cityVector->set(index, StringView(person->city));
     stateVector->set(index, StringView(person->state));
+    dateTimeVector->set(
+        index,
+        Timestamp(person->dateTime / 1000, (person->dateTime) % 1000 * 1000));
     extraVector->set(index, StringView(person->extra));
   }
 };

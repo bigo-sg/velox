@@ -78,18 +78,28 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
   }
 
   const size_t outputRows = std::min(size, (splitEnd_ - splitOffset_));
-  auto outputVector = NextEvent::createVector(outputRows, pool_);
+  auto outputVector = Event::createVector(outputRows, pool_);
 
   size_t i = 0;
+  int64_t maxWallclockTimestamp = 0;
   for (; i < outputRows && nexmarkGenerator_->hasNext(); ++i) {
-    auto nextEvent = nexmarkGenerator_->nextEvent();
-    NextEvent::fillVector(outputVector.get(), i, nextEvent);
+    auto nextEvent = nexmarkGenerator_->next();
+    Event::fillVector(outputVector.get(), i, nextEvent.getEvent());
   }
   outputVector->resize(i);
 
   splitOffset_ += outputVector->size();
   completedRows_ += outputVector->size();
   completedBytes_ += outputVector->retainedSize();
+
+  /// Wait until reach the max wallclock timestamp.
+  auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch())
+      .count();
+  if (maxWallclockTimestamp > nowMs) {
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(maxWallclockTimestamp - nowMs));
+  }
   return outputVector;
 }
 

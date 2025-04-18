@@ -48,6 +48,7 @@ struct Bid {
    */
   int64_t dateTime;
 
+
   /** Additional arbitrary payload for performance testing. */
   std::string extra;
 
@@ -55,29 +56,32 @@ struct Bid {
   static TypePtr createType() {
     return ROW(
         {
-            "id", // Bid ID
             "auction", // Auction ID
             "bidder", // Bidder ID
             "price", // Price
-            "timestamp", // Timestamp
+            "channel", // Channel
+            "url", // Url
+            "dateTime", // Timestamp
             "extra" // Additional information
         },
         {
-            BIGINT(), // id
             BIGINT(), // auction
             BIGINT(), // bidder
             BIGINT(), // price
-            BIGINT(), // timestamp
+            VARCHAR(), // channel
+            VARCHAR(), // url
+            TIMESTAMP(), // timestamp
             VARCHAR() // extra
         });
   }
 
   static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
-    auto idVector = BaseVector::create(BIGINT(), rows, pool);
     auto auctionVector = BaseVector::create(BIGINT(), rows, pool);
     auto bidderVector = BaseVector::create(BIGINT(), rows, pool);
     auto priceVector = BaseVector::create(BIGINT(), rows, pool);
-    auto timestampVector = BaseVector::create(BIGINT(), rows, pool);
+    auto channelVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto urlVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
     auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
 
     return std::make_shared<RowVector>(
@@ -86,11 +90,12 @@ struct Bid {
         nullptr,
         rows,
         std::vector<VectorPtr>{
-            idVector,
             auctionVector,
             bidderVector,
             priceVector,
-            timestampVector,
+            channelVector,
+            urlVector,
+            dateTimeVector,
             extraVector});
   }
 
@@ -100,18 +105,21 @@ struct Bid {
       return;
     }
 
-    auto idVector = bidVector->childAt(0)->asFlatVector<int64_t>();
-    auto auctionVector = bidVector->childAt(1)->asFlatVector<int64_t>();
-    auto bidderVector = bidVector->childAt(2)->asFlatVector<int64_t>();
-    auto priceVector = bidVector->childAt(3)->asFlatVector<int64_t>();
-    auto timestampVector = bidVector->childAt(4)->asFlatVector<int64_t>();
-    auto extraVector = bidVector->childAt(5)->asFlatVector<StringView>();
+    auto auctionVector = bidVector->childAt(0)->asFlatVector<int64_t>();
+    auto bidderVector = bidVector->childAt(1)->asFlatVector<int64_t>();
+    auto priceVector = bidVector->childAt(2)->asFlatVector<int64_t>();
+    auto channelVector = bidVector->childAt(3)->asFlatVector<StringView>();
+    auto urlVector = bidVector->childAt(4)->asFlatVector<StringView>();
+    auto dateTimeVector = bidVector->childAt(5)->asFlatVector<Timestamp>();
+    auto extraVector = bidVector->childAt(6)->asFlatVector<StringView>();
 
-    idVector->set(index, bid->auction);
     auctionVector->set(index, bid->auction);
     bidderVector->set(index, bid->bidder);
     priceVector->set(index, bid->price);
-    timestampVector->set(index, bid->dateTime);
+    channelVector->set(index, StringView(bid->channel));
+    urlVector->set(index, StringView(bid->url));
+    dateTimeVector->set(
+        index, Timestamp(bid->dateTime / 1000, (bid->dateTime) % 1000 * 1000));
     extraVector->set(index, StringView(bid->extra));
   }
 };
