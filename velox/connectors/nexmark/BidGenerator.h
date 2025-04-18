@@ -130,7 +130,7 @@ class BidGenerator {
   static std::string getBaseUrl(std::mt19937& random);
   static std::pair<std::string, std::string> getNextChannelAndUrl(
       std::mt19937& random);
-  static void createChannelUrlCache(std::mt19937& random);
+  static std::vector<std::pair<std::string, std::string>> createChannelUrlCache();
 
   static constexpr int HOT_AUCTION_RATIO = 100;
   static constexpr int HOT_BIDDER_RATIO = 100;
@@ -143,7 +143,7 @@ class BidGenerator {
       "Baidu",
       "Apple"};
   static inline std::vector<std::pair<std::string, std::string>>
-      CHANNEL_URL_CACHE;
+      CHANNEL_URL_CACHE = createChannelUrlCache();
 };
 
 } // namespace facebook::velox::connector::nexmark

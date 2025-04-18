@@ -12,8 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_library(velox_nexmark_connector OBJECT NexmarkConnector.cpp)
+velox_add_library(
+  velox_nexmark_connector 
+  OBJECT
+  StringsGenerator.cpp
+  PersonGenerator.cpp
+  BidGenerator.cpp
+  AuctionGenerator.cpp
+  NexmarkGenerator.cpp
+  GeneratorConfig.cpp
+  NexmarkConnector.cpp)
 
-target_link_libraries(
-  velox_nexmark_connector velox_connector)
+velox_link_libraries(
+  velox_nexmark_connector PRIVATE velox_connector)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()
+
 
