@@ -15,6 +15,7 @@
  */
 
 #pragma once
+#include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
@@ -22,8 +23,6 @@
 #include <string>
 #include <vector>
 #include <random>
-
-#include "NexmarkUtils.h"
 
 namespace facebook::velox::connector::nexmark {
 

@@ -82,7 +82,7 @@ class Event {
   static TypePtr createType() {
     return ROW(
         {
-            "type", // Event type
+            "event_type", // Event type
             "person", // Person object
             "auction", // Auction object
             "bid" // Bid object
