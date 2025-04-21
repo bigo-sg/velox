@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
- #pragma once
+#pragma once
 
- #include <type/Type.h>
- #include <vector/ComplexVector.h>
- #include <vector/FlatVector.h>
- #include <string>
- #include <vector>
- #include <random>
+#include "velox/type/Type.h"
+#include "velox/vector/ComplexVector.h"
+#include "velox/vector/FlatVector.h"
+
+#include <string>
+#include <vector>
+#include <random>
 
 namespace facebook::velox::connector::nexmark {
 inline std::string formatDateTime(int64_t dateTime) {

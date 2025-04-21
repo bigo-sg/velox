@@ -19,8 +19,8 @@
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
+#include "velox/type/Type.h"
 
-#include <type/Type.h>
 #include <string>
 #include <vector>
 #include <random>
