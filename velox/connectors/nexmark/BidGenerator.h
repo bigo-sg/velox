@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <velox/connectors/nexmark/NexmarkUtils.h>
 #include <vector/ComplexVector.h>
 #include <vector/FlatVector.h>
 
@@ -51,6 +52,14 @@ struct Bid {
 
   /** Additional arbitrary payload for performance testing. */
   std::string extra;
+
+  std::string toString() const {
+    return "Bid{auction=" + std::to_string(auction) +
+        ", bidder=" + std::to_string(bidder) +
+        ", price=" + std::to_string(price) + ", channel=" + channel +
+        ", url=" + url + ", dateTime=" + formatDateTime(dateTime) +
+        ", extra='" + extra + '\'' + '}';
+  }
 
   // Bid RowType
   static TypePtr createType() {

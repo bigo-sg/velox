@@ -65,6 +65,8 @@ Bid BidGenerator::nextBid(
     url = channelAndUrl.second;
   }
 
+  bidder += GeneratorConfig::FIRST_PERSON_ID;
+
   int currentSize = 8 + 8 + 8 + 8;
   std::string extra = StringsGenerator::nextExtra(
       random, currentSize, config.getAvgBidByteSize());

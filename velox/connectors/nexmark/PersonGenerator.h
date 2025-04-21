@@ -23,6 +23,8 @@
 #include <vector>
 #include <random>
 
+#include "NexmarkUtils.h"
+
 namespace facebook::velox::connector::nexmark {
 
 class GeneratorConfig;
@@ -60,6 +62,14 @@ struct Person {
         state(std::move(state)),
         dateTime(dateTime),
         extra(std::move(extra)) {}
+
+  std::string toString() const {
+    return "Person{id=" + std::to_string(id) + ", name='" + name + '\'' +
+        ", emailAddress='" + emailAddress + '\'' + ", creditCard='" +
+        creditCard + '\'' + ", city='" + city + '\'' + ", state='" + state +
+        '\'' + ", dateTime=" + formatDateTime(dateTime) + ", extra='" + extra +
+        '\'' + '}';
+  }
 
   // Person RowType
   static TypePtr createType() {
