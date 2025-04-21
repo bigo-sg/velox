@@ -49,9 +49,24 @@ struct Bid {
    */
   int64_t dateTime;
 
-
   /** Additional arbitrary payload for performance testing. */
   std::string extra;
+
+  Bid(
+      int64_t auction,
+      int64_t bidder,
+      int64_t price,
+      std::string channel,
+      std::string url,
+      int64_t dateTime,
+      std::string extra)
+      : auction(auction),
+        bidder(bidder),
+        price(price),
+        channel(std::move(channel)),
+        url(std::move(url)),
+        dateTime(dateTime),
+        extra(std::move(extra)) {}
 
   std::string toString() const {
     return "Bid{auction=" + std::to_string(auction) +
@@ -108,7 +123,7 @@ struct Bid {
             extraVector});
   }
 
-  static void fillVector(RowVector* bidVector, int index, const Bid* bid) {
+  FOLLY_NOINLINE static void fillVector(RowVector* bidVector, int index, const Bid* bid) {
     if (!bid) {
       bidVector->setNull(index, true);
       return;

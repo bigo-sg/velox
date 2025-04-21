@@ -71,16 +71,23 @@ Bid BidGenerator::nextBid(
   std::string extra = StringsGenerator::nextExtra(
       random, currentSize, config.getAvgBidByteSize());
 
-  return {auction, bidder, price, channel, url, timestamp, extra};
+  return Bid(
+      auction,
+      bidder,
+      price,
+      std::move(channel),
+      std::move(url),
+      timestamp,
+      std::move(extra));
 }
 
 std::string BidGenerator::getBaseUrl(std::mt19937& random) {
   auto randomString = [&random](int length) {
-    std::ostringstream oss;
+    std::string result(length, 0);
     for (int i = 0; i < length; ++i) {
-      oss << static_cast<char>('a' + random() % 26);
+      result[i] = 'a' + random() % 26;
     }
-    return oss.str();
+    return result;
   };
 
   return "https://www.nexmark.com/" + randomString(5) + '/' + randomString(5) +

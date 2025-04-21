@@ -60,25 +60,25 @@ struct Auction {
   /** Constructor with all fields */
   Auction(
       int64_t id,
-      const std::string& itemName,
-      const std::string& description,
+      std::string itemName,
+      std::string description,
       int64_t initialBid,
       int64_t reserve,
       int64_t dateTime,
       int64_t expires,
       int64_t seller,
       int64_t category,
-      const std::string& extra)
+      std::string extra)
       : id(id),
-        itemName(itemName),
-        description(description),
+        itemName(std::move(itemName)),
+        description(std::move(description)),
         initialBid(initialBid),
         reserve(reserve),
         dateTime(dateTime),
         expires(expires),
         seller(seller),
         category(category),
-        extra(extra) {}
+        extra(std::move(extra)) {}
 
         std::string toString() const {
           return "Auction{id=" + std::to_string(id) + ", itemName='" +
@@ -152,7 +152,7 @@ struct Auction {
             extraVector});
   }
 
-  static void fillVector(
+  FOLLY_NOINLINE static void fillVector(
       RowVector* auctionVector,
       int index,
       const Auction* auction) {

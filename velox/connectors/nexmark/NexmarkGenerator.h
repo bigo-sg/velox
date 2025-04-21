@@ -109,33 +109,16 @@ class Event {
         std::vector<VectorPtr>{typeVector, personVector, auctionVector, bidVector});
   }
 
-  static void fillVector(RowVector* eventVector, int index, const Event& event) {
+  FOLLY_NOINLINE static void fillVector(RowVector* eventVector, int index, const Event& event) {
     auto typeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
     auto personVector = eventVector->childAt(1)->as<RowVector>();
     auto auctionVector = eventVector->childAt(2)->as<RowVector>();
     auto bidVector = eventVector->childAt(3)->as<RowVector>();
 
     typeVector->set(index, static_cast<int32_t>(event.getType()));
-
-    switch (event.getType()) {
-      case Event::Type::PERSON:
-        Person::fillVector(personVector, index, event.getPerson());
-        auctionVector->setNull(index, true);
-        bidVector->setNull(index, true);
-        break;
-
-      case Event::Type::AUCTION:
-        personVector->setNull(index, true);
-        Auction::fillVector(auctionVector, index, event.getAuction());
-        bidVector->setNull(index, true);
-        break;
-
-      case Event::Type::BID:
-        personVector->setNull(index, true);
-        auctionVector->setNull(index, true);
-        Bid::fillVector(bidVector, index, event.getBid());
-        break;
-    }
+    Person::fillVector(personVector, index, event.getPerson());
+    Auction::fillVector(auctionVector, index, event.getAuction());
+    Bid::fillVector(bidVector, index, event.getBid());
   }
 
  private:
