@@ -61,7 +61,15 @@ Person PersonGenerator::nextPerson(
                     creditCard.length() + city.length() + state.length();
   std::string extra = nextExtra(random, currentSize, config.getAvgPersonByteSize());
 
-  return Person(id, name, email, creditCard, city, state, timestamp, extra);
+  return Person(
+      id,
+      std::move(name),
+      std::move(email),
+      std::move(creditCard),
+      std::move(city),
+      std::move(state),
+      timestamp,
+      std::move(extra));
 }
 
 int64_t PersonGenerator::nextBase0PersonId(

@@ -55,15 +55,15 @@ Auction AuctionGenerator::nextAuction(
 
   return Auction(
       id,
-      name,
-      desc,
+      std::move(name),
+      std::move(desc),
       initialBid,
       reserve,
       timestamp,
       expires,
       seller,
       category,
-      extra);
+      std::move(extra));
 }
 
 int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfig& config, int64_t eventId) {

@@ -122,7 +122,7 @@ struct Person {
             extraVector});
   }
 
-  static void
+  FOLLY_NOINLINE static void
   fillVector(RowVector* personVector, int index, const Person* person) {
     if (!person) {
       personVector->setNull(index, true);
