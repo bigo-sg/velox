@@ -5,6 +5,11 @@
 
 namespace facebook::velox::connector::nexmark {
 
+int64_t NexmarkGenerator::getNextEventId() const {
+  return config_.firstEventId +
+      config_.nextAdjustedEventNumber(eventsCountSoFar_);
+}
+
 NextEvent NexmarkGenerator::next() {
   if (wallclockBaseTime_ < 0) {
     wallclockBaseTime_ =
@@ -31,7 +36,7 @@ NextEvent NexmarkGenerator::next() {
   int64_t wallclockTimestamp =
       wallclockBaseTime_ + (eventTimestamp - config_.baseTime);
 
-  int64_t newEventId = eventsCountSoFar_;
+  int64_t newEventId = getNextEventId();
   int64_t rem = newEventId % config_.totalProportion;
 
   Event event;

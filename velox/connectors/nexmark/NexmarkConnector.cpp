@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/nexmark/NexmarkConnector.h"
+#include <iostream>
 
 namespace facebook::velox::connector::nexmark {
 
@@ -85,6 +86,10 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
   for (; i < outputRows && nexmarkGenerator_->hasNext(); ++i) {
     auto nextEvent = nexmarkGenerator_->next();
     Event::fillVector(outputVector.get(), i, nextEvent.getEvent());
+
+    maxWallclockTimestamp = std::max(
+        maxWallclockTimestamp, nextEvent.getWallclockTimestamp());
+    // std::cerr << nextEvent.getEvent().toString() << std::endl;
   }
   outputVector->resize(i);
 

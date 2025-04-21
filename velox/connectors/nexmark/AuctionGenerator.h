@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <velox/connectors/nexmark/NexmarkUtils.h>
+
 #include <type/Type.h>
 #include <vector/ComplexVector.h>
 #include <vector/FlatVector.h>
@@ -77,6 +79,18 @@ struct Auction {
         seller(seller),
         category(category),
         extra(extra) {}
+
+        std::string toString() const {
+          return "Auction{id=" + std::to_string(id) + ", itemName='" +
+              itemName + '\'' + ", description='" + description + '\'' +
+              ", initialBid=" + std::to_string(initialBid) +
+              ", reserve=" + std::to_string(reserve) +
+              ", dateTime=" + formatDateTime(dateTime) +
+              ", expires=" + formatDateTime(expires) +
+              ", seller=" + std::to_string(seller) +
+              ", category=" + std::to_string(category) + ", extra='" + extra +
+              '\'' + '}';
+        }
 
   // Auction RowType
   static TypePtr createType() {
