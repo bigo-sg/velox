@@ -16,6 +16,7 @@
 #pragma once
 
 #include <folly/json/dynamic.h>
+
 #include <cstdint>
 #include <vector>
 
@@ -114,38 +115,95 @@ struct NexmarkConfiguration {
 
   static NexmarkConfiguration deserialize(const folly::dynamic& obj) {
     NexmarkConfiguration config;
-    config.numEvents = obj["numEvents"].asInt();
-    config.numEventGenerators = obj["numEventGenerators"].asInt();
-    config.rateShape = obj["rateShape"].asString() == "SQUARE"
-                           ? RateShape::SQUARE
-                           : RateShape::SINE;
-    config.firstEventRate = obj["firstEventRate"].asInt();
-    config.nextEventRate = obj["nextEventRate"].asInt();
-    config.rateUnit = obj["rateUnit"].asString() == "PER_SECOND"
-                          ? RateUnit::PER_SECOND
-                          : RateUnit::PER_MINUTE;
-    config.ratePeriodSec = obj["ratePeriodSec"].asInt();
-    config.preloadSeconds = obj["preloadSeconds"].asInt();
-    config.streamTimeout = obj["streamTimeout"].asInt();
-    config.isRateLimited = obj["isRateLimited"].asBool();
-    config.useWallclockEventTime = obj["useWallclockEventTime"].asBool();
-    config.personProportion = obj["personProportion"].asInt();
-    config.auctionProportion = obj["auctionProportion"].asInt();
-    config.bidProportion = obj["bidProportion"].asInt();
-    config.avgPersonByteSize = obj["avgPersonByteSize"].asInt();
-    config.avgAuctionByteSize = obj["avgAuctionByteSize"].asInt();
-    config.avgBidByteSize = obj["avgBidByteSize"].asInt();
-    config.hotAuctionRatio = obj["hotAuctionRatio"].asInt();
-    config.hotSellersRatio = obj["hotSellersRatio"].asInt();
-    config.hotBiddersRatio = obj["hotBiddersRatio"].asInt();
-    config.windowSizeSec = obj["windowSizeSec"].asInt();
-    config.windowPeriodSec = obj["windowPeriodSec"].asInt();
-    config.watermarkHoldbackSec = obj["watermarkHoldbackSec"].asInt();
-    config.numInFlightAuctions = obj["numInFlightAuctions"].asInt();
-    config.numActivePeople = obj["numActivePeople"].asInt();
-    config.occasionalDelaySec = obj["occasionalDelaySec"].asInt();
-    config.probDelayedEvent = obj["probDelayedEvent"].asDouble();
-    config.outOfOrderGroupSize = obj["outOfOrderGroupSize"].asInt();
+
+    if (obj.find("numEvents") != obj.items().end()) {
+      config.numEvents = obj["numEvents"].asInt();
+    }
+    if (obj.find("numEventGenerators") != obj.items().end()) {
+      config.numEventGenerators = obj["numEventGenerators"].asInt();
+    }
+    if (obj.find("rateShape") != obj.items().end()) {
+      config.rateShape = obj["rateShape"].asString() == "SQUARE"
+                             ? RateShape::SQUARE
+                             : RateShape::SINE;
+    }
+    if (obj.find("firstEventRate") != obj.items().end()) {
+      config.firstEventRate = obj["firstEventRate"].asInt();
+    }
+    if (obj.find("nextEventRate") != obj.items().end()) {
+      config.nextEventRate = obj["nextEventRate"].asInt();
+    }
+    if (obj.find("rateUnit") != obj.items().end()) {
+      config.rateUnit = obj["rateUnit"].asString() == "PER_SECOND"
+                            ? RateUnit::PER_SECOND
+                            : RateUnit::PER_MINUTE;
+    }
+    if (obj.find("ratePeriodSec") != obj.items().end()) {
+      config.ratePeriodSec = obj["ratePeriodSec"].asInt();
+    }
+    if (obj.find("preloadSeconds") != obj.items().end()) {
+      config.preloadSeconds = obj["preloadSeconds"].asInt();
+    }
+    if (obj.find("streamTimeout") != obj.items().end()) {
+      config.streamTimeout = obj["streamTimeout"].asInt();
+    }
+    if (obj.find("isRateLimited") != obj.items().end()) {
+      config.isRateLimited = obj["isRateLimited"].asBool();
+    }
+    if (obj.find("useWallclockEventTime") != obj.items().end()) {
+      config.useWallclockEventTime = obj["useWallclockEventTime"].asBool();
+    }
+    if (obj.find("personProportion") != obj.items().end()) {
+      config.personProportion = obj["personProportion"].asInt();
+    }
+    if (obj.find("auctionProportion") != obj.items().end()) {
+      config.auctionProportion = obj["auctionProportion"].asInt();
+    }
+    if (obj.find("bidProportion") != obj.items().end()) {
+      config.bidProportion = obj["bidProportion"].asInt();
+    }
+    if (obj.find("avgPersonByteSize") != obj.items().end()) {
+      config.avgPersonByteSize = obj["avgPersonByteSize"].asInt();
+    }
+    if (obj.find("avgAuctionByteSize") != obj.items().end()) {
+      config.avgAuctionByteSize = obj["avgAuctionByteSize"].asInt();
+    }
+    if (obj.find("avgBidByteSize") != obj.items().end()) {
+      config.avgBidByteSize = obj["avgBidByteSize"].asInt();
+    }
+    if (obj.find("hotAuctionRatio") != obj.items().end()) {
+      config.hotAuctionRatio = obj["hotAuctionRatio"].asInt();
+    }
+    if (obj.find("hotSellersRatio") != obj.items().end()) {
+      config.hotSellersRatio = obj["hotSellersRatio"].asInt();
+    }
+    if (obj.find("hotBiddersRatio") != obj.items().end()) {
+      config.hotBiddersRatio = obj["hotBiddersRatio"].asInt();
+    }
+    if (obj.find("windowSizeSec") != obj.items().end()) {
+      config.windowSizeSec = obj["windowSizeSec"].asInt();
+    }
+    if (obj.find("windowPeriodSec") != obj.items().end()) {
+      config.windowPeriodSec = obj["windowPeriodSec"].asInt();
+    }
+    if (obj.find("watermarkHoldbackSec") != obj.items().end()) {
+      config.watermarkHoldbackSec = obj["watermarkHoldbackSec"].asInt();
+    }
+    if (obj.find("numInFlightAuctions") != obj.items().end()) {
+      config.numInFlightAuctions = obj["numInFlightAuctions"].asInt();
+    }
+    if (obj.find("numActivePeople") != obj.items().end()) {
+      config.numActivePeople = obj["numActivePeople"].asInt();
+    }
+    if (obj.find("occasionalDelaySec") != obj.items().end()) {
+      config.occasionalDelaySec = obj["occasionalDelaySec"].asInt();
+    }
+    if (obj.find("probDelayedEvent") != obj.items().end()) {
+      config.probDelayedEvent = obj["probDelayedEvent"].asDouble();
+    }
+    if (obj.find("outOfOrderGroupSize") != obj.items().end()) {
+      config.outOfOrderGroupSize = obj["outOfOrderGroupSize"].asInt();
+    }
     return config;
   }
 };
