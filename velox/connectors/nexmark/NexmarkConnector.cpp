@@ -15,7 +15,6 @@
  */
 
 #include "velox/connectors/nexmark/NexmarkConnector.h"
-#include <iostream>
 
 namespace facebook::velox::connector::nexmark {
 

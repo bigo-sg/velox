@@ -16,9 +16,9 @@
 
 #pragma once
 
-#include <velox/connectors/nexmark/NexmarkUtils.h>
-#include <vector/ComplexVector.h>
-#include <vector/FlatVector.h>
+#include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/vector/ComplexVector.h"
+#include "velox/vector/FlatVector.h"
 
 #include <type/Type.h>
 #include <string>
