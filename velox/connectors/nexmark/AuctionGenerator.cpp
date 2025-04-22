@@ -15,9 +15,7 @@
  */
 
 #include "velox/connectors/nexmark/AuctionGenerator.h"
-#include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/StringsGenerator.h"
-#include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 #include "velox/connectors/nexmark/PriceGenerator.h"
 
@@ -62,40 +60,6 @@ Auction AuctionGenerator::nextAuction(
       seller,
       category,
       std::move(extra));
-}
-
-FOLLY_NOINLINE int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfig& config, int64_t eventId) {
-  int64_t epoch = eventId / config.totalProportion;
-  int64_t offset = eventId % config.totalProportion;
-  if (offset < config.personProportion) {
-    // About to generate a person.
-    // Go back to the last auction in the last epoch.
-    epoch--;
-    offset = config.auctionProportion - 1;
-  } else if (offset >= config.personProportion + config.auctionProportion) {
-    // About to generate a bid.
-    // Go back to the last auction generated in this epoch.
-    offset = config.auctionProportion - 1;
-  } else {
-    // About to generate an auction.
-    offset -= config.personProportion;
-  }
-  return epoch * config.auctionProportion + offset;
-}
-
-FOLLY_NOINLINE int64_t AuctionGenerator::nextBase0AuctionId(
-    int64_t nextEventId,
-    pcg32_fast& random,
-    const GeneratorConfig& config) {
-
-  // Choose a random auction for any of those which are likely to still be in flight,
-  // plus a few 'leads'.
-  // Note that ideally we'd track non-expired auctions exactly, but that state
-  // is difficult to split.
-  int64_t minAuction =
-      std::max<int64_t>(lastBase0AuctionId(config, nextEventId) - config.getNumInFlightAuctions(), 0);
-  int64_t maxAuction = lastBase0AuctionId(config, nextEventId);
-  return minAuction + LongGenerator::nextLong(random, maxAuction - minAuction + 1 + AUCTION_ID_LEAD);
 }
 
 int64_t AuctionGenerator::nextAuctionLengthMs(

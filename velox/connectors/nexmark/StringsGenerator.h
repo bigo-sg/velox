@@ -16,8 +16,11 @@
 #pragma once
 
 #include <string>
+#include <fmt/format.h>
 #include <folly/CPortability.h>
+#include <boost/algorithm/string/trim.hpp>
 
+#include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
 
 namespace facebook::velox::connector::nexmark {
@@ -28,15 +31,49 @@ class StringsGenerator {
   /// Smallest random string size.
   static constexpr int MIN_STRING_LENGTH = 3;
 
+
   /// Return a random string of up to `maxLength`.
-  static std::string nextString(pcg32_fast& random, int maxLength);
+  FOLLY_ALWAYS_INLINE static std::string nextString(
+      pcg32_fast& random,
+      int maxLength) {
+    return nextString(random, maxLength, ' ');
+  }
 
   /// Return a random string of up to `maxLength` with special character.
-  static std::string
-  nextString(pcg32_fast& random, int maxLength, char special);
+  FOLLY_ALWAYS_INLINE static std::string
+  nextString(pcg32_fast& random, int maxLength, char special) {
+    int len =
+        MIN_STRING_LENGTH + getNextInt(random, maxLength - MIN_STRING_LENGTH);
+    std::string result(len, 0);
+    for (int i = 0; i < len; ++i) {
+      if (getNextInt(random, 13) == 0) {
+        result[i] = special;
+      } else {
+        result[i] = static_cast<int>('a') + getNextInt(random, 26);
+      }
+    }
+
+    // Trim trailing spaces (equivalent to Java's trim())
+    if (special == ' ')
+      boost::algorithm::trim(result);
+
+    return result;
+  }
 
   /// Return a random string of exactly `length`.
-  static std::string_view nextExactString(pcg32_fast& random, int length);
+  static FOLLY_ALWAYS_INLINE std::string_view nextExactString(
+      pcg32_fast& random,
+      int length) {
+    if (length >= REUSABLE_EXTRA_STRING.length() / 2) {
+      throw std::runtime_error(fmt::format(
+          "Requested extra string length {} exceeds {}",
+          length,
+          REUSABLE_EXTRA_STRING.length() / 2));
+    }
+
+    int offset = getNextInt(random, REUSABLE_EXTRA_STRING.length() - length);
+    return std::string_view(REUSABLE_EXTRA_STRING.data() + offset, length);
+  }
 
   /**
    * Return a random `string` such that `currentSize + string.length()` is on

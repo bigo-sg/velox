@@ -14,10 +14,7 @@
  * limitations under the License.
  */
 
-#include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
-#include "velox/connectors/nexmark/LongGenerator.h"
-#include "velox/connectors/nexmark/StringsGenerator.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -75,51 +72,6 @@ Person PersonGenerator::nextPerson(
       std::move(extra));
 }
 
-int64_t PersonGenerator::nextBase0PersonId(
-    int64_t eventId,
-    pcg32_fast& random,
-    const GeneratorConfig& config) {
-  // Choose a random person from any of the 'active' people, plus a few 'leads'.
-  // By limiting to 'active' we ensure the density of bids or auctions per person
-  // does not decrease over time for int64_t running jobs.
-  // By choosing a person id ahead of the last valid person id we will make
-  // newPerson and newAuction events appear to have been swapped in time.
-  int64_t numPeople = lastBase0PersonId(config, eventId) + 1;
-  int64_t activePeople = std::min<int64_t>(numPeople, config.getNumActivePeople());
-  int64_t n = LongGenerator::nextLong(random, activePeople + PERSON_ID_LEAD);
-  return numPeople - activePeople + n;
-}
-
-int64_t PersonGenerator::lastBase0PersonId(const GeneratorConfig& config, int64_t eventId) {
-  int64_t epoch = eventId / config.totalProportion;
-  int64_t offset = eventId % config.totalProportion;
-  if (offset >= config.personProportion) {
-    // About to generate an auction or bid.
-    // Go back to the last person generated in this epoch.
-    offset = config.personProportion - 1;
-  }
-  // About to generate a person.
-  return epoch * config.personProportion + offset;
-}
-
-std::string PersonGenerator::nextUSState(pcg32_fast& random) {
-  return US_STATES[random() % US_STATES.size()];
-}
-
-std::string PersonGenerator::nextUSCity(pcg32_fast& random) {
-  return US_CITIES[random() % US_CITIES.size()];
-}
-
-std::string PersonGenerator::nextPersonName(pcg32_fast& random) {
-  return FIRST_NAMES[random() % FIRST_NAMES.size()] + " " +
-         LAST_NAMES[random() % LAST_NAMES.size()];
-}
-
-std::string PersonGenerator::nextEmail(pcg32_fast& random) {
-  return StringsGenerator::nextString(random, 7) + "@" +
-      StringsGenerator::nextString(random, 5) + ".com";
-}
-
 std::vector<std::string> PersonGenerator::createCreditCardStrings() {
   std::vector<std::string> creditCardStrings(10000);
   for (int i = 0; i < 10000; ++i) {
@@ -130,15 +82,6 @@ std::vector<std::string> PersonGenerator::createCreditCardStrings() {
   return creditCardStrings;
 }
 
-std::string PersonGenerator::nextCreditCard(pcg32_fast& random) {
-  std::stringstream sb;
-  for (int i = 0; i < 4; i++) {
-    if (i > 0) {
-      sb << " ";
-    }
-    sb << CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
-  }
-  return sb.str();
-}
+
 
 } // namespace facebook::velox::connector::nexmark

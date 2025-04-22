@@ -15,7 +15,10 @@
  */
 
 #pragma once
+#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/StringsGenerator.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
@@ -164,44 +167,79 @@ public:
       int64_t timestamp,
       const GeneratorConfig & config);
 
-  /** Return a random person id (base 0). */
-  static int64_t nextBase0PersonId(
-      int64_t eventId,
-      pcg32_fast& random,
-      const GeneratorConfig& config);
 
   /**
    * Return the last valid person id (ignoring FIRST_PERSON_ID). Will be the current person id if
    * due to generate a person.
    */
-  static int64_t lastBase0PersonId(
-      const GeneratorConfig& config,
-      int64_t eventId);
+  FOLLY_ALWAYS_INLINE static int64_t nextBase0PersonId(
+      int64_t eventId,
+      pcg32_fast& random,
+      const GeneratorConfig& config) {
+    // Choose a random person from any of the 'active' people, plus a few
+    // 'leads'. By limiting to 'active' we ensure the density of bids or
+    // auctions per person does not decrease over time for int64_t running jobs.
+    // By choosing a person id ahead of the last valid person id we will make
+    // newPerson and newAuction events appear to have been swapped in time.
+    int64_t numPeople = lastBase0PersonId(config, eventId) + 1;
+    int64_t activePeople =
+        std::min<int64_t>(numPeople, config.getNumActivePeople());
+    int64_t n = LongGenerator::nextLong(random, activePeople + PERSON_ID_LEAD);
+    return numPeople - activePeople + n;
+  }
+
+    FOLLY_ALWAYS_INLINE static int64_t lastBase0PersonId(const GeneratorConfig& config, int64_t eventId) {
+      int64_t epoch = eventId / config.totalProportion;
+      int64_t offset = eventId % config.totalProportion;
+      if (offset >= config.personProportion) {
+        // About to generate an auction or bid.
+        // Go back to the last person generated in this epoch.
+        offset = config.personProportion - 1;
+      }
+      // About to generate a person.
+      return epoch * config.personProportion + offset;
+    }
 
 private:
-  /** Return a random US state. */
-  static std::string nextUSState(pcg32_fast& random);
+ FOLLY_ALWAYS_INLINE static std::string nextUSState(pcg32_fast& random) {
+   return US_STATES[random() % US_STATES.size()];
+ }
 
-  /** Return a random US city. */
-  static std::string nextUSCity(pcg32_fast& random);
+ FOLLY_ALWAYS_INLINE static std::string nextUSCity(pcg32_fast& random) {
+   return US_CITIES[random() % US_CITIES.size()];
+ }
 
-  /** Return a random person name. */
-  static std::string nextPersonName(pcg32_fast& random);
+ FOLLY_ALWAYS_INLINE static std::string nextPersonName(pcg32_fast& random) {
+   return FIRST_NAMES[random() % FIRST_NAMES.size()] + " " +
+       LAST_NAMES[random() % LAST_NAMES.size()];
+ }
 
-  /** Return a random email address. */
-  static std::string nextEmail(pcg32_fast& random);
+ FOLLY_ALWAYS_INLINE static std::string nextEmail(pcg32_fast& random) {
+   return StringsGenerator::nextString(random, 7) + "@" +
+       StringsGenerator::nextString(random, 5) + ".com";
+ }
 
-  /** Return a random credit card number. */
-  static std::string nextCreditCard(pcg32_fast& random);
+ FOLLY_ALWAYS_INLINE static std::string nextCreditCard(pcg32_fast& random) {
+   std::string result;
+   result.reserve(19); // 16 digits + 3 spaces
+   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+   result += " ";
+   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+   result += " ";
+   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+   result += " ";
+   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+   return result;
+ }
 
-  /** Create an array of credit card strings. */
-  static std::vector<std::string> createCreditCardStrings();
+ /** Create an array of credit card strings. */
+ static std::vector<std::string> createCreditCardStrings();
 
-  static const std::vector<std::string> US_STATES;
-  static const std::vector<std::string> US_CITIES;
-  static const std::vector<std::string> FIRST_NAMES;
-  static const std::vector<std::string> LAST_NAMES;
-  static const std::vector<std::string> CREDIT_CARD_STRINGS;
+ static const std::vector<std::string> US_STATES;
+ static const std::vector<std::string> US_CITIES;
+ static const std::vector<std::string> FIRST_NAMES;
+ static const std::vector<std::string> LAST_NAMES;
+ static const std::vector<std::string> CREDIT_CARD_STRINGS;
 };
 
 } // namespace facebook::velox::connector::nexmark
