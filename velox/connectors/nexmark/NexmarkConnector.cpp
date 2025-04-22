@@ -81,13 +81,13 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
   auto outputVector = Event::createVector(outputRows, pool_);
 
   size_t i = 0;
-  int64_t maxWallclockTimestamp = 0;
+  // int64_t maxWallclockTimestamp = 0;
   for (; i < outputRows && nexmarkGenerator_->hasNext(); ++i) {
     auto nextEvent = nexmarkGenerator_->next();
     Event::fillVector(outputVector.get(), i, nextEvent.getEvent());
 
-    maxWallclockTimestamp = std::max(
-        maxWallclockTimestamp, nextEvent.getWallclockTimestamp());
+    // maxWallclockTimestamp = std::max(
+    //     maxWallclockTimestamp, nextEvent.getWallclockTimestamp());
     // std::cerr << nextEvent.getEvent().toString() << std::endl;
   }
   outputVector->resize(i);
@@ -97,13 +97,13 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
   completedBytes_ += outputVector->retainedSize();
 
   /// Wait until reach the max wallclock timestamp.
-  auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::system_clock::now().time_since_epoch())
-      .count();
-  if (maxWallclockTimestamp > nowMs) {
-    std::this_thread::sleep_for(
-        std::chrono::milliseconds(maxWallclockTimestamp - nowMs));
-  }
+  // auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+  //     std::chrono::system_clock::now().time_since_epoch())
+  //     .count();
+  // if (maxWallclockTimestamp > nowMs) {
+  //   std::this_thread::sleep_for(
+  //       std::chrono::milliseconds(maxWallclockTimestamp - nowMs));
+  // }
   return outputVector;
 }
 

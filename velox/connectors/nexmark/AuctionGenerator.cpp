@@ -34,8 +34,7 @@ Auction AuctionGenerator::nextAuction(
 
   int64_t seller;
   // Here P(auction will be for a hot seller) = 1 - 1/hotSellersRatio.
-  std::uniform_int_distribution<int> hotSellerDist(0, config.getHotSellersRatio() - 1);
-  if (hotSellerDist(random) > 0) {
+  if (getNextInt(random, config.getHotSellersRatio()) > 0) {
     // Choose the first person in the batch of last HOT_SELLER_RATIO people.
     seller = (PersonGenerator::lastBase0PersonId(config, eventId) / HOT_SELLER_RATIO) * HOT_SELLER_RATIO;
   } else {
@@ -43,15 +42,14 @@ Auction AuctionGenerator::nextAuction(
   }
   seller += GeneratorConfig::FIRST_PERSON_ID;
 
-  std::uniform_int_distribution<int> categoryDist(0, NUM_CATEGORIES - 1);
-  int64_t category = GeneratorConfig::FIRST_CATEGORY_ID + categoryDist(random);
+  int64_t category = GeneratorConfig::FIRST_CATEGORY_ID + getNextInt(random, NUM_CATEGORIES);
   int64_t initialBid = PriceGenerator::nextPrice(random);
   int64_t expires = timestamp + nextAuctionLengthMs(eventsCountSoFar, random, timestamp, config);
   std::string name = StringsGenerator::nextString(random, 20);
   std::string desc = StringsGenerator::nextString(random, 100);
   int64_t reserve = initialBid + PriceGenerator::nextPrice(random);
   int currentSize = 8 + name.length() + desc.length() + 8 + 8 + 8 + 8 + 8;
-  std::string extra = StringsGenerator::nextExtra(random, currentSize, config.getAvgAuctionByteSize());
+  std::string_view extra = StringsGenerator::nextExtra(random, currentSize, config.getAvgAuctionByteSize());
 
   return Auction(
       id,
@@ -66,7 +64,7 @@ Auction AuctionGenerator::nextAuction(
       std::move(extra));
 }
 
-int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfig& config, int64_t eventId) {
+FOLLY_NOINLINE int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfig& config, int64_t eventId) {
   int64_t epoch = eventId / config.totalProportion;
   int64_t offset = eventId % config.totalProportion;
   if (offset < config.personProportion) {

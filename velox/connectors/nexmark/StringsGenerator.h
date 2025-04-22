@@ -17,6 +17,7 @@
 
 #include <random>
 #include <string>
+#include <folly/CPortability.h>
 
 namespace facebook::velox::connector::nexmark {
 
@@ -30,20 +31,21 @@ class StringsGenerator {
   static std::string nextString(std::mt19937& random, int maxLength);
 
   /// Return a random string of up to `maxLength` with special character.
-  static std::string
+  FOLLY_NOINLINE static std::string
   nextString(std::mt19937& random, int maxLength, char special);
 
   /// Return a random string of exactly `length`.
-  static std::string nextExactString(std::mt19937& random, int length);
+  static std::string_view nextExactString(std::mt19937& random, int length);
 
   /**
    * Return a random `string` such that `currentSize + string.length()` is on
    * average `averageSize`.
    */
-  static std::string
+  static std::string_view
   nextExtra(std::mt19937& random, int currentSize, int desiredAverageSize);
 
  private:
+  static std::string getReusableExtraString(std::mt19937& random, int length);
   static const std::string REUSABLE_EXTRA_STRING;
 };
 

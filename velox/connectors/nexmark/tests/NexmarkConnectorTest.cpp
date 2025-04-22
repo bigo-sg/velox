@@ -99,7 +99,6 @@ TEST(NexmarkGeneratorTest, testNextEvent) {
   int bidCount = 0;
 
   while (generator.hasNext()) {
-    // auto event = generator.next().event;
     auto nextEvent = generator.next();
     const auto & event = nextEvent.getEvent();
 

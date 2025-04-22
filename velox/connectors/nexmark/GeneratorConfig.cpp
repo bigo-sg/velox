@@ -59,51 +59,51 @@ GeneratorConfig::GeneratorConfig(
   epochPeriodMs = 0;
 }
 
-int GeneratorConfig::getAvgPersonByteSize() const {
+FOLLY_NOINLINE int GeneratorConfig::getAvgPersonByteSize() const {
   return configuration.avgPersonByteSize;
 }
 
-int GeneratorConfig::getNumActivePeople() const {
+FOLLY_NOINLINE int GeneratorConfig::getNumActivePeople() const {
   return configuration.numActivePeople;
 }
 
-int GeneratorConfig::getHotSellersRatio() const {
+FOLLY_NOINLINE int GeneratorConfig::getHotSellersRatio() const {
   return configuration.hotSellersRatio;
 }
 
-int GeneratorConfig::getNumInFlightAuctions() const {
+FOLLY_NOINLINE int GeneratorConfig::getNumInFlightAuctions() const {
   return configuration.numInFlightAuctions;
 }
 
-int GeneratorConfig::getHotAuctionRatio() const {
+FOLLY_NOINLINE int GeneratorConfig::getHotAuctionRatio() const {
   return configuration.hotAuctionRatio;
 }
 
-int GeneratorConfig::getHotBiddersRatio() const {
+FOLLY_NOINLINE int GeneratorConfig::getHotBiddersRatio() const {
   return configuration.hotBiddersRatio;
 }
 
-int GeneratorConfig::getAvgBidByteSize() const {
+FOLLY_NOINLINE int GeneratorConfig::getAvgBidByteSize() const {
   return configuration.avgBidByteSize;
 }
 
-int GeneratorConfig::getAvgAuctionByteSize() const {
+FOLLY_NOINLINE int GeneratorConfig::getAvgAuctionByteSize() const {
   return configuration.avgAuctionByteSize;
 }
 
-double GeneratorConfig::getProbDelayedEvent() const {
+FOLLY_NOINLINE double GeneratorConfig::getProbDelayedEvent() const {
   return configuration.probDelayedEvent;
 }
 
-int64_t GeneratorConfig::getOccasionalDelaySec() const {
+FOLLY_NOINLINE int64_t GeneratorConfig::getOccasionalDelaySec() const {
   return configuration.occasionalDelaySec;
 }
 
-int64_t GeneratorConfig::getEstimatedSizeBytes() const {
+FOLLY_NOINLINE int64_t GeneratorConfig::getEstimatedSizeBytes() const {
   return estimatedBytesForEvents(maxEvents);
 }
 
-int64_t GeneratorConfig::estimatedBytesForEvents(int64_t numEvents) const {
+FOLLY_NOINLINE int64_t GeneratorConfig::estimatedBytesForEvents(int64_t numEvents) const {
   int64_t numPersons = (numEvents * personProportion) / totalProportion;
   int64_t numAuctions = (numEvents * auctionProportion) / totalProportion;
   int64_t numBids = (numEvents * bidProportion) / totalProportion;
@@ -112,19 +112,19 @@ int64_t GeneratorConfig::estimatedBytesForEvents(int64_t numEvents) const {
       numBids * configuration.avgBidByteSize;
 }
 
-int64_t GeneratorConfig::getStartEventId() const {
+FOLLY_NOINLINE int64_t GeneratorConfig::getStartEventId() const {
   return firstEventId + firstEventNumber;
 }
 
-int64_t GeneratorConfig::getStopEventId() const {
+FOLLY_NOINLINE int64_t GeneratorConfig::getStopEventId() const {
   return firstEventId + firstEventNumber + maxEvents;
 }
 
-int64_t GeneratorConfig::nextEventNumber(int64_t numEvents) const {
+FOLLY_NOINLINE int64_t GeneratorConfig::nextEventNumber(int64_t numEvents) const {
   return firstEventNumber + numEvents;
 }
 
-int64_t GeneratorConfig::nextAdjustedEventNumber(int64_t numEvents) const {
+FOLLY_NOINLINE int64_t GeneratorConfig::nextAdjustedEventNumber(int64_t numEvents) const {
   int64_t n = configuration.outOfOrderGroupSize;
   int64_t eventNumber = nextEventNumber(numEvents);
   int64_t base = (eventNumber / n) * n;
@@ -132,13 +132,13 @@ int64_t GeneratorConfig::nextAdjustedEventNumber(int64_t numEvents) const {
   return base + offset;
 }
 
-int64_t GeneratorConfig::nextEventNumberForWatermark(int64_t numEvents) const {
+FOLLY_NOINLINE int64_t GeneratorConfig::nextEventNumberForWatermark(int64_t numEvents) const {
   int64_t n = configuration.outOfOrderGroupSize;
   int64_t eventNumber = nextEventNumber(numEvents);
   return (eventNumber / n) * n;
 }
 
-int64_t GeneratorConfig::timestampForEvent(int64_t eventNumber) const {
+FOLLY_NOINLINE int64_t GeneratorConfig::timestampForEvent(int64_t eventNumber) const {
   return baseTime +
       static_cast<int64_t>(eventNumber * interEventDelayUs[0]) / 1000L;
 }

@@ -21,7 +21,6 @@
 #include "velox/connectors/nexmark/StringsGenerator.h"
 
 #include <random>
-#include <sstream>
 
 namespace facebook::velox::connector::nexmark {
 
@@ -60,7 +59,7 @@ Bid BidGenerator::nextBid(
     channel = HOT_CHANNELS[i];
     url = getBaseUrl(random);
   } else {
-    auto channelAndUrl = getNextChannelAndUrl(random);
+    const auto & channelAndUrl = getNextChannelAndUrl(random);
     channel = channelAndUrl.first;
     url = channelAndUrl.second;
   }
@@ -68,7 +67,7 @@ Bid BidGenerator::nextBid(
   bidder += GeneratorConfig::FIRST_PERSON_ID;
 
   int currentSize = 8 + 8 + 8 + 8;
-  std::string extra = StringsGenerator::nextExtra(
+  std::string_view extra = StringsGenerator::nextExtra(
       random, currentSize, config.getAvgBidByteSize());
 
   return Bid(
@@ -82,16 +81,10 @@ Bid BidGenerator::nextBid(
 }
 
 std::string BidGenerator::getBaseUrl(std::mt19937& random) {
-  auto randomString = [&random](int length) {
-    std::string result(length, 0);
-    for (int i = 0; i < length; ++i) {
-      result[i] = 'a' + random() % 26;
-    }
-    return result;
-  };
-
-  return "https://www.nexmark.com/" + randomString(5) + '/' + randomString(5) +
-      '/' + randomString(5) + '/' + "item.htm?query=1";
+  return "https://www.nexmark.com/" +
+      StringsGenerator::nextString(random, 5, '_') + '/' +
+      StringsGenerator::nextString(random, 5, '_') + '/' +
+      StringsGenerator::nextString(random, 5, '_') + '/' + "item.htm?query=1";
 }
 
 std::vector<std::pair<std::string, std::string>>
@@ -109,7 +102,7 @@ BidGenerator::createChannelUrlCache() {
   return cache;
 }
 
-std::pair<std::string, std::string> BidGenerator::getNextChannelAndUrl(
+const std::pair<std::string, std::string>& BidGenerator::getNextChannelAndUrl(
     std::mt19937& random) {
   int channelNumber = random() % CHANNELS_NUMBER;
   return CHANNEL_URL_CACHE[channelNumber];

@@ -43,7 +43,7 @@ struct Person {
   int64_t dateTime; // unit: ms
 
   /** Additional arbitrary payload for performance testing. */
-  std::string extra;
+  std::string_view extra;
 
   Person(int64_t id,
          std::string name,
@@ -52,7 +52,7 @@ struct Person {
          std::string city,
          std::string state,
          int64_t dateTime,
-         std::string extra)
+         std::string_view extra)
       : id(id),
         name(std::move(name)),
         emailAddress(std::move(emailAddress)),
@@ -66,8 +66,8 @@ struct Person {
     return "Person{id=" + std::to_string(id) + ", name='" + name + '\'' +
         ", emailAddress='" + emailAddress + '\'' + ", creditCard='" +
         creditCard + '\'' + ", city='" + city + '\'' + ", state='" + state +
-        '\'' + ", dateTime=" + formatDateTime(dateTime) + ", extra='" + extra +
-        '\'' + '}';
+        '\'' + ", dateTime=" + formatDateTime(dateTime) + ", extra='" +
+        std::string(extra) + '\'' + '}';
   }
 
   // Person RowType
@@ -121,7 +121,7 @@ struct Person {
             extraVector});
   }
 
-  FOLLY_NOINLINE static void
+  static void
   fillVector(RowVector* personVector, int index, const Person* person) {
     if (!person) {
       personVector->setNull(index, true);
@@ -196,18 +196,6 @@ private:
 
   /** Create an array of credit card strings. */
   static std::vector<std::string> createCreditCardStrings();
-
-  /** Return a random string of specified length. */
-  static std::string nextString(std::mt19937& random, int length);
-
-  /** Generate a random "extra" string to pad the person to the desired size. */
-  static std::string nextExtra(
-      std::mt19937& random,
-      int currentSize,
-      int targetSize);
-
-  /** Generate a random int64_t within a range. */
-  static int64_t nextLong(std::mt19937& random, int64_t n);
 
   static const std::vector<std::string> US_STATES;
   static const std::vector<std::string> US_CITIES;

@@ -16,6 +16,8 @@
 
 #include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
+#include "velox/connectors/nexmark/LongGenerator.h"
+#include "velox/connectors/nexmark/StringsGenerator.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -59,7 +61,8 @@ Person PersonGenerator::nextPerson(
   std::string state = nextUSState(random);
   int currentSize = 8 + name.length() + email.length() +
                     creditCard.length() + city.length() + state.length();
-  std::string extra = nextExtra(random, currentSize, config.getAvgPersonByteSize());
+  std::string_view extra = StringsGenerator::nextExtra(
+      random, currentSize, config.getAvgPersonByteSize());
 
   return Person(
       id,
@@ -83,7 +86,7 @@ int64_t PersonGenerator::nextBase0PersonId(
   // newPerson and newAuction events appear to have been swapped in time.
   int64_t numPeople = lastBase0PersonId(config, eventId) + 1;
   int64_t activePeople = std::min<int64_t>(numPeople, config.getNumActivePeople());
-  int64_t n = nextLong(random, activePeople + PERSON_ID_LEAD);
+  int64_t n = LongGenerator::nextLong(random, activePeople + PERSON_ID_LEAD);
   return numPeople - activePeople + n;
 }
 
@@ -113,7 +116,8 @@ std::string PersonGenerator::nextPersonName(std::mt19937& random) {
 }
 
 std::string PersonGenerator::nextEmail(std::mt19937& random) {
-  return nextString(random, 7) + "@" + nextString(random, 5) + ".com";
+  return StringsGenerator::nextString(random, 7) + "@" +
+      StringsGenerator::nextString(random, 5) + ".com";
 }
 
 std::vector<std::string> PersonGenerator::createCreditCardStrings() {
@@ -135,29 +139,6 @@ std::string PersonGenerator::nextCreditCard(std::mt19937& random) {
     sb << CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
   }
   return sb.str();
-}
-
-std::string PersonGenerator::nextString(std::mt19937& random, int length) {
-  static const char alphanum[] =
-      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  std::string result;
-  result.reserve(length);
-
-  for (int i = 0; i < length; ++i) {
-    result += alphanum[random() % (sizeof(alphanum) - 1)];
-  }
-
-  return result;
-}
-
-std::string PersonGenerator::nextExtra(std::mt19937& random, int currentSize, int targetSize) {
-  int extraSize = std::max(0, targetSize - currentSize);
-  return nextString(random, extraSize);
-}
-
-int64_t PersonGenerator::nextLong(std::mt19937& random, int64_t n) {
-  std::uniform_int_distribution<int64_t> dist(0, n - 1);
-  return dist(random);
 }
 
 } // namespace facebook::velox::connector::nexmark
