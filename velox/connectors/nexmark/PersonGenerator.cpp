@@ -44,12 +44,35 @@ const std::vector<std::string> PersonGenerator::LAST_NAMES = {
 const std::vector<std::string> PersonGenerator::CREDIT_CARD_STRINGS =
     PersonGenerator::createCreditCardStrings();
 
+RowVectorPtr PersonGenerator::nextPersonBatch(
+    size_t rows,
+    const FlatVector<int64_t>& eventIdVector,
+    pcg32_fast& random,
+    const FlatVector<int64_t>& timestampVector,
+    const GeneratorConfig& config,
+    memory::MemoryPool* pool) {
+
+  auto personVector = Person::createVector(rows, pool);
+  auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
+  auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
+  auto emailVector = personVector->childAt(2)->asFlatVector<StringView>();
+  auto creditCardVector = personVector->childAt(3)->asFlatVector<StringView>();
+  auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
+  auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
+  auto dateTimeVector = personVector->childAt(6)->asFlatVector<Timestamp>();
+  auto extraVector = personVector->childAt(7)->asFlatVector<StringView>();
+
+  for (size_t i = 0; i < rows; ++i) {
+    Event::Type eventType = static_cast<Event::Type>(
+        eventIdVector.valueAt(i) % GeneratorConfig::NUM_EVENT_TYPES);
+  }
+}
+
 Person PersonGenerator::nextPerson(
     int64_t nextEventId,
     pcg32_fast& random,
     int64_t timestamp,
     const GeneratorConfig& config) {
-
   int64_t id = lastBase0PersonId(config, nextEventId) + GeneratorConfig::FIRST_PERSON_ID;
   std::string name = nextPersonName(random);
   std::string email = nextEmail(random);

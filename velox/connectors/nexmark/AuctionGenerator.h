@@ -218,6 +218,14 @@ class AuctionGenerator {
       int64_t timestamp,
       const GeneratorConfig& config);
 
+  static RowVectorPtr nextAuctionBatch(
+      size_t rows,
+      int64_t eventsCountSoFar,
+      const FlatVector<int64_t>& eventIdVector,
+      pcg32_fast& random,
+      const FlatVector<int64_t>& timestampVector,
+      const GeneratorConfig& config);
+
   /**
    * Return the last valid auction id (ignoring FIRST_AUCTION_ID).
    * Will be the current auction id if due to generate an auction.

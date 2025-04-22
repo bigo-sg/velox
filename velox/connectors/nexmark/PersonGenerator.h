@@ -167,6 +167,13 @@ public:
       int64_t timestamp,
       const GeneratorConfig & config);
 
+  static RowVectorPtr nextPersonBatch(
+      size_t rows,
+      const FlatVector<int32_t>& eventTypeVector,
+      const FlatVector<int64_t>& eventIdVector,
+      pcg32_fast& random,
+      const FlatVector<int64_t>& timestampVector,
+      const GeneratorConfig& config, memory::MemoryPool* pool);
 
   /**
    * Return the last valid person id (ignoring FIRST_PERSON_ID). Will be the current person id if

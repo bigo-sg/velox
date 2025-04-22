@@ -158,6 +158,13 @@ class BidGenerator {
       int64_t timestamp,
       const GeneratorConfig& config);
 
+  static RowVectorPtr nextBidBatch(
+      size_t rows,
+      const FlatVector<int64_t>& eventIdVector,
+      pcg32_fast& random,
+      const FlatVector<int64_t>& timestampVector,
+      const GeneratorConfig& config);
+
  private:
   static std::string getBaseUrl(pcg32_fast& random);
   static const std::pair<std::string, std::string>& getNextChannelAndUrl(
