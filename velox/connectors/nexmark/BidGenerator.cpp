@@ -79,7 +79,7 @@ Bid BidGenerator::nextBid(
       std::move(extra));
 }
 
-std::string BidGenerator::getBaseUrl(pcg32_fast& random) {
+FOLLY_ALWAYS_INLINE std::string BidGenerator::getBaseUrl(pcg32_fast& random) {
   return "https://www.nexmark.com/" +
       StringsGenerator::nextString(random, 5, '_') + '/' +
       StringsGenerator::nextString(random, 5, '_') + '/' +

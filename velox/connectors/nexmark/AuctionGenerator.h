@@ -16,8 +16,10 @@
 
 #pragma once
 
+#include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
+#include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
@@ -220,15 +222,43 @@ class AuctionGenerator {
    * Return the last valid auction id (ignoring FIRST_AUCTION_ID).
    * Will be the current auction id if due to generate an auction.
    */
-  static int64_t lastBase0AuctionId(
+  FOLLY_ALWAYS_INLINE static int64_t lastBase0AuctionId(
       const GeneratorConfig& config,
-      int64_t eventId);
+      int64_t eventId) {
+    int64_t epoch = eventId / config.totalProportion;
+    int64_t offset = eventId % config.totalProportion;
+    if (offset < config.personProportion) {
+      // About to generate a person.
+      // Go back to the last auction in the last epoch.
+      epoch--;
+      offset = config.auctionProportion - 1;
+    } else if (offset >= config.personProportion + config.auctionProportion) {
+      // About to generate a bid.
+      // Go back to the last auction generated in this epoch.
+      offset = config.auctionProportion - 1;
+    } else {
+      // About to generate an auction.
+      offset -= config.personProportion;
+    }
+    return epoch * config.auctionProportion + offset;
+  }
 
   /** Return a random auction id (base 0). */
-  static int64_t nextBase0AuctionId(
+  FOLLY_ALWAYS_INLINE static int64_t nextBase0AuctionId(
       int64_t nextEventId,
       pcg32_fast& random,
-      const GeneratorConfig& config);
+      const GeneratorConfig& config) {
+    // Choose a random auction for any of those which are likely to still be in
+    // flight, plus a few 'leads'. Note that ideally we'd track non-expired
+    // auctions exactly, but that state is difficult to split.
+    int64_t lastAuctionId = lastBase0AuctionId(config, nextEventId);
+    int64_t minAuction =
+        std::max<int64_t>(lastAuctionId - config.getNumInFlightAuctions(), 0);
+    int64_t maxAuction = lastAuctionId;
+    return minAuction +
+        LongGenerator::nextLong(
+               random, maxAuction - minAuction + 1 + AUCTION_ID_LEAD);
+  }
 
  private:
   /** Return a random time delay, in milliseconds, for length of auctions. */

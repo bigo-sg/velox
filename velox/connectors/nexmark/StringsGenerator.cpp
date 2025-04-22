@@ -15,10 +15,7 @@
  */
 
 #include "velox/connectors/nexmark/StringsGenerator.h"
-#include "velox/connectors/nexmark/NexmarkUtils.h"
 
-#include <boost/algorithm/string/trim.hpp>
-#include <fmt/format.h>
 #include <cmath>
 
 namespace facebook::velox::connector::nexmark {
@@ -29,33 +26,6 @@ const std::string StringsGenerator::REUSABLE_EXTRA_STRING =
     StringsGenerator::getReusableExtraString(
         staticRandomGenerator,
         1024 * 1024);
-
-std::string StringsGenerator::nextString(
-    pcg32_fast& random,
-    int maxLength) {
-  return nextString(random, maxLength, ' ');
-}
-
-std::string StringsGenerator::nextString(
-    pcg32_fast& random,
-    int maxLength,
-    char special) {
-  int len = MIN_STRING_LENGTH + getNextInt(random, maxLength - MIN_STRING_LENGTH);
-  std::string result(len, 0);
-  for (int i = 0; i < len; ++i) {
-    if (getNextInt(random, 13) == 0) {
-      result[i] = special;
-    } else {
-      result[i] = static_cast<int>('a') + getNextInt(random, 26);
-    }
-  }
-
-  // Trim trailing spaces (equivalent to Java's trim())
-  if (special == ' ')
-    boost::algorithm::trim(result);
-
-  return result;
-}
 
 std::string StringsGenerator::getReusableExtraString(pcg32_fast& random, int length) {
   std::string result(length, 0);
@@ -72,20 +42,6 @@ std::string StringsGenerator::getReusableExtraString(pcg32_fast& random, int len
     n--;
   }
   return result;
-}
-
-std::string_view StringsGenerator::nextExactString(
-    pcg32_fast& random,
-    int length) {
-  if (length >= REUSABLE_EXTRA_STRING.length() / 2) {
-    throw std::runtime_error(fmt::format(
-        "Requested extra string length {} exceeds {}",
-        length,
-        REUSABLE_EXTRA_STRING.length() / 2));
-  }
-
-  int offset = getNextInt(random, REUSABLE_EXTRA_STRING.length() - length);
-  return std::string_view(REUSABLE_EXTRA_STRING.data() + offset, length);
 }
 
 std::string_view StringsGenerator::nextExtra(

@@ -55,9 +55,9 @@ TEST_F(NexmarkConnectorTest, testProportions) {
                   .tableHandle(makeNexmarkTableHandle(numRows))
                   .endTableScan()
                   .partialAggregation(
-                      {"type"}, // Group by "type"
-                      {"count(1)"}) // Count rows for each "type"
-                  .orderBy({"type"}, false) // Order by "type"
+                      {"event_type"}, // Group by "event_type"
+                      {"count(1)"}) // Count rows for each "event_type"
+                  .orderBy({"event_type"}, false) // Order by "event_type"
                   .planNode();
 
   auto result = exec::test::AssertQueryBuilder(plan)
@@ -67,7 +67,7 @@ TEST_F(NexmarkConnectorTest, testProportions) {
   // Assert the number of rows in the result is 3
   ASSERT_EQ(result->size(), 3);
 
-  // Assert that the counts for each "type" are proportional
+  // Assert that the counts for each "event_type" are proportional
   std::vector<Event::Type> expectedTypes = {Event::Type::PERSON, Event::Type::AUCTION, Event::Type::BID};
   std::vector<int64_t> expectedCounts = {
       numRows / 50, numRows * 3 / 50, numRows * 46 / 50};
