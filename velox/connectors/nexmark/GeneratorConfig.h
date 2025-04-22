@@ -124,8 +124,8 @@ struct NexmarkConfiguration {
     }
     if (obj.find("rateShape") != obj.items().end()) {
       config.rateShape = obj["rateShape"].asString() == "SQUARE"
-                             ? RateShape::SQUARE
-                             : RateShape::SINE;
+          ? RateShape::SQUARE
+          : RateShape::SINE;
     }
     if (obj.find("firstEventRate") != obj.items().end()) {
       config.firstEventRate = obj["firstEventRate"].asInt();
@@ -135,8 +135,8 @@ struct NexmarkConfiguration {
     }
     if (obj.find("rateUnit") != obj.items().end()) {
       config.rateUnit = obj["rateUnit"].asString() == "PER_SECOND"
-                            ? RateUnit::PER_SECOND
-                            : RateUnit::PER_MINUTE;
+          ? RateUnit::PER_SECOND
+          : RateUnit::PER_MINUTE;
     }
     if (obj.find("ratePeriodSec") != obj.items().end()) {
       config.ratePeriodSec = obj["ratePeriodSec"].asInt();
@@ -266,24 +266,90 @@ class GeneratorConfig {
         firstEventNumber);
   }
 
-  FOLLY_NOINLINE int getAvgPersonByteSize() const;
-  FOLLY_NOINLINE int getNumActivePeople() const;
-  FOLLY_NOINLINE int getHotSellersRatio() const;
-  FOLLY_NOINLINE int getNumInFlightAuctions() const;
-  FOLLY_NOINLINE int getHotAuctionRatio() const;
-  FOLLY_NOINLINE int getHotBiddersRatio() const;
-  FOLLY_NOINLINE int getAvgBidByteSize() const;
-  FOLLY_NOINLINE int getAvgAuctionByteSize() const;
-  FOLLY_NOINLINE double getProbDelayedEvent() const;
-  FOLLY_NOINLINE int64_t getOccasionalDelaySec() const;
-  FOLLY_NOINLINE int64_t getEstimatedSizeBytes() const;
-  FOLLY_NOINLINE int64_t estimatedBytesForEvents(int64_t numEvents) const;
-  FOLLY_NOINLINE int64_t getStartEventId() const;
-  FOLLY_NOINLINE int64_t getStopEventId() const;
-  FOLLY_NOINLINE int64_t nextEventNumber(int64_t numEvents) const;
-  FOLLY_NOINLINE int64_t nextAdjustedEventNumber(int64_t numEvents) const;
-  FOLLY_NOINLINE int64_t nextEventNumberForWatermark(int64_t numEvents) const;
-  FOLLY_NOINLINE int64_t timestampForEvent(int64_t eventNumber) const;
+  FOLLY_ALWAYS_INLINE int getAvgPersonByteSize() const {
+    return configuration.avgPersonByteSize;
+  }
+
+  FOLLY_ALWAYS_INLINE int getNumActivePeople() const {
+    return configuration.numActivePeople;
+  }
+
+  FOLLY_ALWAYS_INLINE int getHotSellersRatio() const {
+    return configuration.hotSellersRatio;
+  }
+
+  FOLLY_ALWAYS_INLINE int getNumInFlightAuctions() const {
+    return configuration.numInFlightAuctions;
+  }
+
+  FOLLY_ALWAYS_INLINE int getHotAuctionRatio() const {
+    return configuration.hotAuctionRatio;
+  }
+
+  FOLLY_ALWAYS_INLINE int getHotBiddersRatio() const {
+    return configuration.hotBiddersRatio;
+  }
+
+  FOLLY_ALWAYS_INLINE int getAvgBidByteSize() const {
+    return configuration.avgBidByteSize;
+  }
+
+  FOLLY_ALWAYS_INLINE int getAvgAuctionByteSize() const {
+    return configuration.avgAuctionByteSize;
+  }
+
+  FOLLY_ALWAYS_INLINE double getProbDelayedEvent() const {
+    return configuration.probDelayedEvent;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t getOccasionalDelaySec() const {
+    return configuration.occasionalDelaySec;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t getEstimatedSizeBytes() const {
+    return estimatedBytesForEvents(maxEvents);
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t estimatedBytesForEvents(int64_t numEvents) const {
+    int64_t numPersons = (numEvents * personProportion) / totalProportion;
+    int64_t numAuctions = (numEvents * auctionProportion) / totalProportion;
+    int64_t numBids = (numEvents * bidProportion) / totalProportion;
+    return numPersons * configuration.avgPersonByteSize +
+        numAuctions * configuration.avgAuctionByteSize +
+        numBids * configuration.avgBidByteSize;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t getStartEventId() const {
+    return firstEventId + firstEventNumber;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t getStopEventId() const {
+    return firstEventId + firstEventNumber + maxEvents;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t nextEventNumber(int64_t numEvents) const {
+    return firstEventNumber + numEvents;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t nextAdjustedEventNumber(int64_t numEvents) const {
+    int64_t n = configuration.outOfOrderGroupSize;
+    int64_t eventNumber = nextEventNumber(numEvents);
+    int64_t base = (eventNumber / n) * n;
+    int64_t offset = (eventNumber * 953) % n;
+    return base + offset;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t
+  nextEventNumberForWatermark(int64_t numEvents) const {
+    int64_t n = configuration.outOfOrderGroupSize;
+    int64_t eventNumber = nextEventNumber(numEvents);
+    return (eventNumber / n) * n;
+  }
+
+  FOLLY_ALWAYS_INLINE int64_t timestampForEvent(int64_t eventNumber) const {
+    return baseTime +
+        static_cast<int64_t>(eventNumber * interEventDelayUs[0]) / 1000L;
+  }
 };
 
 } // namespace facebook::velox::connector::nexmark

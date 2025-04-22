@@ -15,9 +15,10 @@
  */
 #pragma once
 
-#include <random>
 #include <string>
 #include <folly/CPortability.h>
+
+#include "velox/connectors/nexmark/pcg_random.hpp"
 
 namespace facebook::velox::connector::nexmark {
 
@@ -28,24 +29,24 @@ class StringsGenerator {
   static constexpr int MIN_STRING_LENGTH = 3;
 
   /// Return a random string of up to `maxLength`.
-  static std::string nextString(std::mt19937& random, int maxLength);
+  static std::string nextString(pcg32_fast& random, int maxLength);
 
   /// Return a random string of up to `maxLength` with special character.
-  FOLLY_NOINLINE static std::string
-  nextString(std::mt19937& random, int maxLength, char special);
+  static std::string
+  nextString(pcg32_fast& random, int maxLength, char special);
 
   /// Return a random string of exactly `length`.
-  static std::string_view nextExactString(std::mt19937& random, int length);
+  static std::string_view nextExactString(pcg32_fast& random, int length);
 
   /**
    * Return a random `string` such that `currentSize + string.length()` is on
    * average `averageSize`.
    */
   static std::string_view
-  nextExtra(std::mt19937& random, int currentSize, int desiredAverageSize);
+  nextExtra(pcg32_fast& random, int currentSize, int desiredAverageSize);
 
  private:
-  static std::string getReusableExtraString(std::mt19937& random, int length);
+  static std::string getReusableExtraString(pcg32_fast& random, int length);
   static const std::string REUSABLE_EXTRA_STRING;
 };
 

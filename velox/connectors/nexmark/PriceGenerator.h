@@ -16,6 +16,8 @@
 
  #pragma once
 
+ #include "velox/connectors/nexmark/pcg_random.hpp"
+
  #include <random>
 
 namespace facebook::velox::connector::nexmark {
@@ -23,11 +25,12 @@ namespace facebook::velox::connector::nexmark {
 class PriceGenerator {
  public:
   /** Return a random price. */
-  static int64_t nextPrice(std::mt19937& random) {
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
+  static int64_t nextPrice(pcg32_fast& random) {
     return static_cast<int64_t>(
         std::round(std::pow(10.0, dist(random) * 6.0) * 100.0));
   }
+
+  inline static std::uniform_real_distribution<double> dist{0.0, 1.0};
 };
 
 } // namespace facebook::velox::connector::nexmark

@@ -17,13 +17,13 @@
 #pragma once
 
 #include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/pcg_random.hpp"
+#include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
-#include "velox/type/Type.h"
 
 #include <string>
 #include <vector>
-#include <random>
 
 namespace facebook::velox::connector::nexmark {
 
@@ -154,14 +154,14 @@ class BidGenerator {
  public:
   static Bid nextBid(
       int64_t eventId,
-      std::mt19937& random,
+      pcg32_fast& random,
       int64_t timestamp,
       const GeneratorConfig& config);
 
  private:
-  static std::string getBaseUrl(std::mt19937& random);
+  static std::string getBaseUrl(pcg32_fast& random);
   static const std::pair<std::string, std::string>& getNextChannelAndUrl(
-      std::mt19937& random);
+      pcg32_fast& random);
   static std::vector<std::pair<std::string, std::string>> createChannelUrlCache();
 
   static constexpr int HOT_AUCTION_RATIO = 100;

@@ -190,12 +190,12 @@ class NexmarkGenerator {
   NextEvent next();
 
  private:
-  FOLLY_NOINLINE int64_t getNextEventId() const;
+  int64_t getNextEventId() const;
 
   const GeneratorConfig config_;
   int64_t eventsCountSoFar_;
   int64_t wallclockBaseTime_;
-  std::mt19937 random_;
+  pcg32_fast random_;
 };
 
 } // namespace facebook::velox::connector::nexmark
