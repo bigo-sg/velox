@@ -31,7 +31,6 @@ class StringsGenerator {
   /// Smallest random string size.
   static constexpr int MIN_STRING_LENGTH = 3;
 
-
   /// Return a random string of up to `maxLength`.
   FOLLY_ALWAYS_INLINE static std::string nextString(
       pcg32_fast& random,
