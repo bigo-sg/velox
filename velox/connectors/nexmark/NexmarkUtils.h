@@ -43,4 +43,21 @@ inline std::string formatDateTime(int64_t dateTime) {
       "Z";
 }
 
+/// return a random integer in [0, bound)
+/// This is a replacement for the Java's Random.nextInt(int bound) method.
+/// It is used instead of std::uniform_int_distribution<int> for performance gain.
+inline int getNextInt(std::mt19937& random, int bound) {
+  int m = bound - 1;
+  int r = static_cast<int>(random());
+  if ((bound & m) == 0) {
+    r &= m;
+  } else {
+    for (int u = static_cast<int>(static_cast<unsigned int>(r) >> 1);
+         u + m - (r = u % bound) < 0;
+         u = static_cast<int>(random() >> 1)) {
+    }
+  }
+  return r;
+}
+
 } // namespace facebook::velox::connector::nexmark

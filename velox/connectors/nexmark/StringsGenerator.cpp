@@ -15,87 +15,83 @@
  */
 
 #include "velox/connectors/nexmark/StringsGenerator.h"
+#include "velox/connectors/nexmark/NexmarkUtils.h"
 
+#include <boost/algorithm/string/trim.hpp>
 #include <cmath>
-#include <limits>
 
 namespace facebook::velox::connector::nexmark {
 
 // Initialize static member
 static std::mt19937 staticRandomGenerator;
 const std::string StringsGenerator::REUSABLE_EXTRA_STRING =
-    StringsGenerator::nextExactString(staticRandomGenerator, 1024 * 1024);
+    StringsGenerator::getReusableExtraString(
+        staticRandomGenerator,
+        1024 * 1024);
 
 std::string StringsGenerator::nextString(std::mt19937& random, int maxLength) {
   return nextString(random, maxLength, ' ');
 }
 
-std::string StringsGenerator::nextString(
+FOLLY_NOINLINE std::string StringsGenerator::nextString(
     std::mt19937& random,
     int maxLength,
     char special) {
-  std::uniform_int_distribution<int> lenDist(MIN_STRING_LENGTH, maxLength - 1);
-  int len = lenDist(random);
-  std::uniform_int_distribution<int> specialDist(0, 12);
-  std::uniform_int_distribution<int> charDist(0, 25);
-
-  std::string result;
-  result.reserve(len);
-
-  while (len-- > 0) {
-    if (specialDist(random) == 0) {
-      result += special;
+  int len = MIN_STRING_LENGTH + getNextInt(random, maxLength - MIN_STRING_LENGTH);
+  std::string result(len, 0);
+  for (int i = 0; i < len; ++i) {
+    if (getNextInt(random, 13) == 0) {
+      result[i] = special;
     } else {
-      result += ('a' + charDist(random));
+      result[i] = static_cast<int>('a') + getNextInt(random, 26);
     }
   }
 
   // Trim trailing spaces (equivalent to Java's trim())
-  while (!result.empty() && result.back() == ' ') {
-    result.pop_back();
-  }
+  if (special == ' ')
+    boost::algorithm::trim(result);
 
   return result;
 }
 
-std::string StringsGenerator::nextExactString(
-    std::mt19937& random,
-    int length) {
-  if (!REUSABLE_EXTRA_STRING.empty() &&
-      length < REUSABLE_EXTRA_STRING.length() / 2) {
-    std::uniform_int_distribution<int> offsetDist(
-        0, REUSABLE_EXTRA_STRING.length() - length - 1);
-    int offset = offsetDist(random);
-    return REUSABLE_EXTRA_STRING.substr(offset, length);
-  }
-
-  std::string result;
-  result.reserve(length);
-
-  std::uniform_int_distribution<int> rndDist(
-      0, std::numeric_limits<int>::max());
+std::string StringsGenerator::getReusableExtraString(std::mt19937& random, int length) {
+  std::string result(length, 0);
   int rnd = 0;
   int n = 0; // number of random characters left in rnd
-
-  while (length-- > 0) {
+  for (int i = 0; i < length; ++i) {
     if (n == 0) {
-      rnd = rndDist(random);
+      rnd = static_cast<int>(random());
       n = 6; // log_26(2^31)
     }
-    result += ('a' + rnd % 26);
+
+    result[i] = static_cast<int>('a') + rnd % 26;
     rnd /= 26;
     n--;
   }
-
   return result;
 }
 
-std::string StringsGenerator::nextExtra(
+std::string_view StringsGenerator::nextExactString(
+    std::mt19937& random,
+    int length) {
+  if (length >= REUSABLE_EXTRA_STRING.length() / 2) {
+    throw std::runtime_error(fmt::format(
+        "Requested extra string length {} exceeds {}",
+        length,
+        REUSABLE_EXTRA_STRING.length() / 2));
+  }
+
+  int offset = getNextInt(random, REUSABLE_EXTRA_STRING.length() - length);
+  return std::string_view(REUSABLE_EXTRA_STRING.data() + offset, length);
+}
+
+std::string_view StringsGenerator::nextExtra(
     std::mt19937& random,
     int currentSize,
     int desiredAverageSize) {
   if (currentSize > desiredAverageSize) {
-    return "";
+    /// empty string_view
+    return std::string_view(REUSABLE_EXTRA_STRING.data(), 0);
   }
 
   desiredAverageSize -= currentSize;
@@ -104,8 +100,7 @@ std::string StringsGenerator::nextExtra(
   int desiredSize = minSize;
 
   if (delta != 0) {
-    std::uniform_int_distribution<int> sizeDist(0, 2 * delta - 1);
-    desiredSize += sizeDist(random);
+    desiredSize += getNextInt(random, 2 * delta);
   }
 
   return nextExactString(random, desiredSize);

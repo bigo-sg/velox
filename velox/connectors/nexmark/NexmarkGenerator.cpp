@@ -4,7 +4,7 @@
 
 namespace facebook::velox::connector::nexmark {
 
-int64_t NexmarkGenerator::getNextEventId() const {
+FOLLY_NOINLINE int64_t NexmarkGenerator::getNextEventId() const {
   return config_.firstEventId +
       config_.nextAdjustedEventNumber(eventsCountSoFar_);
 }

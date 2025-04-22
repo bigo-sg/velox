@@ -109,7 +109,7 @@ class Event {
         std::vector<VectorPtr>{typeVector, personVector, auctionVector, bidVector});
   }
 
-  FOLLY_NOINLINE static void fillVector(RowVector* eventVector, int index, const Event& event) {
+  static void fillVector(RowVector* eventVector, int index, const Event& event) {
     auto typeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
     auto personVector = eventVector->childAt(1)->as<RowVector>();
     auto auctionVector = eventVector->childAt(2)->as<RowVector>();
@@ -190,7 +190,7 @@ class NexmarkGenerator {
   NextEvent next();
 
  private:
-  int64_t getNextEventId() const;
+  FOLLY_NOINLINE int64_t getNextEventId() const;
 
   const GeneratorConfig config_;
   int64_t eventsCountSoFar_;

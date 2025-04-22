@@ -26,8 +26,8 @@ velox_add_library(
 velox_link_libraries(
   velox_nexmark_connector PRIVATE velox_connector)
 
-if(${VELOX_BUILD_TESTING})
+# if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)
-endif()
+# endif()
 
 

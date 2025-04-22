@@ -50,7 +50,7 @@ struct Bid {
   int64_t dateTime;
 
   /** Additional arbitrary payload for performance testing. */
-  std::string extra;
+  std::string_view extra;
 
   Bid(
       int64_t auction,
@@ -59,7 +59,7 @@ struct Bid {
       std::string channel,
       std::string url,
       int64_t dateTime,
-      std::string extra)
+      std::string_view extra)
       : auction(auction),
         bidder(bidder),
         price(price),
@@ -73,7 +73,7 @@ struct Bid {
         ", bidder=" + std::to_string(bidder) +
         ", price=" + std::to_string(price) + ", channel=" + channel +
         ", url=" + url + ", dateTime=" + formatDateTime(dateTime) +
-        ", extra='" + extra + '\'' + '}';
+        ", extra='" + std::string(extra) + '\'' + '}';
   }
 
   // Bid RowType
@@ -123,7 +123,7 @@ struct Bid {
             extraVector});
   }
 
-  FOLLY_NOINLINE static void fillVector(RowVector* bidVector, int index, const Bid* bid) {
+  static void fillVector(RowVector* bidVector, int index, const Bid* bid) {
     if (!bid) {
       bidVector->setNull(index, true);
       return;
@@ -160,7 +160,7 @@ class BidGenerator {
 
  private:
   static std::string getBaseUrl(std::mt19937& random);
-  static std::pair<std::string, std::string> getNextChannelAndUrl(
+  static const std::pair<std::string, std::string>& getNextChannelAndUrl(
       std::mt19937& random);
   static std::vector<std::pair<std::string, std::string>> createChannelUrlCache();
 

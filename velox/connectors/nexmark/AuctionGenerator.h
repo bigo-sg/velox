@@ -55,7 +55,7 @@ struct Auction {
   int64_t category; // foreign key: Category.id
 
   /** Additional arbitrary payload for performance testing. */
-  std::string extra;
+  std::string_view extra;
 
   /** Constructor with all fields */
   Auction(
@@ -68,7 +68,7 @@ struct Auction {
       int64_t expires,
       int64_t seller,
       int64_t category,
-      std::string extra)
+      std::string_view extra)
       : id(id),
         itemName(std::move(itemName)),
         description(std::move(description)),
@@ -88,8 +88,8 @@ struct Auction {
               ", dateTime=" + formatDateTime(dateTime) +
               ", expires=" + formatDateTime(expires) +
               ", seller=" + std::to_string(seller) +
-              ", category=" + std::to_string(category) + ", extra='" + extra +
-              '\'' + '}';
+              ", category=" + std::to_string(category) + ", extra='" +
+              std::string(extra) + '\'' + '}';
         }
 
   // Auction RowType
@@ -152,7 +152,7 @@ struct Auction {
             extraVector});
   }
 
-  FOLLY_NOINLINE static void fillVector(
+  static void fillVector(
       RowVector* auctionVector,
       int index,
       const Auction* auction) {
@@ -221,7 +221,7 @@ class AuctionGenerator {
    * Return the last valid auction id (ignoring FIRST_AUCTION_ID).
    * Will be the current auction id if due to generate an auction.
    */
-  static int64_t lastBase0AuctionId(
+  FOLLY_NOINLINE static int64_t lastBase0AuctionId(
       const GeneratorConfig& config,
       int64_t eventId);
 

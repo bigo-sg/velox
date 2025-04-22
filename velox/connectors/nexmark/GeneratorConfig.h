@@ -266,24 +266,24 @@ class GeneratorConfig {
         firstEventNumber);
   }
 
-  int getAvgPersonByteSize() const;
-  int getNumActivePeople() const;
-  int getHotSellersRatio() const;
-  int getNumInFlightAuctions() const;
-  int getHotAuctionRatio() const;
-  int getHotBiddersRatio() const;
-  int getAvgBidByteSize() const;
-  int getAvgAuctionByteSize() const;
-  double getProbDelayedEvent() const;
-  int64_t getOccasionalDelaySec() const;
-  int64_t getEstimatedSizeBytes() const;
-  int64_t estimatedBytesForEvents(int64_t numEvents) const;
-  int64_t getStartEventId() const;
-  int64_t getStopEventId() const;
-  int64_t nextEventNumber(int64_t numEvents) const;
-  int64_t nextAdjustedEventNumber(int64_t numEvents) const;
-  int64_t nextEventNumberForWatermark(int64_t numEvents) const;
-  int64_t timestampForEvent(int64_t eventNumber) const;
+  FOLLY_NOINLINE int getAvgPersonByteSize() const;
+  FOLLY_NOINLINE int getNumActivePeople() const;
+  FOLLY_NOINLINE int getHotSellersRatio() const;
+  FOLLY_NOINLINE int getNumInFlightAuctions() const;
+  FOLLY_NOINLINE int getHotAuctionRatio() const;
+  FOLLY_NOINLINE int getHotBiddersRatio() const;
+  FOLLY_NOINLINE int getAvgBidByteSize() const;
+  FOLLY_NOINLINE int getAvgAuctionByteSize() const;
+  FOLLY_NOINLINE double getProbDelayedEvent() const;
+  FOLLY_NOINLINE int64_t getOccasionalDelaySec() const;
+  FOLLY_NOINLINE int64_t getEstimatedSizeBytes() const;
+  FOLLY_NOINLINE int64_t estimatedBytesForEvents(int64_t numEvents) const;
+  FOLLY_NOINLINE int64_t getStartEventId() const;
+  FOLLY_NOINLINE int64_t getStopEventId() const;
+  FOLLY_NOINLINE int64_t nextEventNumber(int64_t numEvents) const;
+  FOLLY_NOINLINE int64_t nextAdjustedEventNumber(int64_t numEvents) const;
+  FOLLY_NOINLINE int64_t nextEventNumberForWatermark(int64_t numEvents) const;
+  FOLLY_NOINLINE int64_t timestampForEvent(int64_t eventNumber) const;
 };
 
 } // namespace facebook::velox::connector::nexmark
