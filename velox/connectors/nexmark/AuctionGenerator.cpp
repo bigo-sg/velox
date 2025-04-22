@@ -26,7 +26,7 @@ namespace facebook::velox::connector::nexmark {
 Auction AuctionGenerator::nextAuction(
     int64_t eventsCountSoFar,
     int64_t eventId,
-    std::mt19937& random,
+    pcg32_fast& random,
     int64_t timestamp,
     const GeneratorConfig& config) {
 
@@ -83,9 +83,9 @@ FOLLY_NOINLINE int64_t AuctionGenerator::lastBase0AuctionId(const GeneratorConfi
   return epoch * config.auctionProportion + offset;
 }
 
-int64_t AuctionGenerator::nextBase0AuctionId(
+FOLLY_NOINLINE int64_t AuctionGenerator::nextBase0AuctionId(
     int64_t nextEventId,
-    std::mt19937& random,
+    pcg32_fast& random,
     const GeneratorConfig& config) {
 
   // Choose a random auction for any of those which are likely to still be in flight,
@@ -100,7 +100,7 @@ int64_t AuctionGenerator::nextBase0AuctionId(
 
 int64_t AuctionGenerator::nextAuctionLengthMs(
     int64_t eventsCountSoFar,
-    std::mt19937& random,
+    pcg32_fast& random,
     int64_t timestamp,
     const GeneratorConfig& config) {
 

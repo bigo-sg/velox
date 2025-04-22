@@ -20,13 +20,12 @@
 #include "velox/connectors/nexmark/PriceGenerator.h"
 #include "velox/connectors/nexmark/StringsGenerator.h"
 
-#include <random>
 
 namespace facebook::velox::connector::nexmark {
 
 Bid BidGenerator::nextBid(
     int64_t eventId,
-    std::mt19937& random,
+    pcg32_fast& random,
     int64_t timestamp,
     const GeneratorConfig& config) {
   int64_t auction;
@@ -80,7 +79,7 @@ Bid BidGenerator::nextBid(
       std::move(extra));
 }
 
-std::string BidGenerator::getBaseUrl(std::mt19937& random) {
+std::string BidGenerator::getBaseUrl(pcg32_fast& random) {
   return "https://www.nexmark.com/" +
       StringsGenerator::nextString(random, 5, '_') + '/' +
       StringsGenerator::nextString(random, 5, '_') + '/' +
@@ -89,7 +88,7 @@ std::string BidGenerator::getBaseUrl(std::mt19937& random) {
 
 std::vector<std::pair<std::string, std::string>>
 BidGenerator::createChannelUrlCache() {
-  std::mt19937 random;
+  pcg32_fast random;
   std::vector<std::pair<std::string, std::string>> cache;
   cache.resize(CHANNELS_NUMBER);
   for (int i = 0; i < CHANNELS_NUMBER; ++i) {
@@ -103,7 +102,7 @@ BidGenerator::createChannelUrlCache() {
 }
 
 const std::pair<std::string, std::string>& BidGenerator::getNextChannelAndUrl(
-    std::mt19937& random) {
+    pcg32_fast& random) {
   int channelNumber = random() % CHANNELS_NUMBER;
   return CHANNEL_URL_CACHE[channelNumber];
 }

@@ -49,7 +49,7 @@ const std::vector<std::string> PersonGenerator::CREDIT_CARD_STRINGS =
 
 Person PersonGenerator::nextPerson(
     int64_t nextEventId,
-    std::mt19937& random,
+    pcg32_fast& random,
     int64_t timestamp,
     const GeneratorConfig& config) {
 
@@ -77,7 +77,7 @@ Person PersonGenerator::nextPerson(
 
 int64_t PersonGenerator::nextBase0PersonId(
     int64_t eventId,
-    std::mt19937& random,
+    pcg32_fast& random,
     const GeneratorConfig& config) {
   // Choose a random person from any of the 'active' people, plus a few 'leads'.
   // By limiting to 'active' we ensure the density of bids or auctions per person
@@ -102,20 +102,20 @@ int64_t PersonGenerator::lastBase0PersonId(const GeneratorConfig& config, int64_
   return epoch * config.personProportion + offset;
 }
 
-std::string PersonGenerator::nextUSState(std::mt19937& random) {
+std::string PersonGenerator::nextUSState(pcg32_fast& random) {
   return US_STATES[random() % US_STATES.size()];
 }
 
-std::string PersonGenerator::nextUSCity(std::mt19937& random) {
+std::string PersonGenerator::nextUSCity(pcg32_fast& random) {
   return US_CITIES[random() % US_CITIES.size()];
 }
 
-std::string PersonGenerator::nextPersonName(std::mt19937& random) {
+std::string PersonGenerator::nextPersonName(pcg32_fast& random) {
   return FIRST_NAMES[random() % FIRST_NAMES.size()] + " " +
          LAST_NAMES[random() % LAST_NAMES.size()];
 }
 
-std::string PersonGenerator::nextEmail(std::mt19937& random) {
+std::string PersonGenerator::nextEmail(pcg32_fast& random) {
   return StringsGenerator::nextString(random, 7) + "@" +
       StringsGenerator::nextString(random, 5) + ".com";
 }
@@ -130,7 +130,7 @@ std::vector<std::string> PersonGenerator::createCreditCardStrings() {
   return creditCardStrings;
 }
 
-std::string PersonGenerator::nextCreditCard(std::mt19937& random) {
+std::string PersonGenerator::nextCreditCard(pcg32_fast& random) {
   std::stringstream sb;
   for (int i = 0; i < 4; i++) {
     if (i > 0) {

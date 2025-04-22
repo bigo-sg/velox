@@ -18,23 +18,26 @@
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 
 #include <boost/algorithm/string/trim.hpp>
+#include <fmt/format.h>
 #include <cmath>
 
 namespace facebook::velox::connector::nexmark {
 
 // Initialize static member
-static std::mt19937 staticRandomGenerator;
+static pcg32_fast staticRandomGenerator;
 const std::string StringsGenerator::REUSABLE_EXTRA_STRING =
     StringsGenerator::getReusableExtraString(
         staticRandomGenerator,
         1024 * 1024);
 
-std::string StringsGenerator::nextString(std::mt19937& random, int maxLength) {
+std::string StringsGenerator::nextString(
+    pcg32_fast& random,
+    int maxLength) {
   return nextString(random, maxLength, ' ');
 }
 
-FOLLY_NOINLINE std::string StringsGenerator::nextString(
-    std::mt19937& random,
+std::string StringsGenerator::nextString(
+    pcg32_fast& random,
     int maxLength,
     char special) {
   int len = MIN_STRING_LENGTH + getNextInt(random, maxLength - MIN_STRING_LENGTH);
@@ -54,7 +57,7 @@ FOLLY_NOINLINE std::string StringsGenerator::nextString(
   return result;
 }
 
-std::string StringsGenerator::getReusableExtraString(std::mt19937& random, int length) {
+std::string StringsGenerator::getReusableExtraString(pcg32_fast& random, int length) {
   std::string result(length, 0);
   int rnd = 0;
   int n = 0; // number of random characters left in rnd
@@ -72,7 +75,7 @@ std::string StringsGenerator::getReusableExtraString(std::mt19937& random, int l
 }
 
 std::string_view StringsGenerator::nextExactString(
-    std::mt19937& random,
+    pcg32_fast& random,
     int length) {
   if (length >= REUSABLE_EXTRA_STRING.length() / 2) {
     throw std::runtime_error(fmt::format(
@@ -86,7 +89,7 @@ std::string_view StringsGenerator::nextExactString(
 }
 
 std::string_view StringsGenerator::nextExtra(
-    std::mt19937& random,
+    pcg32_fast& random,
     int currentSize,
     int desiredAverageSize) {
   if (currentSize > desiredAverageSize) {

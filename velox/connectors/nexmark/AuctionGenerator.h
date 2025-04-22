@@ -17,11 +17,11 @@
 #pragma once
 
 #include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
 
-#include <random>
 #include <string>
 
 namespace facebook::velox::connector::nexmark {
@@ -121,7 +121,6 @@ struct Auction {
         });
   }
 
-  // 创建 Auction Vector
   static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
     auto idVector = BaseVector::create(BIGINT(), rows, pool);
     auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
@@ -213,7 +212,7 @@ class AuctionGenerator {
   static Auction nextAuction(
       int64_t eventsCountSoFar,
       int64_t eventId,
-      std::mt19937& random,
+      pcg32_fast& random,
       int64_t timestamp,
       const GeneratorConfig& config);
 
@@ -221,21 +220,21 @@ class AuctionGenerator {
    * Return the last valid auction id (ignoring FIRST_AUCTION_ID).
    * Will be the current auction id if due to generate an auction.
    */
-  FOLLY_NOINLINE static int64_t lastBase0AuctionId(
+  static int64_t lastBase0AuctionId(
       const GeneratorConfig& config,
       int64_t eventId);
 
   /** Return a random auction id (base 0). */
   static int64_t nextBase0AuctionId(
       int64_t nextEventId,
-      std::mt19937& random,
+      pcg32_fast& random,
       const GeneratorConfig& config);
 
  private:
   /** Return a random time delay, in milliseconds, for length of auctions. */
   static int64_t nextAuctionLengthMs(
       int64_t eventsCountSoFar,
-      std::mt19937& random,
+      pcg32_fast& random,
       int64_t timestamp,
       const GeneratorConfig& config);
 };

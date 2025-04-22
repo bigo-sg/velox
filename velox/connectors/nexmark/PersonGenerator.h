@@ -16,13 +16,13 @@
 
 #pragma once
 #include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
 
 #include <string>
 #include <vector>
-#include <random>
 
 namespace facebook::velox::connector::nexmark {
 
@@ -160,14 +160,14 @@ public:
   /** Generate and return a random person with next available id. */
   static Person nextPerson(
       int64_t nextEventId,
-      std::mt19937& random,
+      pcg32_fast& random,
       int64_t timestamp,
       const GeneratorConfig & config);
 
   /** Return a random person id (base 0). */
   static int64_t nextBase0PersonId(
       int64_t eventId,
-      std::mt19937& random,
+      pcg32_fast& random,
       const GeneratorConfig& config);
 
   /**
@@ -180,19 +180,19 @@ public:
 
 private:
   /** Return a random US state. */
-  static std::string nextUSState(std::mt19937& random);
+  static std::string nextUSState(pcg32_fast& random);
 
   /** Return a random US city. */
-  static std::string nextUSCity(std::mt19937& random);
+  static std::string nextUSCity(pcg32_fast& random);
 
   /** Return a random person name. */
-  static std::string nextPersonName(std::mt19937& random);
+  static std::string nextPersonName(pcg32_fast& random);
 
   /** Return a random email address. */
-  static std::string nextEmail(std::mt19937& random);
+  static std::string nextEmail(pcg32_fast& random);
 
   /** Return a random credit card number. */
-  static std::string nextCreditCard(std::mt19937& random);
+  static std::string nextCreditCard(pcg32_fast& random);
 
   /** Create an array of credit card strings. */
   static std::vector<std::string> createCreditCardStrings();

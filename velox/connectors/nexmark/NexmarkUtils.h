@@ -16,13 +16,9 @@
 
 #pragma once
 
-#include "velox/type/Type.h"
-#include "velox/vector/ComplexVector.h"
-#include "velox/vector/FlatVector.h"
+#include "velox/connectors/nexmark/pcg_random.hpp"
 
 #include <string>
-#include <vector>
-#include <random>
 
 namespace facebook::velox::connector::nexmark {
 inline std::string formatDateTime(int64_t dateTime) {
@@ -46,7 +42,7 @@ inline std::string formatDateTime(int64_t dateTime) {
 /// return a random integer in [0, bound)
 /// This is a replacement for the Java's Random.nextInt(int bound) method.
 /// It is used instead of std::uniform_int_distribution<int> for performance gain.
-inline int getNextInt(std::mt19937& random, int bound) {
+inline int getNextInt(pcg32_fast& random, int bound) {
   int m = bound - 1;
   int r = static_cast<int>(random());
   if ((bound & m) == 0) {
