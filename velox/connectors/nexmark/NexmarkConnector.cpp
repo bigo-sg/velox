@@ -15,13 +15,13 @@
  */
 
 #include "velox/connectors/nexmark/NexmarkConnector.h"
+#include "velox/vector/VectorPrinter.h"
 
 namespace facebook::velox::connector::nexmark {
 
 folly::dynamic NexmarkTableHandle::serialize() const {
   folly::dynamic obj = ConnectorTableHandle::serializeBase("NexmarkTableHandle");
-  //obj["nexmarkSeed"] = nexmarkSeed;
-
+  obj["config"] = config_.serialize();
   return obj;
 }
 
@@ -29,11 +29,10 @@ ConnectorTableHandlePtr NexmarkTableHandle::create(
     const folly::dynamic& obj,
     void* context) {
   auto connectorId = obj["connectorId"].asString();
+  auto config = GeneratorConfig::deserialize(obj["config"]);
 
-  NexmarkGenerator::Options options;
   return std::make_shared<const NexmarkTableHandle>(
-      connectorId,
-      options);
+      connectorId, std::move(config));
 }
 
 void NexmarkTableHandle::registerSerDe() {
@@ -53,7 +52,7 @@ NexmarkDataSource::NexmarkDataSource(
       "TableHandle must be an instance of NexmarkTableHandle");
 
   nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
-      nexmarkTableHandle->nexmarkOptions, pool_);
+      nexmarkTableHandle->config_, 0, -1, pool_);
 }
 
 void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
@@ -75,16 +74,30 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
       currentSplit_, "No split to process. Call addSplit() first.");
 
   // Split exhausted.
-  if (splitOffset_ >= splitEnd_) {
+  if (splitOffset_ >= splitEnd_ || !nexmarkGenerator_->hasNext()) {
     return nullptr;
   }
 
   const size_t outputRows = std::min(size, (splitEnd_ - splitOffset_));
-  splitOffset_ += outputRows;
-
-  auto outputVector = nexmarkGenerator_->nextEvent(outputRows);
+  auto pair = nexmarkGenerator_->nextBatch(outputRows);
+  auto [outputVector, maxWallclockTimestamp] = std::move(pair);
+  splitOffset_ += outputVector->size();
   completedRows_ += outputVector->size();
   completedBytes_ += outputVector->retainedSize();
+
+  // Wait until reach the max wallclock timestamp.
+  auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch())
+      .count();
+  if (maxWallclockTimestamp > nowMs) {
+    // std::cout << "maxWallclockTimestamp:" << maxWallclockTimestamp
+    //           << ",nowMs:" << nowMs << ",wait:" << maxWallclockTimestamp - nowMs
+    //           << std::endl;
+    std::this_thread::sleep_for(
+        std::chrono::milliseconds(maxWallclockTimestamp - nowMs));
+  }
+
+  // std::cout << facebook::velox::printVector(*outputVector) << std::endl;
   return outputVector;
 }
 

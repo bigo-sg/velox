@@ -27,16 +27,13 @@ namespace facebook::velox::connector::nexmark {
 ///
 /// NexmarkConnectorSplit lets clients specify how many rows are expected to be
 /// generated.
-
 class NexmarkTableHandle : public ConnectorTableHandle {
  public:
-  explicit NexmarkTableHandle(
-      std::string connectorId,
-      NexmarkGenerator::Options options)
+  explicit NexmarkTableHandle(std::string connectorId, GeneratorConfig config)
       : ConnectorTableHandle(std::move(connectorId)),
-        nexmarkOptions(options) {}
+        config_(std::move(config)) {}
 
-  ~NexmarkTableHandle() override {}
+  ~NexmarkTableHandle() override = default;
 
   std::string toString() const override {
     return "nexmark-table";
@@ -50,7 +47,7 @@ class NexmarkTableHandle : public ConnectorTableHandle {
 
   static void registerSerDe();
 
-  const NexmarkGenerator::Options nexmarkOptions;
+  const GeneratorConfig config_;
 };
 
 class NexmarkDataSource : public DataSource {

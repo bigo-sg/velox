@@ -15,24 +15,46 @@
  */
 #pragma once
 
-#include "velox/common/config/Config.h"
+#include "velox/connectors/nexmark/AuctionGenerator.h"
+#include "velox/connectors/nexmark/BidGenerator.h"
+#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/PersonGenerator.h"
 
 namespace facebook::velox::connector::nexmark {
 
 /// `NexmarkGenerator` is the c++ implements of Flink NexmarkGenerator.
 /// https://github.com/nexmark/nexmark/blob/master/nexmark-flink/src/main/java/com/github/nexmark/flink/generator/NexmarkGenerator.java
-
 class NexmarkGenerator {
  public:
-  struct Options {
-  };
+  NexmarkGenerator(
+      const GeneratorConfig& config,
+      int64_t eventsCountSoFar,
+      int64_t wallclockBaseTime,
+      memory::MemoryPool* pool)
+      : config_(config),
+        eventsCountSoFar_(eventsCountSoFar),
+        wallclockBaseTime_(wallclockBaseTime),
+        pool_(pool) {}
 
-  NexmarkGenerator(NexmarkGenerator::Options options)
-      : nexmarkOptions(options) {}
+  ~NexmarkGenerator() = default;
 
-  VectorPtr nextEvent(int rows);
+  bool hasNext() const {
+    return eventsCountSoFar_ < config_.maxEvents;
+  }
 
-  const NexmarkGenerator::Options nexmarkOptions;
+  NextEvent next();
+
+  std::pair<RowVectorPtr, int64_t> nextBatch(size_t rows);
+
+ private:
+  int64_t getNextEventId(int64_t eventsCountSoFar) const;
+
+  const GeneratorConfig config_;
+  int64_t eventsCountSoFar_;
+  int64_t wallclockBaseTime_;
+  memory::MemoryPool* pool_;
+
+  pcg32_fast random_;
 };
 
 } // namespace facebook::velox::connector::nexmark

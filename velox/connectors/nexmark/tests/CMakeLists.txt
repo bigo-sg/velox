@@ -11,23 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+add_executable(velox_nexmark_connector_test NexmarkConnectorTest.cpp)
 
-velox_add_library(
-  velox_nexmark_connector 
-  OBJECT
-  StringsGenerator.cpp
-  PersonGenerator.cpp
-  BidGenerator.cpp
-  AuctionGenerator.cpp
-  NexmarkGenerator.cpp
-  GeneratorConfig.cpp
-  NexmarkConnector.cpp)
+add_test(velox_nexmark_connector_test velox_nexmark_connector_test)
 
-velox_link_libraries(
-  velox_nexmark_connector PRIVATE velox_connector)
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
-
-
+target_link_libraries(
+  velox_nexmark_connector_test
+  velox_nexmark_connector
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_aggregates
+  GTest::gtest
+  GTest::gtest_main)
