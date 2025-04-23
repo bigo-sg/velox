@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/nexmark/NexmarkConnector.h"
+#include "velox/vector/VectorPrinter.h"
 
 namespace facebook::velox::connector::nexmark {
 
@@ -89,9 +90,14 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
       std::chrono::system_clock::now().time_since_epoch())
       .count();
   if (maxWallclockTimestamp > nowMs) {
+    // std::cout << "maxWallclockTimestamp:" << maxWallclockTimestamp
+    //           << ",nowMs:" << nowMs << ",wait:" << maxWallclockTimestamp - nowMs
+    //           << std::endl;
     std::this_thread::sleep_for(
         std::chrono::milliseconds(maxWallclockTimestamp - nowMs));
   }
+
+  // std::cout << facebook::velox::printVector(*outputVector) << std::endl;
   return outputVector;
 }
 
