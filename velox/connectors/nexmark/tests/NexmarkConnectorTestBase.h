@@ -63,6 +63,22 @@ class NexmarkConnectorTestBase : public exec::test::OperatorTestBase {
     return splits;
   }
 
+  std::unique_ptr<NexmarkGenerator> makeNexmarkGenerator(
+      int64_t maxEvents) const {
+    NexmarkConfiguration nexmarkConfiguration;
+    nexmarkConfiguration.bidProportion = 46;
+    GeneratorConfig generatorConfig(
+        std::move(nexmarkConfiguration),
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count(),
+        1,
+        maxEvents,
+        1);
+
+    return std::make_unique<NexmarkGenerator>(generatorConfig, 0, -1, pool());
+  }
+
   std::shared_ptr<NexmarkTableHandle> makeNexmarkTableHandle(int64_t maxEvents) const {
     NexmarkConfiguration configuration;
     configuration.bidProportion = 46;

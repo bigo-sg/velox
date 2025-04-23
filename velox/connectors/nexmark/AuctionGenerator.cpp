@@ -21,13 +21,86 @@
 
 namespace facebook::velox::connector::nexmark {
 
+RowVectorPtr AuctionGenerator::nextAuctionBatch(
+    size_t rows,
+    int64_t eventsCountSoFar,
+    const FlatVector<int32_t>& eventTypeVector,
+    const FlatVector<int64_t>& eventIdVector,
+    pcg32_fast& random,
+    const FlatVector<int64_t>& timestampVector,
+    const GeneratorConfig& config,
+    memory::MemoryPool* pool) {
+
+  auto auctionVector = Auction::createVector(rows, pool);
+  auto idVector = auctionVector->childAt(0)->asFlatVector<int64_t>();
+  auto nameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
+  auto descVector = auctionVector->childAt(2)->asFlatVector<StringView>();
+  auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
+  auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
+  auto dateTimeVector = auctionVector->childAt(5)->asFlatVector<Timestamp>();
+  auto expiresVector = auctionVector->childAt(6)->asFlatVector<Timestamp>();
+  auto sellerVector = auctionVector->childAt(7)->asFlatVector<int64_t>();
+  auto categoryVector = auctionVector->childAt(8)->asFlatVector<int64_t>();
+  auto extraVector = auctionVector->childAt(9)->asFlatVector<StringView>();
+
+  for (size_t i = 0; i < rows; ++i) {
+    auto eventType = static_cast<Event::Type>(eventTypeVector.valueAt(i));
+    if (Event::Type::AUCTION != eventType) {
+      auctionVector->setNull(i, true);
+      continue;
+    }
+
+    auto eventId = eventIdVector.valueAt(i);
+    auto timestamp = timestampVector.valueAt(i);
+    int64_t id =
+        lastBase0AuctionId(config, eventId) + GeneratorConfig::FIRST_AUCTION_ID;
+
+    int64_t seller;
+    // Here P(auction will be for a hot seller) = 1 - 1/hotSellersRatio.
+    if (getNextInt(random, config.getHotSellersRatio()) > 0) {
+      // Choose the first person in the batch of last HOT_SELLER_RATIO people.
+      seller = (PersonGenerator::lastBase0PersonId(config, eventId) /
+                HOT_SELLER_RATIO) *
+          HOT_SELLER_RATIO;
+    } else {
+      seller = PersonGenerator::nextBase0PersonId(eventId, random, config);
+    }
+    seller += GeneratorConfig::FIRST_PERSON_ID;
+
+    int64_t category =
+        GeneratorConfig::FIRST_CATEGORY_ID + getNextInt(random, NUM_CATEGORIES);
+    int64_t initialBid = PriceGenerator::nextPrice(random);
+    int64_t expires = timestamp +
+        nextAuctionLengthMs(eventsCountSoFar + i, random, timestamp, config);
+    std::string name = StringsGenerator::nextString(random, 20);
+    std::string desc = StringsGenerator::nextString(random, 100);
+    int64_t reserve = initialBid + PriceGenerator::nextPrice(random);
+    int currentSize = 8 + name.length() + desc.length() + 8 + 8 + 8 + 8 + 8;
+    std::string_view extra = StringsGenerator::nextExtra(
+        random, currentSize, config.getAvgAuctionByteSize());
+
+    idVector->set(i, id);
+    nameVector->set(i, StringView(name));
+    descVector->set(i, StringView(desc));
+    initialBidVector->set(i, initialBid);
+    reserveVector->set(i, reserve);
+    dateTimeVector->set(
+        i, Timestamp(timestamp / 1000, (timestamp % 1000) * 1000));
+    expiresVector->set(i, Timestamp(expires / 1000, (expires % 1000) * 1000));
+    sellerVector->set(i, seller);
+    categoryVector->set(i, category);
+    extraVector->set(i, StringView(std::move(extra)));
+  }
+
+  return auctionVector;
+}
+
 Auction AuctionGenerator::nextAuction(
     int64_t eventsCountSoFar,
     int64_t eventId,
     pcg32_fast& random,
     int64_t timestamp,
     const GeneratorConfig& config) {
-
   int64_t id = lastBase0AuctionId(config, eventId) + GeneratorConfig::FIRST_AUCTION_ID;
 
   int64_t seller;

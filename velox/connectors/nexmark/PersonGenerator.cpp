@@ -46,13 +46,14 @@ const std::vector<std::string> PersonGenerator::CREDIT_CARD_STRINGS =
 
 RowVectorPtr PersonGenerator::nextPersonBatch(
     size_t rows,
+    const FlatVector<int32_t>& eventTypeVector,
     const FlatVector<int64_t>& eventIdVector,
     pcg32_fast& random,
     const FlatVector<int64_t>& timestampVector,
     const GeneratorConfig& config,
     memory::MemoryPool* pool) {
-
   auto personVector = Person::createVector(rows, pool);
+
   auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
   auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
   auto emailVector = personVector->childAt(2)->asFlatVector<StringView>();
@@ -63,9 +64,36 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
   auto extraVector = personVector->childAt(7)->asFlatVector<StringView>();
 
   for (size_t i = 0; i < rows; ++i) {
-    Event::Type eventType = static_cast<Event::Type>(
-        eventIdVector.valueAt(i) % GeneratorConfig::NUM_EVENT_TYPES);
+    Event::Type eventType = static_cast<Event::Type>(eventIdVector.valueAt(i));
+    if (eventType != Event::Type::PERSON) {
+      personVector->setNull(i, true);
+      continue;
+    }
+
+    int64_t id = lastBase0PersonId(config, eventIdVector.valueAt(i)) +
+        GeneratorConfig::FIRST_PERSON_ID;
+    std::string name = nextPersonName(random);
+    std::string email = nextEmail(random);
+    std::string creditCard = nextCreditCard(random);
+    std::string city = nextUSCity(random);
+    std::string state = nextUSState(random);
+    int currentSize = 8 + name.length() + email.length() + creditCard.length() +
+        city.length() + state.length();
+    std::string_view extra = StringsGenerator::nextExtra(
+        random, currentSize, config.getAvgPersonByteSize());
+    int64_t timestamp = timestampVector.valueAt(i);
+
+    idVector->set(i, id);
+    nameVector->set(i, StringView(name));
+    emailVector->set(i, StringView(email));
+    creditCardVector->set(i, StringView(creditCard));
+    cityVector->set(i, StringView(city));
+    stateVector->set(i, StringView(state));
+    dateTimeVector->set(
+        i, Timestamp(timestamp / 1000, (timestamp % 1000) * 1000));
+    extraVector->set(i, StringView(std::move(extra)));
   }
+  return personVector;
 }
 
 Person PersonGenerator::nextPerson(

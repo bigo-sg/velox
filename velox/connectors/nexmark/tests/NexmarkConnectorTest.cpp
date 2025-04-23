@@ -56,7 +56,7 @@ TEST_F(NexmarkConnectorTest, testProportions) {
                   .endTableScan()
                   .partialAggregation(
                       {"event_type"}, // Group by "event_type"
-                      {"count(1)"}) // Count rows for each "event_type"
+                      {"count(*)"}) // Count rows for each "event_type"
                   .orderBy({"event_type"}, false) // Order by "event_type"
                   .planNode();
 
@@ -80,26 +80,15 @@ TEST_F(NexmarkConnectorTest, testProportions) {
   }
 }
 
-TEST(NexmarkGeneratorTest, testNextEvent) {
-  NexmarkConfiguration nexmarkConfiguration;
-  nexmarkConfiguration.bidProportion = 46;
-  GeneratorConfig generatorConfig(
-      nexmarkConfiguration,
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
-          .count(),
-      1,
-      FLAGS_numRows,
-      1);
-  NexmarkGenerator generator(generatorConfig, 0, -1);
-
+TEST_F(NexmarkConnectorTest, testNext) {
+  auto generator = makeNexmarkGenerator(FLAGS_numRows);
   int count = 0;
   int personCount = 0;
   int auctionCount = 0;
   int bidCount = 0;
 
-  while (generator.hasNext()) {
-    auto nextEvent = generator.next();
+  while (generator->hasNext()) {
+    auto nextEvent = generator->next();
     const auto & event = nextEvent.getEvent();
 
     count++;
@@ -113,8 +102,42 @@ TEST(NexmarkGeneratorTest, testNextEvent) {
       case Event::Type::BID:
         bidCount++;
         break;
-      default:
-        break;
+    }
+  }
+
+  std::cout << "Total event: " << count << std::endl;
+  std::cout << "Person event: " << personCount << std::endl;
+  std::cout << "Auction event: " << auctionCount << std::endl;
+  std::cout << "Bid event: " << bidCount << std::endl;
+}
+
+TEST_F(NexmarkConnectorTest, testNextBatch) {
+  auto generator = makeNexmarkGenerator(FLAGS_numRows);
+  int count = 0;
+  int personCount = 0;
+  int auctionCount = 0;
+  int bidCount = 0;
+
+  size_t batchSize = 8192;
+  while (generator->hasNext()) {
+    auto pair = generator->nextBatch(batchSize);
+    auto [eventVector, maxWallclockTimestamp] = pair;
+
+    count += eventVector->size();
+    auto eventTypeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
+    for (size_t i = 0; i < eventVector->size(); ++i) {
+      auto eventType = static_cast<Event::Type>(eventTypeVector->valueAt(i));
+      switch (eventType) {
+        case Event::Type::PERSON:
+          personCount++;
+          break;
+        case Event::Type::AUCTION:
+          auctionCount++;
+          break;
+        case Event::Type::BID:
+          bidCount++;
+          break;
+      }
     }
   }
 

@@ -17,6 +17,7 @@
 #pragma once
 
 #include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/Event.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
@@ -27,126 +28,6 @@
 
 namespace facebook::velox::connector::nexmark {
 
-struct Bid {
-  /** Id of auction this bid is for. */
-  int64_t auction; // foreign key: Auction.id
-
-  /** Id of person bidding in auction. */
-  int64_t bidder; // foreign key: Person.id
-
-  /** Price of bid, in cents. */
-  int64_t price;
-
-  /** The channel introduced this bidding. */
-  std::string channel;
-
-  /** The url of this bid. */
-  std::string url;
-
-  /**
-   * Instant at which bid was made (ms since epoch). NOTE: This may be earlier
-   * than the system's event time.
-   */
-  int64_t dateTime;
-
-  /** Additional arbitrary payload for performance testing. */
-  std::string_view extra;
-
-  Bid(
-      int64_t auction,
-      int64_t bidder,
-      int64_t price,
-      std::string channel,
-      std::string url,
-      int64_t dateTime,
-      std::string_view extra)
-      : auction(auction),
-        bidder(bidder),
-        price(price),
-        channel(std::move(channel)),
-        url(std::move(url)),
-        dateTime(dateTime),
-        extra(std::move(extra)) {}
-
-  std::string toString() const {
-    return "Bid{auction=" + std::to_string(auction) +
-        ", bidder=" + std::to_string(bidder) +
-        ", price=" + std::to_string(price) + ", channel=" + channel +
-        ", url=" + url + ", dateTime=" + formatDateTime(dateTime) +
-        ", extra='" + std::string(extra) + '\'' + '}';
-  }
-
-  // Bid RowType
-  static TypePtr createType() {
-    return ROW(
-        {
-            "auction", // Auction ID
-            "bidder", // Bidder ID
-            "price", // Price
-            "channel", // Channel
-            "url", // Url
-            "dateTime", // Timestamp
-            "extra" // Additional information
-        },
-        {
-            BIGINT(), // auction
-            BIGINT(), // bidder
-            BIGINT(), // price
-            VARCHAR(), // channel
-            VARCHAR(), // url
-            TIMESTAMP(), // timestamp
-            VARCHAR() // extra
-        });
-  }
-
-  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
-    auto auctionVector = BaseVector::create(BIGINT(), rows, pool);
-    auto bidderVector = BaseVector::create(BIGINT(), rows, pool);
-    auto priceVector = BaseVector::create(BIGINT(), rows, pool);
-    auto channelVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto urlVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
-    auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
-
-    return std::make_shared<RowVector>(
-        pool,
-        createType(),
-        nullptr,
-        rows,
-        std::vector<VectorPtr>{
-            auctionVector,
-            bidderVector,
-            priceVector,
-            channelVector,
-            urlVector,
-            dateTimeVector,
-            extraVector});
-  }
-
-  static void fillVector(RowVector* bidVector, int index, const Bid* bid) {
-    if (!bid) {
-      bidVector->setNull(index, true);
-      return;
-    }
-
-    auto auctionVector = bidVector->childAt(0)->asFlatVector<int64_t>();
-    auto bidderVector = bidVector->childAt(1)->asFlatVector<int64_t>();
-    auto priceVector = bidVector->childAt(2)->asFlatVector<int64_t>();
-    auto channelVector = bidVector->childAt(3)->asFlatVector<StringView>();
-    auto urlVector = bidVector->childAt(4)->asFlatVector<StringView>();
-    auto dateTimeVector = bidVector->childAt(5)->asFlatVector<Timestamp>();
-    auto extraVector = bidVector->childAt(6)->asFlatVector<StringView>();
-
-    auctionVector->set(index, bid->auction);
-    bidderVector->set(index, bid->bidder);
-    priceVector->set(index, bid->price);
-    channelVector->set(index, StringView(bid->channel));
-    urlVector->set(index, StringView(bid->url));
-    dateTimeVector->set(
-        index, Timestamp(bid->dateTime / 1000, (bid->dateTime) % 1000 * 1000));
-    extraVector->set(index, StringView(bid->extra));
-  }
-};
 
 class GeneratorConfig;
 
@@ -160,10 +41,12 @@ class BidGenerator {
 
   static RowVectorPtr nextBidBatch(
       size_t rows,
+      const FlatVector<int32_t>& eventTypeVector,
       const FlatVector<int64_t>& eventIdVector,
       pcg32_fast& random,
       const FlatVector<int64_t>& timestampVector,
-      const GeneratorConfig& config);
+      const GeneratorConfig& config,
+      memory::MemoryPool* pool);
 
  private:
   static std::string getBaseUrl(pcg32_fast& random);

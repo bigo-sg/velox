@@ -18,6 +18,7 @@
 
 #include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/Event.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/type/Type.h"
@@ -27,168 +28,6 @@
 #include <string>
 
 namespace facebook::velox::connector::nexmark {
-
-/** An auction submitted by a person. */
-struct Auction {
-  /** Id of auction. */
-  int64_t id; // primary key
-
-  /** Extra auction properties. */
-  std::string itemName;
-
-  std::string description;
-
-  /** Initial bid price, in cents. */
-  int64_t initialBid;
-
-  /** Reserve price, in cents. */
-  int64_t reserve;
-
-  int64_t dateTime;
-
-  /** When does auction expire? (ms since epoch). Bids at or after this time are
-   * ignored. */
-  int64_t expires;
-
-  /** Id of person who instigated auction. */
-  int64_t seller; // foreign key: Person.id
-
-  /** Id of category auction is listed under. */
-  int64_t category; // foreign key: Category.id
-
-  /** Additional arbitrary payload for performance testing. */
-  std::string_view extra;
-
-  /** Constructor with all fields */
-  Auction(
-      int64_t id,
-      std::string itemName,
-      std::string description,
-      int64_t initialBid,
-      int64_t reserve,
-      int64_t dateTime,
-      int64_t expires,
-      int64_t seller,
-      int64_t category,
-      std::string_view extra)
-      : id(id),
-        itemName(std::move(itemName)),
-        description(std::move(description)),
-        initialBid(initialBid),
-        reserve(reserve),
-        dateTime(dateTime),
-        expires(expires),
-        seller(seller),
-        category(category),
-        extra(std::move(extra)) {}
-
-        std::string toString() const {
-          return "Auction{id=" + std::to_string(id) + ", itemName='" +
-              itemName + '\'' + ", description='" + description + '\'' +
-              ", initialBid=" + std::to_string(initialBid) +
-              ", reserve=" + std::to_string(reserve) +
-              ", dateTime=" + formatDateTime(dateTime) +
-              ", expires=" + formatDateTime(expires) +
-              ", seller=" + std::to_string(seller) +
-              ", category=" + std::to_string(category) + ", extra='" +
-              std::string(extra) + '\'' + '}';
-        }
-
-  // Auction RowType
-  static TypePtr createType() {
-    return ROW(
-        {
-            "id", // Auction ID
-            "name", // Auction name
-            "description", // Description
-            "initialBid", // Initial bid
-            "reserve", // Reserve price
-            "dateTime", // Timestamp
-            "expires", // Expiration time
-            "seller", // Seller ID
-            "category", // Category
-            "extra" // Additional information
-        },
-        {
-            BIGINT(), // id
-            VARCHAR(), // name
-            VARCHAR(), // description
-            BIGINT(), // initialBid
-            BIGINT(), // reserve
-            TIMESTAMP(), // timestamp
-            TIMESTAMP (), // expires
-            BIGINT(), // seller
-            BIGINT(), // category
-            VARCHAR() // extra
-        });
-  }
-
-  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
-    auto idVector = BaseVector::create(BIGINT(), rows, pool);
-    auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto descVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto initialBidVector = BaseVector::create(BIGINT(), rows, pool);
-    auto reserveVector = BaseVector::create(BIGINT(), rows, pool);
-    auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
-    auto expiresVector = BaseVector::create(TIMESTAMP(), rows, pool);
-    auto sellerVector = BaseVector::create(BIGINT(), rows, pool);
-    auto categoryVector = BaseVector::create(BIGINT(), rows, pool);
-    auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
-
-    return std::make_shared<RowVector>(
-        pool,
-        createType(),
-        nullptr,
-        rows,
-        std::vector<VectorPtr>{
-            idVector,
-            nameVector,
-            descVector,
-            initialBidVector,
-            reserveVector,
-            dateTimeVector,
-            expiresVector,
-            sellerVector,
-            categoryVector,
-            extraVector});
-  }
-
-  static void fillVector(
-      RowVector* auctionVector,
-      int index,
-      const Auction* auction) {
-    if (!auction) {
-      auctionVector->setNull(index, true);
-      return;
-    }
-
-    auto idVector = auctionVector->childAt(0)->asFlatVector<int64_t>();
-    auto nameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
-    auto descVector = auctionVector->childAt(2)->asFlatVector<StringView>();
-    auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
-    auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
-    auto dateTimeVector = auctionVector->childAt(5)->asFlatVector<Timestamp>();
-    auto expiresVector = auctionVector->childAt(6)->asFlatVector<Timestamp>();
-    auto sellerVector = auctionVector->childAt(7)->asFlatVector<int64_t>();
-    auto categoryVector = auctionVector->childAt(8)->asFlatVector<int64_t>();
-    auto extraVector = auctionVector->childAt(9)->asFlatVector<StringView>();
-
-    idVector->set(index, auction->id);
-    nameVector->set(index, StringView(auction->itemName));
-    descVector->set(index, StringView(auction->description));
-    initialBidVector->set(index, auction->initialBid);
-    reserveVector->set(index, auction->reserve);
-    dateTimeVector->set(
-        index,
-        Timestamp(auction->dateTime / 1000, (auction->dateTime) % 1000 * 1000));
-    expiresVector->set(
-        index,
-        Timestamp(auction->expires / 1000, (auction->expires) % 1000 * 1000));
-    sellerVector->set(index, auction->seller);
-    categoryVector->set(index, auction->category);
-    extraVector->set(index, StringView(auction->extra));
-  }
-};
 
 class GeneratorConfig;
 
@@ -221,10 +60,12 @@ class AuctionGenerator {
   static RowVectorPtr nextAuctionBatch(
       size_t rows,
       int64_t eventsCountSoFar,
+      const FlatVector<int32_t>& eventTypeVector,
       const FlatVector<int64_t>& eventIdVector,
       pcg32_fast& random,
       const FlatVector<int64_t>& timestampVector,
-      const GeneratorConfig& config);
+      const GeneratorConfig& config,
+      memory::MemoryPool* pool);
 
   /**
    * Return the last valid auction id (ignoring FIRST_AUCTION_ID).
