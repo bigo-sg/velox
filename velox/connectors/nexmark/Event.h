@@ -274,40 +274,6 @@ struct Auction {
             categoryVector,
             extraVector});
   }
-
-  static void
-  fillVector(RowVector* auctionVector, int index, const Auction* auction) {
-    if (!auction) {
-      auctionVector->setNull(index, true);
-      return;
-    }
-
-    auto idVector = auctionVector->childAt(0)->asFlatVector<int64_t>();
-    auto nameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
-    auto descVector = auctionVector->childAt(2)->asFlatVector<StringView>();
-    auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
-    auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
-    auto dateTimeVector = auctionVector->childAt(5)->asFlatVector<Timestamp>();
-    auto expiresVector = auctionVector->childAt(6)->asFlatVector<Timestamp>();
-    auto sellerVector = auctionVector->childAt(7)->asFlatVector<int64_t>();
-    auto categoryVector = auctionVector->childAt(8)->asFlatVector<int64_t>();
-    auto extraVector = auctionVector->childAt(9)->asFlatVector<StringView>();
-
-    idVector->set(index, auction->id);
-    nameVector->set(index, StringView(auction->itemName));
-    descVector->set(index, StringView(auction->description));
-    initialBidVector->set(index, auction->initialBid);
-    reserveVector->set(index, auction->reserve);
-    dateTimeVector->set(
-        index,
-        Timestamp(auction->dateTime / 1000, (auction->dateTime) % 1000 * 1000));
-    expiresVector->set(
-        index,
-        Timestamp(auction->expires / 1000, (auction->expires) % 1000 * 1000));
-    sellerVector->set(index, auction->seller);
-    categoryVector->set(index, auction->category);
-    extraVector->set(index, StringView(auction->extra));
-  }
 };
 
 struct Bid {
@@ -404,30 +370,6 @@ struct Bid {
             dateTimeVector,
             extraVector});
   }
-
-  static void fillVector(RowVector* bidVector, int index, const Bid* bid) {
-    if (!bid) {
-      bidVector->setNull(index, true);
-      return;
-    }
-
-    auto auctionVector = bidVector->childAt(0)->asFlatVector<int64_t>();
-    auto bidderVector = bidVector->childAt(1)->asFlatVector<int64_t>();
-    auto priceVector = bidVector->childAt(2)->asFlatVector<int64_t>();
-    auto channelVector = bidVector->childAt(3)->asFlatVector<StringView>();
-    auto urlVector = bidVector->childAt(4)->asFlatVector<StringView>();
-    auto dateTimeVector = bidVector->childAt(5)->asFlatVector<Timestamp>();
-    auto extraVector = bidVector->childAt(6)->asFlatVector<StringView>();
-
-    auctionVector->set(index, bid->auction);
-    bidderVector->set(index, bid->bidder);
-    priceVector->set(index, bid->price);
-    channelVector->set(index, StringView(bid->channel));
-    urlVector->set(index, StringView(bid->url));
-    dateTimeVector->set(
-        index, Timestamp(bid->dateTime / 1000, (bid->dateTime) % 1000 * 1000));
-    extraVector->set(index, StringView(bid->extra));
-  }
 };
 
 /// Represents an event containing either a Person, an Auction, or a Bid.
@@ -513,19 +455,6 @@ class Event {
         rows,
         std::vector<VectorPtr>{
             typeVector, personVector, auctionVector, bidVector});
-  }
-
-  static void
-  fillVector(RowVector* eventVector, int index, const Event& event) {
-    auto typeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
-    auto personVector = eventVector->childAt(1)->as<RowVector>();
-    auto auctionVector = eventVector->childAt(2)->as<RowVector>();
-    auto bidVector = eventVector->childAt(3)->as<RowVector>();
-
-    typeVector->set(index, static_cast<int32_t>(event.getType()));
-    Person::fillVector(personVector, index, event.getPerson());
-    Auction::fillVector(auctionVector, index, event.getAuction());
-    Bid::fillVector(bidVector, index, event.getBid());
   }
 
  private:

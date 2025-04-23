@@ -37,12 +37,33 @@ public:
   /** Number of yet-to-be-created people and auction ids allowed. */
   static constexpr int PERSON_ID_LEAD = 10;
 
-  /** Generate and return a random person with next available id. */
-  static Person nextPerson(
+  FOLLY_ALWAYS_INLINE static Person nextPerson(
       int64_t nextEventId,
       pcg32_fast& random,
       int64_t timestamp,
-      const GeneratorConfig & config);
+      const GeneratorConfig& config) {
+    int64_t id = lastBase0PersonId(config, nextEventId) +
+        GeneratorConfig::FIRST_PERSON_ID;
+    std::string name = nextPersonName(random);
+    std::string email = nextEmail(random);
+    std::string creditCard = nextCreditCard(random);
+    std::string city = nextUSCity(random);
+    std::string state = nextUSState(random);
+    int currentSize = 8 + name.length() + email.length() + creditCard.length() +
+        city.length() + state.length();
+    std::string_view extra = StringsGenerator::nextExtra(
+        random, currentSize, config.getAvgPersonByteSize());
+
+    return Person(
+        id,
+        std::move(name),
+        std::move(email),
+        std::move(creditCard),
+        std::move(city),
+        std::move(state),
+        timestamp,
+        std::move(extra));
+  }
 
   static RowVectorPtr nextPersonBatch(
       size_t rows,

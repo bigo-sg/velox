@@ -16,11 +16,14 @@
 
 #pragma once
 
-#include "velox/connectors/nexmark/GeneratorConfig.h"
-#include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/pcg_random.hpp"
+#include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/LongGenerator.h"
+#include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/PersonGenerator.h"
+#include "velox/connectors/nexmark/PriceGenerator.h"
+#include "velox/connectors/nexmark/StringsGenerator.h"
+#include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
@@ -50,12 +53,51 @@ class AuctionGenerator {
   static constexpr int HOT_SELLER_RATIO = 100;
 
   /** Generate and return a random auction with next available id. */
-  static Auction nextAuction(
+  FOLLY_ALWAYS_INLINE static Auction nextAuction(
       int64_t eventsCountSoFar,
       int64_t eventId,
       pcg32_fast& random,
       int64_t timestamp,
-      const GeneratorConfig& config);
+      const GeneratorConfig& config) {
+    int64_t id =
+        lastBase0AuctionId(config, eventId) + GeneratorConfig::FIRST_AUCTION_ID;
+
+    int64_t seller;
+    // Here P(auction will be for a hot seller) = 1 - 1/hotSellersRatio.
+    if (getNextInt(random, config.getHotSellersRatio()) > 0) {
+      // Choose the first person in the batch of last HOT_SELLER_RATIO people.
+      seller = (PersonGenerator::lastBase0PersonId(config, eventId) /
+                HOT_SELLER_RATIO) *
+          HOT_SELLER_RATIO;
+    } else {
+      seller = PersonGenerator::nextBase0PersonId(eventId, random, config);
+    }
+    seller += GeneratorConfig::FIRST_PERSON_ID;
+
+    int64_t category =
+        GeneratorConfig::FIRST_CATEGORY_ID + getNextInt(random, NUM_CATEGORIES);
+    int64_t initialBid = PriceGenerator::nextPrice(random);
+    int64_t expires = timestamp +
+        nextAuctionLengthMs(eventsCountSoFar, random, timestamp, config);
+    std::string name = StringsGenerator::nextString(random, 20);
+    std::string desc = StringsGenerator::nextString(random, 100);
+    int64_t reserve = initialBid + PriceGenerator::nextPrice(random);
+    int currentSize = 8 + name.length() + desc.length() + 8 + 8 + 8 + 8 + 8;
+    std::string_view extra = StringsGenerator::nextExtra(
+        random, currentSize, config.getAvgAuctionByteSize());
+
+    return Auction(
+        id,
+        std::move(name),
+        std::move(desc),
+        initialBid,
+        reserve,
+        timestamp,
+        expires,
+        seller,
+        category,
+        std::move(extra));
+  }
 
   static RowVectorPtr nextAuctionBatch(
       size_t rows,
