@@ -16,8 +16,13 @@
 
 #pragma once
 
-#include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/AuctionGenerator.h"
 #include "velox/connectors/nexmark/Event.h"
+#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkUtils.h"
+#include "velox/connectors/nexmark/PersonGenerator.h"
+#include "velox/connectors/nexmark/PriceGenerator.h"
+#include "velox/connectors/nexmark/StringsGenerator.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
@@ -33,12 +38,6 @@ class GeneratorConfig;
 
 class BidGenerator {
  public:
-  static Bid nextBid(
-      int64_t eventId,
-      pcg32_fast& random,
-      int64_t timestamp,
-      const GeneratorConfig& config);
-
   static RowVectorPtr nextBidBatch(
       size_t rows,
       const FlatVector<int32_t>& eventTypeVector,
@@ -48,11 +47,73 @@ class BidGenerator {
       const GeneratorConfig& config,
       memory::MemoryPool* pool);
 
+  FOLLY_ALWAYS_INLINE static Bid nextBid(
+      int64_t eventId,
+      pcg32_fast& random,
+      int64_t timestamp,
+      const GeneratorConfig& config) {
+    int64_t auction;
+    if (random() % config.getHotAuctionRatio() > 0) {
+      auction = (AuctionGenerator::lastBase0AuctionId(config, eventId) /
+                 HOT_AUCTION_RATIO) *
+          HOT_AUCTION_RATIO;
+    } else {
+      auction = AuctionGenerator::nextBase0AuctionId(eventId, random, config);
+    }
+    auction += GeneratorConfig::FIRST_AUCTION_ID;
+
+    int64_t bidder;
+    if (random() % config.getHotBiddersRatio() > 0) {
+      bidder = (PersonGenerator::lastBase0PersonId(config, eventId) /
+                HOT_BIDDER_RATIO) *
+              HOT_BIDDER_RATIO +
+          1;
+    } else {
+      bidder = PersonGenerator::nextBase0PersonId(eventId, random, config);
+    }
+    bidder += GeneratorConfig::FIRST_PERSON_ID;
+
+    int64_t price = PriceGenerator::nextPrice(random);
+
+    std::string channel;
+    std::string url;
+    if (random() % HOT_CHANNELS_RATIO > 0) {
+      int i = random() % HOT_CHANNELS.size();
+      channel = HOT_CHANNELS[i];
+      url = getBaseUrl(random);
+    } else {
+      const auto& channelAndUrl = getNextChannelAndUrl(random);
+      channel = channelAndUrl.first;
+      url = channelAndUrl.second;
+    }
+
+    bidder += GeneratorConfig::FIRST_PERSON_ID;
+
+    std::string_view extra =
+        StringsGenerator::nextExtra(random, 32, config.getAvgBidByteSize());
+
+    return Bid(
+        auction,
+        bidder,
+        price,
+        std::move(channel),
+        std::move(url),
+        timestamp,
+        std::move(extra));
+  }
+
  private:
-  static std::string getBaseUrl(pcg32_fast& random);
+  FOLLY_ALWAYS_INLINE static std::string getBaseUrl(pcg32_fast& random) {
+    return "https://www.nexmark.com/" +
+        StringsGenerator::nextString(random, 5, '_') + '/' +
+        StringsGenerator::nextString(random, 5, '_') + '/' +
+        StringsGenerator::nextString(random, 5, '_') + '/' + "item.htm?query=1";
+  }
+
   static const std::pair<std::string, std::string>& getNextChannelAndUrl(
       pcg32_fast& random);
-  static std::vector<std::pair<std::string, std::string>> createChannelUrlCache();
+  static std::vector<std::pair<std::string, std::string>>
+  createChannelUrlCache();
 
   static constexpr int HOT_AUCTION_RATIO = 100;
   static constexpr int HOT_BIDDER_RATIO = 100;

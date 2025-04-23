@@ -16,7 +16,6 @@
 
 #include "velox/connectors/nexmark/PersonGenerator.h"
 
-#include <algorithm>
 #include <iomanip>
 #include <sstream>
 
@@ -64,63 +63,29 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
   auto extraVector = personVector->childAt(7)->asFlatVector<StringView>();
 
   for (size_t i = 0; i < rows; ++i) {
-    Event::Type eventType = static_cast<Event::Type>(eventIdVector.valueAt(i));
+    Event::Type eventType =
+        static_cast<Event::Type>(eventTypeVector.valueAt(i));
     if (eventType != Event::Type::PERSON) {
       personVector->setNull(i, true);
       continue;
     }
 
-    int64_t id = lastBase0PersonId(config, eventIdVector.valueAt(i)) +
-        GeneratorConfig::FIRST_PERSON_ID;
-    std::string name = nextPersonName(random);
-    std::string email = nextEmail(random);
-    std::string creditCard = nextCreditCard(random);
-    std::string city = nextUSCity(random);
-    std::string state = nextUSState(random);
-    int currentSize = 8 + name.length() + email.length() + creditCard.length() +
-        city.length() + state.length();
-    std::string_view extra = StringsGenerator::nextExtra(
-        random, currentSize, config.getAvgPersonByteSize());
+    auto eventId = eventIdVector.valueAt(i);
     int64_t timestamp = timestampVector.valueAt(i);
+    auto person = nextPerson(eventId, random, timestamp, config);
 
-    idVector->set(i, id);
-    nameVector->set(i, StringView(name));
-    emailVector->set(i, StringView(email));
-    creditCardVector->set(i, StringView(creditCard));
-    cityVector->set(i, StringView(city));
-    stateVector->set(i, StringView(state));
+    idVector->set(i, person.id);
+    nameVector->set(i, StringView(person.name));
+    emailVector->set(i, StringView(person.emailAddress));
+    creditCardVector->set(i, StringView(person.creditCard));
+    cityVector->set(i, StringView(person.city));
+    stateVector->set(i, StringView(person.state));
     dateTimeVector->set(
-        i, Timestamp(timestamp / 1000, (timestamp % 1000) * 1000));
-    extraVector->set(i, StringView(std::move(extra)));
+        i, Timestamp(person.dateTime / 1000, (person.dateTime % 1000) * 1000));
+    extraVector->set(i, StringView(person.extra));
   }
+
   return personVector;
-}
-
-Person PersonGenerator::nextPerson(
-    int64_t nextEventId,
-    pcg32_fast& random,
-    int64_t timestamp,
-    const GeneratorConfig& config) {
-  int64_t id = lastBase0PersonId(config, nextEventId) + GeneratorConfig::FIRST_PERSON_ID;
-  std::string name = nextPersonName(random);
-  std::string email = nextEmail(random);
-  std::string creditCard = nextCreditCard(random);
-  std::string city = nextUSCity(random);
-  std::string state = nextUSState(random);
-  int currentSize = 8 + name.length() + email.length() +
-                    creditCard.length() + city.length() + state.length();
-  std::string_view extra = StringsGenerator::nextExtra(
-      random, currentSize, config.getAvgPersonByteSize());
-
-  return Person(
-      id,
-      std::move(name),
-      std::move(email),
-      std::move(creditCard),
-      std::move(city),
-      std::move(state),
-      timestamp,
-      std::move(extra));
 }
 
 std::vector<std::string> PersonGenerator::createCreditCardStrings() {
