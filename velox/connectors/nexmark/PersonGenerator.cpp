@@ -55,7 +55,7 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
 
   auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
   auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
-  auto emailVector = personVector->childAt(2)->asFlatVector<StringView>();
+  auto emailAddressVector = personVector->childAt(2)->asFlatVector<StringView>();
   auto creditCardVector = personVector->childAt(3)->asFlatVector<StringView>();
   auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
   auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
@@ -76,7 +76,7 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
 
     idVector->set(i, person.id);
     nameVector->set(i, StringView(person.name));
-    emailVector->set(i, StringView(person.emailAddress));
+    emailAddressVector->set(i, StringView(person.emailAddress));
     creditCardVector->set(i, StringView(person.creditCard));
     cityVector->set(i, StringView(person.city));
     stateVector->set(i, StringView(person.state));

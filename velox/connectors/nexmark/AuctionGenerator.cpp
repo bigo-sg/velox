@@ -30,8 +30,8 @@ RowVectorPtr AuctionGenerator::nextAuctionBatch(
 
   auto auctionVector = Auction::createVector(rows, pool);
   auto idVector = auctionVector->childAt(0)->asFlatVector<int64_t>();
-  auto nameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
-  auto descVector = auctionVector->childAt(2)->asFlatVector<StringView>();
+  auto itemNameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
+  auto descriptionVector = auctionVector->childAt(2)->asFlatVector<StringView>();
   auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
   auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
   auto dateTimeVector = auctionVector->childAt(5)->asFlatVector<Timestamp>();
@@ -53,8 +53,8 @@ RowVectorPtr AuctionGenerator::nextAuctionBatch(
         nextAuction(eventsCountSoFar + i, eventId, random, timestamp, config);
 
     idVector->set(i, auction.id);
-    nameVector->set(i, StringView(auction.itemName));
-    descVector->set(i, StringView(auction.description));
+    itemNameVector->set(i, StringView(auction.itemName));
+    descriptionVector->set(i, StringView(auction.description));
     initialBidVector->set(i, auction.initialBid);
     reserveVector->set(i, auction.reserve);
     dateTimeVector->set(

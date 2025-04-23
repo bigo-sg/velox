@@ -85,7 +85,7 @@ struct Person {
         {
             BIGINT(), // id
             VARCHAR(), // name
-            VARCHAR(), // email
+            VARCHAR(), // emailAddress
             VARCHAR(), // creditCard
             VARCHAR(), // city
             VARCHAR(), // state
@@ -97,7 +97,7 @@ struct Person {
   static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
     auto idVector = BaseVector::create(BIGINT(), rows, pool);
     auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto emailVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto emailAddressVector = BaseVector::create(VARCHAR(), rows, pool);
     auto creditCardVector = BaseVector::create(VARCHAR(), rows, pool);
     auto cityVector = BaseVector::create(VARCHAR(), rows, pool);
     auto stateVector = BaseVector::create(VARCHAR(), rows, pool);
@@ -112,41 +112,12 @@ struct Person {
         std::vector<VectorPtr>{
             idVector,
             nameVector,
-            emailVector,
+            emailAddressVector,
             creditCardVector,
             cityVector,
             stateVector,
             dateTimeVector,
             extraVector});
-  }
-
-  static void
-  fillVector(RowVector* personVector, int index, const Person* person) {
-    if (!person) {
-      personVector->setNull(index, true);
-      return;
-    }
-
-    auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
-    auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
-    auto emailVector = personVector->childAt(2)->asFlatVector<StringView>();
-    auto creditCardVector =
-        personVector->childAt(3)->asFlatVector<StringView>();
-    auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
-    auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
-    auto dateTimeVector = personVector->childAt(6)->asFlatVector<Timestamp>();
-    auto extraVector = personVector->childAt(7)->asFlatVector<StringView>();
-
-    idVector->set(index, person->id);
-    nameVector->set(index, StringView(person->name));
-    emailVector->set(index, StringView(person->emailAddress));
-    creditCardVector->set(index, StringView(person->creditCard));
-    cityVector->set(index, StringView(person->city));
-    stateVector->set(index, StringView(person->state));
-    dateTimeVector->set(
-        index,
-        Timestamp(person->dateTime / 1000, (person->dateTime) % 1000 * 1000));
-    extraVector->set(index, StringView(person->extra));
   }
 };
 
@@ -221,7 +192,7 @@ struct Auction {
     return ROW(
         {
             "id", // Auction ID
-            "name", // Auction name
+            "itemName", // Item name
             "description", // Description
             "initialBid", // Initial bid
             "reserve", // Reserve price
@@ -233,7 +204,7 @@ struct Auction {
         },
         {
             BIGINT(), // id
-            VARCHAR(), // name
+            VARCHAR(), // itemName
             VARCHAR(), // description
             BIGINT(), // initialBid
             BIGINT(), // reserve
@@ -247,8 +218,8 @@ struct Auction {
 
   static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
     auto idVector = BaseVector::create(BIGINT(), rows, pool);
-    auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto descVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto itemNameVector = BaseVector::create(VARCHAR(), rows, pool);
+    auto descriptionVector = BaseVector::create(VARCHAR(), rows, pool);
     auto initialBidVector = BaseVector::create(BIGINT(), rows, pool);
     auto reserveVector = BaseVector::create(BIGINT(), rows, pool);
     auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
@@ -264,8 +235,8 @@ struct Auction {
         rows,
         std::vector<VectorPtr>{
             idVector,
-            nameVector,
-            descVector,
+            itemNameVector,
+            descriptionVector,
             initialBidVector,
             reserveVector,
             dateTimeVector,
@@ -383,22 +354,22 @@ class Event {
       : person_(std::make_unique<Person>(std::move(person))),
         auction_(nullptr),
         bid_(nullptr),
-        type_(Type::PERSON) {}
+        eventType_(Type::PERSON) {}
 
   Event(Auction auction)
       : person_(nullptr),
         auction_(std::make_unique<Auction>(std::move(auction))),
         bid_(nullptr),
-        type_(Type::AUCTION) {}
+        eventType_(Type::AUCTION) {}
 
   Event(Bid bid)
       : person_(nullptr),
         auction_(nullptr),
         bid_(std::make_unique<Bid>(std::move(bid))),
-        type_(Type::BID) {}
+        eventType_(Type::BID) {}
 
   Type getType() const {
-    return type_;
+    return eventType_;
   }
 
   const Person* getPerson() const {
@@ -414,7 +385,7 @@ class Event {
   }
 
   std::string toString() const {
-    switch (type_) {
+    switch (eventType_) {
       case Type::PERSON:
         return person_->toString();
       case Type::AUCTION:
@@ -443,7 +414,7 @@ class Event {
   }
 
   static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
-    auto typeVector = BaseVector::create(INTEGER(), rows, pool);
+    auto eventTypeVector = BaseVector::create(INTEGER(), rows, pool);
     auto personVector = Person::createVector(rows, pool);
     auto auctionVector = Auction::createVector(rows, pool);
     auto bidVector = Bid::createVector(rows, pool);
@@ -454,14 +425,14 @@ class Event {
         nullptr,
         rows,
         std::vector<VectorPtr>{
-            typeVector, personVector, auctionVector, bidVector});
+            eventTypeVector, personVector, auctionVector, bidVector});
   }
 
  private:
   std::unique_ptr<Person> person_;
   std::unique_ptr<Auction> auction_;
   std::unique_ptr<Bid> bid_;
-  Type type_;
+  Type eventType_;
 };
 
 /// Represents the next event to be emitted, including its wallclock timestamp,

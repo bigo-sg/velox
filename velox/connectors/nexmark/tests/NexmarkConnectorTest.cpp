@@ -104,11 +104,13 @@ TEST_F(NexmarkConnectorTest, testNext) {
         break;
     }
   }
+  ASSERT_EQ(count, FLAGS_numRows);
 
-  std::cout << "Total event: " << count << std::endl;
-  std::cout << "Person event: " << personCount << std::endl;
-  std::cout << "Auction event: " << auctionCount << std::endl;
-  std::cout << "Bid event: " << bidCount << std::endl;
+  const std::vector<int64_t> expectedCounts = {
+      FLAGS_numRows / 50, FLAGS_numRows * 3 / 50, FLAGS_numRows * 46 / 50};
+  ASSERT_EQ(personCount, expectedCounts[0]);
+  ASSERT_EQ(auctionCount, expectedCounts[1]);
+  ASSERT_EQ(bidCount, expectedCounts[2]);
 }
 
 TEST_F(NexmarkConnectorTest, testNextBatch) {
@@ -141,10 +143,13 @@ TEST_F(NexmarkConnectorTest, testNextBatch) {
     }
   }
 
-  std::cout << "Total event: " << count << std::endl;
-  std::cout << "Person event: " << personCount << std::endl;
-  std::cout << "Auction event: " << auctionCount << std::endl;
-  std::cout << "Bid event: " << bidCount << std::endl;
+  ASSERT_EQ(count, FLAGS_numRows);
+
+  const std::vector<int64_t> expectedCounts = {
+      FLAGS_numRows / 50, FLAGS_numRows * 3 / 50, FLAGS_numRows * 46 / 50};
+  ASSERT_EQ(personCount, expectedCounts[0]);
+  ASSERT_EQ(auctionCount, expectedCounts[1]);
+  ASSERT_EQ(bidCount, expectedCounts[2]);
 }
 
 }
