@@ -15,12 +15,11 @@
  */
 
 #pragma once
+#include "velox/connectors/nexmark/Event.h"
 #include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/LongGenerator.h"
-#include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/StringsGenerator.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
-#include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/FlatVector.h"
 
@@ -31,128 +30,6 @@ namespace facebook::velox::connector::nexmark {
 
 class GeneratorConfig;
 
-/** A person either creating an auction or making a bid. */
-struct Person {
- public:
-  /** Id of person. */
-  int64_t id; // primary key
-
-  /** Extra person properties. */
-  std::string name;
-  std::string emailAddress;
-  std::string creditCard;
-  std::string city;
-  std::string state;
-  int64_t dateTime; // unit: ms
-
-  /** Additional arbitrary payload for performance testing. */
-  std::string_view extra;
-
-  Person(int64_t id,
-         std::string name,
-         std::string emailAddress,
-         std::string creditCard,
-         std::string city,
-         std::string state,
-         int64_t dateTime,
-         std::string_view extra)
-      : id(id),
-        name(std::move(name)),
-        emailAddress(std::move(emailAddress)),
-        creditCard(std::move(creditCard)),
-        city(std::move(city)),
-        state(std::move(state)),
-        dateTime(dateTime),
-        extra(std::move(extra)) {}
-
-  std::string toString() const {
-    return "Person{id=" + std::to_string(id) + ", name='" + name + '\'' +
-        ", emailAddress='" + emailAddress + '\'' + ", creditCard='" +
-        creditCard + '\'' + ", city='" + city + '\'' + ", state='" + state +
-        '\'' + ", dateTime=" + formatDateTime(dateTime) + ", extra='" +
-        std::string(extra) + '\'' + '}';
-  }
-
-  // Person RowType
-  static TypePtr createType() {
-    return ROW(
-        {
-            "id", // Person ID
-            "name", // Name
-            "emailAddress", // Email
-            "creditCard", // Credit Card
-            "city", // City
-            "state", // State/Province
-            "dateTime", // State/Province
-            "extra" // Extra Information
-        },
-        {
-            BIGINT(), // id
-            VARCHAR(), // name
-            VARCHAR(), // email
-            VARCHAR(), // creditCard
-            VARCHAR(), // city
-            VARCHAR(), // state
-            TIMESTAMP(), // dateTime
-            VARCHAR() // extra
-        });
-  }
-
-  static RowVectorPtr createVector(int rows, memory::MemoryPool* pool) {
-    auto idVector = BaseVector::create(BIGINT(), rows, pool);
-    auto nameVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto emailVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto creditCardVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto cityVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto stateVector = BaseVector::create(VARCHAR(), rows, pool);
-    auto dateTimeVector = BaseVector::create(TIMESTAMP(), rows, pool);
-    auto extraVector = BaseVector::create(VARCHAR(), rows, pool);
-
-    return std::make_shared<RowVector>(
-        pool,
-        createType(),
-        nullptr,
-        rows,
-        std::vector<VectorPtr>{
-            idVector,
-            nameVector,
-            emailVector,
-            creditCardVector,
-            cityVector,
-            stateVector,
-            dateTimeVector,
-            extraVector});
-  }
-
-  static void
-  fillVector(RowVector* personVector, int index, const Person* person) {
-    if (!person) {
-      personVector->setNull(index, true);
-      return;
-    }
-
-    auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
-    auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
-    auto emailVector = personVector->childAt(2)->asFlatVector<StringView>();
-    auto creditCardVector =
-        personVector->childAt(3)->asFlatVector<StringView>();
-    auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
-    auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
-    auto dateTimeVector = personVector->childAt(6)->asFlatVector<Timestamp>();
-    auto extraVector = personVector->childAt(7)->asFlatVector<StringView>();
-
-    idVector->set(index, person->id);
-    nameVector->set(index, StringView(person->name));
-    emailVector->set(index, StringView(person->emailAddress));
-    creditCardVector->set(index, StringView(person->creditCard));
-    cityVector->set(index, StringView(person->city));
-    stateVector->set(index, StringView(person->state));
-    dateTimeVector->set(
-        index,
-        Timestamp(person->dateTime / 1000, (person->dateTime) % 1000 * 1000));
-    extraVector->set(index, StringView(person->extra));
-  }
-};
 
 /** Generates people. */
 class PersonGenerator {
@@ -173,11 +50,12 @@ public:
       const FlatVector<int64_t>& eventIdVector,
       pcg32_fast& random,
       const FlatVector<int64_t>& timestampVector,
-      const GeneratorConfig& config, memory::MemoryPool* pool);
+      const GeneratorConfig& config,
+      memory::MemoryPool* pool);
 
   /**
-   * Return the last valid person id (ignoring FIRST_PERSON_ID). Will be the current person id if
-   * due to generate a person.
+   * Return the last valid person id (ignoring FIRST_PERSON_ID). Will be the
+   * current person id if due to generate a person.
    */
   FOLLY_ALWAYS_INLINE static int64_t nextBase0PersonId(
       int64_t eventId,

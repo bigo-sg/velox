@@ -31,7 +31,7 @@ std::pair<RowVectorPtr, int64_t> NexmarkGenerator::nextBatch(size_t rows) {
     maxWallclockTimestamp = std::max(maxWallclockTimestamp, wallclockTimestamp);
   }
 
-  auto typeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
+  auto concreteEventTypeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
   auto eventIdVector = BaseVector::create(BIGINT(), rows, pool_);
   auto concreteEventIdVector = eventIdVector->asFlatVector<int64_t>();
   for (size_t i = 0; i < rows; ++i) {
@@ -48,7 +48,7 @@ std::pair<RowVectorPtr, int64_t> NexmarkGenerator::nextBatch(size_t rows) {
     }
 
     concreteEventIdVector->set(i, newEventId);
-    typeVector->set(i, static_cast<int32_t>(type));
+    concreteEventTypeVector->set(i, static_cast<int32_t>(type));
   }
 
   auto adjustedEventTimestampVector = BaseVector::create(BIGINT(), rows, pool_);
@@ -63,25 +63,30 @@ std::pair<RowVectorPtr, int64_t> NexmarkGenerator::nextBatch(size_t rows) {
 
   eventVector->childAt(1) = PersonGenerator::nextPersonBatch(
       rows,
+      *concreteEventTypeVector,
       *concreteEventIdVector,
       random_,
       *concreteAdjustedEventTimestampVector,
-      config_);
+      config_,
+      pool_);
 
   eventVector->childAt(2) = AuctionGenerator::nextAuctionBatch(
       rows,
       eventsCountSoFar_,
+      *concreteEventTypeVector,
       *concreteEventIdVector,
       random_,
       *concreteAdjustedEventTimestampVector,
-      config_);
+      config_, pool_);
 
   eventVector->childAt(3) = BidGenerator::nextBidBatch(
       rows,
+      *concreteEventTypeVector,
       *concreteEventIdVector,
       random_,
       *concreteAdjustedEventTimestampVector,
-      config_);
+      config_,
+      pool_);
 
   eventsCountSoFar_ += rows;
   return {eventVector, maxWallclockTimestamp};

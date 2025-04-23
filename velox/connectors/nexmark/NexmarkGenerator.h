@@ -15,13 +15,10 @@
  */
 #pragma once
 
-#include <memory>
-
 #include "velox/connectors/nexmark/AuctionGenerator.h"
 #include "velox/connectors/nexmark/BidGenerator.h"
 #include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
-#include "velox/vector/BaseVector.h"
 
 namespace facebook::velox::connector::nexmark {
 

@@ -50,8 +50,8 @@ NexmarkDataSource::NexmarkDataSource(
       nexmarkTableHandle,
       "TableHandle must be an instance of NexmarkTableHandle");
 
-  nexmarkGenerator_ =
-      std::make_unique<NexmarkGenerator>(nexmarkTableHandle->config_, 0, -1);
+  nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
+      nexmarkTableHandle->config_, 0, -1, pool_);
 }
 
 void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
