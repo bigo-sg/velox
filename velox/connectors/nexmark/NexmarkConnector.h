@@ -29,7 +29,9 @@ namespace facebook::velox::connector::nexmark {
 /// generated.
 class NexmarkTableHandle : public ConnectorTableHandle {
  public:
-  explicit NexmarkTableHandle(std::string connectorId, GeneratorConfig config)
+  explicit NexmarkTableHandle(
+      std::string connectorId,
+      NexmarkConfiguration config)
       : ConnectorTableHandle(std::move(connectorId)),
         config_(std::move(config)) {}
 
@@ -47,7 +49,7 @@ class NexmarkTableHandle : public ConnectorTableHandle {
 
   static void registerSerDe();
 
-  const GeneratorConfig config_;
+  const NexmarkConfiguration config_;
 };
 
 class NexmarkDataSource : public DataSource {

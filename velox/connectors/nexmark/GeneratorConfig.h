@@ -215,7 +215,7 @@ class GeneratorConfig {
   static constexpr int64_t FIRST_CATEGORY_ID = 10L;
 
  private:
-  NexmarkConfiguration configuration;
+  const NexmarkConfiguration configuration;
   std::vector<double> interEventDelayUs;
   int64_t stepLengthSec;
   int64_t eventsPerEpoch;
@@ -234,7 +234,7 @@ class GeneratorConfig {
   int64_t epochPeriodMs;
 
   GeneratorConfig(
-      NexmarkConfiguration configuration_,
+      const NexmarkConfiguration& configuration_,
       int64_t baseTime_,
       int64_t firstEventId_,
       int64_t maxEventsOrZero_,

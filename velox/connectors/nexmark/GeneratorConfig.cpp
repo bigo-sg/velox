@@ -22,12 +22,12 @@
 namespace facebook::velox::connector::nexmark {
 
 GeneratorConfig::GeneratorConfig(
-    NexmarkConfiguration configuration_,
+    const NexmarkConfiguration & configuration_,
     int64_t baseTime_,
     int64_t firstEventId_,
     int64_t maxEventsOrZero_,
     int64_t firstEventNumber_)
-    : configuration(std::move(configuration_)),
+    : configuration(configuration_),
       baseTime(baseTime_),
       firstEventId(firstEventId_),
       maxEventsOrZero(maxEventsOrZero_),

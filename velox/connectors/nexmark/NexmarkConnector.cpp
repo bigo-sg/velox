@@ -29,7 +29,7 @@ ConnectorTableHandlePtr NexmarkTableHandle::create(
     const folly::dynamic& obj,
     void* context) {
   auto connectorId = obj["connectorId"].asString();
-  auto config = GeneratorConfig::deserialize(obj["config"]);
+  auto config = NexmarkConfiguration::deserialize(obj["config"]);
 
   return std::make_shared<const NexmarkTableHandle>(
       connectorId, std::move(config));
@@ -51,8 +51,16 @@ NexmarkDataSource::NexmarkDataSource(
       nexmarkTableHandle,
       "TableHandle must be an instance of NexmarkTableHandle");
 
+  GeneratorConfig config(
+      nexmarkTableHandle->config_,
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count(),
+      1,
+      nexmarkTableHandle->config_.numEvents,
+      1);
   nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
-      nexmarkTableHandle->config_, 0, -1, pool_);
+      config, 0, -1, pool_);
 }
 
 void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
