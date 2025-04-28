@@ -28,6 +28,8 @@ add_subdirectory(external/md5)
 add_subdirectory(external/hdfs)
 #
 
+add_subdirectory(experimental/stateful)
+
 # examples depend on expression
 if(${VELOX_ENABLE_EXAMPLES} AND ${VELOX_ENABLE_EXPRESSION})
   add_subdirectory(examples)

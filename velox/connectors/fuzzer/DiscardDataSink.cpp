@@ -32,8 +32,9 @@ void DiscardDataSink::appendData(RowVectorPtr input) {
   if (lastTime == 0) {
     lastTime = getCurrentTime();
   }
+  auto preNum = rowNums;
   rowNums += input->size();
-  if (rowNums % 100000 == 0) {
+  if (rowNums / 100000 != preNum / 100000) {
     long now = getCurrentTime();
     std::cout << "Discard  " << rowNums << " using " << (now - lastTime)  << std::endl;
     lastTime = now;

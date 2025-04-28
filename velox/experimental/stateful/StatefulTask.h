@@ -1,0 +1,75 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#pragma once
+
+#include "velox/exec/Operator.h"
+#include "velox/exec/Task.h"
+
+namespace facebook::velox::stateful {
+
+/**
+ * StatefulTask is used to support streaming engines such as Flink.
+ * It needs to handle state operations. 
+ */
+class StatefulTask : public exec::Task {
+  // TODO: Temporally based on Task since we want to reuse context releated classes
+ public:
+
+  /// Creates a stateful task to execute a plan fragment, but doesn't start execution
+  /// until StatefulTask::next() method is called.
+  /// @param taskId Unique task identifier.
+  /// @param planFragment Plan fragment.
+  /// @param queryCtx Query context containing MemoryPool and MemoryAllocator
+  /// instances to use for memory allocations during execution, executor to
+  /// schedule operators on, and session properties.
+  /// execution fails.
+  static std::shared_ptr<StatefulTask> create(
+      const std::string& taskId,
+      core::PlanFragment planFragment,
+      std::shared_ptr<core::QueryCtx> queryCtx);
+
+  ~StatefulTask();
+
+  /// Single-threaded execution API. Runs the query and returns results one
+  /// batch at a time. Returns nullptr and retCode 1 if query evaluation is finished and no
+  /// more data will be produced, return nullptt and retCode 0 is no data produced for this batch.
+  ///  Throws an exception if query execution failed.
+  ///
+  /// This API is available for streaming plans such as Flink.
+  ///
+  /// The caller is required to add all the necessary splits, and signal
+  /// no-more-splits before calling 'next' for the first time.
+  RowVectorPtr next(int32_t& retCode);
+
+  void initOperators();
+
+  // The task is finished, close all operators and reset driver
+  void finish();
+
+ private:
+ 
+  StatefulTask(
+      const std::string& taskId,
+      core::PlanFragment planFragment,
+      std::shared_ptr<core::QueryCtx> queryCtx);
+
+  std::vector<std::unique_ptr<exec::Operator>> operators_;
+
+  // hold the driver only to avoid it be released.
+  std::shared_ptr<exec::Driver> driver;
+};
+
+} // namespace facebook::velox::stateful

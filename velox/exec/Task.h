@@ -774,6 +774,24 @@ class Task : public std::enable_shared_from_this<Task> {
   /// split.
   bool testingHasDriverWaitForSplit() const;
 
+ protected:
+  // TODO: make it extandable.
+  Task(
+    const std::string& taskId,
+    core::PlanFragment planFragment,
+    int destination,
+    std::shared_ptr<core::QueryCtx> queryCtx,
+    ExecutionMode mode,
+    ConsumerSupplier consumerSupplier,
+    int32_t memoryArbitrationPriority = 0,
+    std::function<void(std::exception_ptr)> onError = nullptr);
+
+  // Invoked to initialize the memory pool for this task on creation.
+  void initTaskPool();
+
+  // Invoked to add this to the system-wide running task list on task creation.
+  void addToTaskList();
+
  private:
   // Hook of system-wide running task list.
   struct TaskListEntry {
@@ -788,19 +806,6 @@ class Task : public std::enable_shared_from_this<Task> {
 
   // Returns the lock that protects the system-wide running task list.
   FOLLY_EXPORT static folly::SharedMutex& taskListLock();
-
-  Task(
-      const std::string& taskId,
-      core::PlanFragment planFragment,
-      int destination,
-      std::shared_ptr<core::QueryCtx> queryCtx,
-      ExecutionMode mode,
-      ConsumerSupplier consumerSupplier,
-      int32_t memoryArbitrationPriority = 0,
-      std::function<void(std::exception_ptr)> onError = nullptr);
-
-  // Invoked to add this to the system-wide running task list on task creation.
-  void addToTaskList();
 
   // Invoked to remove this from the system-wide running task list on task
   // destruction.
@@ -843,9 +848,6 @@ class Task : public std::enable_shared_from_this<Task> {
   // Remove the spill directory, if the Task was creating it for potential
   // spilling.
   void removeSpillDirectoryIfExists();
-
-  // Invoked to initialize the memory pool for this task on creation.
-  void initTaskPool();
 
   // Creates a scaled scan controller for a given table scan node.
   void addScaledScanControllerLocked(

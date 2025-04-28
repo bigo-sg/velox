@@ -29,7 +29,13 @@ ConnectorTableHandlePtr NexmarkTableHandle::create(
     const folly::dynamic& obj,
     void* context) {
   auto connectorId = obj["connectorId"].asString();
-  auto config = GeneratorConfig::deserialize(obj["config"]);
+  // TODO: get config from obj
+  auto config = GeneratorConfig(
+      NexmarkConfiguration(),
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count(),
+      1, 0, 1); // GeneratorConfig::deserialize(obj["config"]);
 
   return std::make_shared<const NexmarkTableHandle>(
       connectorId, std::move(config));
@@ -90,14 +96,10 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
       std::chrono::system_clock::now().time_since_epoch())
       .count();
   if (maxWallclockTimestamp > nowMs) {
-    // std::cout << "maxWallclockTimestamp:" << maxWallclockTimestamp
-    //           << ",nowMs:" << nowMs << ",wait:" << maxWallclockTimestamp - nowMs
-    //           << std::endl;
     std::this_thread::sleep_for(
         std::chrono::milliseconds(maxWallclockTimestamp - nowMs));
   }
 
-  // std::cout << facebook::velox::printVector(*outputVector) << std::endl;
   return outputVector;
 }
 

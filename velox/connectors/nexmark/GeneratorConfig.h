@@ -53,8 +53,8 @@ struct NexmarkConfiguration {
   int64_t numEvents = 0;
   int numEventGenerators = 1;
   RateShape rateShape = RateShape::SQUARE;
-  int firstEventRate = 10000;
-  int nextEventRate = 10000;
+  int firstEventRate = 10000000;
+  int nextEventRate = 10000000;
   RateUnit rateUnit = RateUnit::PER_SECOND;
   int ratePeriodSec = 600;
   int preloadSeconds = 0;
