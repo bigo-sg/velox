@@ -1,0 +1,67 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#pragma once
+
+#include "velox/exec/Operator.h"
+#include "velox/exec/FilterProject.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+
+namespace facebook::velox::stateful {
+
+/// It is related to org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
+/// in Flink. It extracts timestamp from each row and generate periodic watermark.
+class WatermarkAssigner : public exec::Operator {
+ public:
+  WatermarkAssigner(
+      int32_t operatorId,
+      exec::DriverCtx* driverCtx,
+      const std::shared_ptr<const WatermarkAssignerNode>& watermarkAssigner);
+
+  bool isFilter() const override {
+    return false;
+  }
+
+  bool preservesOrder() const override {
+    return true;
+  }
+
+  bool needsInput() const override {
+    return !input_;
+  }
+
+  void addInput(RowVectorPtr input) override;
+
+  RowVectorPtr getOutput() override;
+
+  exec::BlockingReason isBlocked(ContinueFuture* /* unused */) override {
+    return exec::BlockingReason::kNotBlocked;
+  }
+
+  bool isFinished() override;
+
+  void close() override;
+
+  void initialize() override;
+
+ private:
+  // Use a project to generator timestamp.
+  std::shared_ptr<exec::FilterProject> project_;
+  const long idleTimeout;
+  const int rowtimeFieldIndex;
+
+  long currentWatermark = 0;
+};
+} // namespace facebook::velox::stateful

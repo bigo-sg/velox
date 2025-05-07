@@ -45,6 +45,8 @@
 #include "velox/exec/Values.h"
 #include "velox/exec/Window.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/WatermarkAssigner.h"
 
 namespace facebook::velox::stateful {
 
@@ -209,6 +211,11 @@ void StatefulPlanner::plan(
           assignUniqueIdNode,
           assignUniqueIdNode->taskUniqueId(),
           assignUniqueIdNode->uniqueIdCounter()));
+    } else if (
+      auto watermarkAssignerNode =
+          std::dynamic_pointer_cast<const stateful::WatermarkAssignerNode>(planNode)) {
+      operators.push_back(
+          std::make_unique<stateful::WatermarkAssigner>(id, ctx, watermarkAssignerNode));
     } else {
       std::unique_ptr<exec::Operator> extended;
       extended = exec::Operator::fromPlanNode(ctx, id, planNode);
