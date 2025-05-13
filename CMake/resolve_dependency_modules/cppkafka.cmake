@@ -11,28 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-velox_add_library(velox_connector Connector.cpp)
+include_guard(GLOBAL)
 
-velox_link_libraries(velox_connector velox_common_config velox_vector)
+set(VELOX_CPPKAFKA_VERSION v0.4.1)
+# release artifacts are tough (except the auto generated ones)
+set(VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM 45770ae0404cb9ba73d659618c51cd55b574c66ed3c7b148360222fb524b0ff7)
+set(VELOX_CPPKAFKA_SOURCE_URL "https://github.com/mfontanini/cppkafka/archive/refs/tags/v0.4.1.tar.gz")
 
-add_subdirectory(fuzzer)
-add_subdirectory(nexmark)
-add_subdirectory(print)
-add_subdirectory(from_elements)
-add_subdirectory(utils)
+velox_resolve_dependency_url(CPPKAFKA)
 
-if(${VELOX_ENABLE_HIVE_CONNECTOR})
-  add_subdirectory(hive)
-endif()
+message(STATUS "Building CPPKAFKA from source")
+FetchContent_Declare(
+  cppkafka
+  URL ${VELOX_CPPKAFKA_SOURCE_URL}
+  URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM})
 
-if(${VELOX_ENABLE_KAFKA_CONNECTOR})
-  add_subdirectory(kafka)
-endif()
-
-if(${VELOX_ENABLE_TPCH_CONNECTOR})
-  add_subdirectory(tpch)
-endif()
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+FetchContent_MakeAvailable(cppkafka)
