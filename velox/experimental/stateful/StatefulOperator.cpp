@@ -137,16 +137,19 @@ void StatefulOperator::snapshotState() {
   }
 }
 
-void StatefulOperator::notifyCheckpointComplete(long checkpointId) {
+std::vector<std::string> StatefulOperator::notifyCheckpointComplete(long checkpointId) {
   stateHandler_->notifyCheckpointComplete(checkpointId);
   auto checkpointListener = dynamic_cast<CheckpointListener*>(op().get());
   if (checkpointListener) {
     // If the operator is checkpointable, we need to snapshot it.
     checkpointListener->notifyCheckpointComplete(checkpointId);
   }
+  std::vector<std::string> committed = operator_->commit(checkpointId);
   for (auto& target : targets_) {
-    target->notifyCheckpointComplete(checkpointId);
+    std::vector<std::string> otherCommitted = target->notifyCheckpointComplete(checkpointId);
+    committed.insert(committed.end(), otherCommitted.begin(), otherCommitted.end());
   }
+  return committed;
 }
 
 void StatefulOperator::notifyCheckpointAborted(long checkpointId) {
