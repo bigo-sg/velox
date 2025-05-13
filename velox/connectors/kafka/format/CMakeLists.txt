@@ -11,25 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-velox_add_library(velox_connector Connector.cpp)
+velox_add_library(velox_kafka_connector_format OBJECT
+                  JSONRecordDeserializer.cpp StreamJSONRecordDeserializer.cpp)
 
-velox_link_libraries(velox_connector velox_common_config velox_vector)
-
-add_subdirectory(fuzzer)
-add_subdirectory(nexmark)
-
-if(${VELOX_ENABLE_HIVE_CONNECTOR})
-  add_subdirectory(hive)
-endif()
-
-if(${VELOX_ENABLE_KAFKA_CONNECTOR})
-  add_subdirectory(kafka)
-endif()
-
-if(${VELOX_ENABLE_TPCH_CONNECTOR})
-  add_subdirectory(tpch)
-endif()
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+velox_link_libraries(
+  velox_kafka_connector_format
+  velox_kafka_connector
+  velox_common_io
+  velox_connector
+  simdjson::simdjson)
