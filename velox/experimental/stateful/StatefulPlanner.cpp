@@ -46,182 +46,190 @@
 #include "velox/exec/Window.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StreamExchange.h"
+#include "velox/experimental/stateful/StreamJoin.h"
+#include "velox/experimental/stateful/StreamJoinOperator.h"
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 
 namespace facebook::velox::stateful {
 
-// static
-void StatefulPlanner::getAllNodesInOrder(
-    std::shared_ptr<const core::PlanNode> planNode,
-    std::vector<std::shared_ptr<const core::PlanNode>>& planNodes) {
+static int opId = 0;
 
-  const auto& sources = planNode->sources();
-  if (!sources.empty()) {
-    for (int32_t i = 0; i < sources.size(); ++i) {
-      getAllNodesInOrder(sources[i], planNodes);
-    }
-  }
-  planNodes.push_back(planNode);
+// static
+StatefulOperatorPtr StatefulPlanner::plan(
+    const core::PlanFragment& planFragment,
+    exec::DriverCtx* ctx) {
+  return nodeToStatefulOperator(planFragment.planNode, ctx);
 }
 
-// static
-void StatefulPlanner::plan(
-    const core::PlanFragment& planFragment,
-    exec::DriverCtx* ctx,
-    std::vector<std::unique_ptr<exec::Operator>>& operators) {
-  std::vector<std::shared_ptr<const core::PlanNode>> planNodes;
-  getAllNodesInOrder(planFragment.planNode, planNodes);
-  operators.reserve(planNodes.size());
+//static
+StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
+    const core::PlanNodePtr& planNode,
+    exec::DriverCtx* ctx) {
+  auto statefulNode =
+      std::dynamic_pointer_cast<const StatefulPlanNode>(planNode);
+  VELOX_CHECK(statefulNode, "Not stateful node: {}", planNode->toString());
+  std::vector<StatefulOperatorPtr> targets;
+  std::unique_ptr<exec::Operator> op = std::move(nodeToOperator(statefulNode->node(), ctx));
+  for (auto target : statefulNode->targets()) {
+    targets.push_back(std::move(nodeToStatefulOperator(target, ctx)));
+  }
+  if (auto watermarkAssignerNode =
+      std::dynamic_pointer_cast<const WatermarkAssignerNode>(statefulNode->node())) {
+    return std::make_unique<WatermarkAssigner>(
+        std::move(op),
+        std::move(targets),
+        watermarkAssignerNode->idleTimeout(),
+        watermarkAssignerNode->rowtimeFieldIndex(),
+        watermarkAssignerNode->watermarkInterval());
+  } else if (auto joinNode =
+      std::dynamic_pointer_cast<const core::HashJoinNode>(statefulNode->node())) {
+    VELOX_CHECK(joinNode->sources().size() == 2, "HashJoinNode should have 2 sources");
+    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
+    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
+    return std::make_unique<StreamJoinOperator>(
+        std::move(op),
+        std::move(targets),
+        std::move(left),
+        std::move(right));
+  }
+  return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
+}
 
-  for (int32_t i = 0; i < planNodes.size(); i++) {
-    // Id of the Operator being made. This is not the same as 'i'
-    // because some PlanNodes may get fused.
-    auto id = operators.size();
-    auto planNode = planNodes[i];
-    if (auto filterNode =
-            std::dynamic_pointer_cast<const core::FilterNode>(planNode)) {
-      if (i < planNodes.size() - 1) {
-        auto next = planNodes[i + 1];
-        if (auto projectNode =
-                std::dynamic_pointer_cast<const core::ProjectNode>(next)) {
-          operators.push_back(std::make_unique<exec::FilterProject>(
-              id, ctx, filterNode, projectNode));
-          i++;
-          continue;
-        }
+//static
+std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
+    const core::PlanNodePtr& planNode,
+    exec::DriverCtx* ctx) {
+  if (auto filterNode =
+      std::dynamic_pointer_cast<const core::FilterNode>(planNode)) {
+    if (planNode->sources().size() == 1) {
+      auto next = planNode->sources()[0];
+      if (auto projectNode =
+          std::dynamic_pointer_cast<const core::ProjectNode>(next)) {
+        return std::make_unique<exec::FilterProject>(opId, ctx, filterNode, projectNode);
       }
-      operators.push_back(
-          std::make_unique<exec::FilterProject>(id, ctx, filterNode, nullptr));
-    } else if (
-        auto projectNode =
-            std::dynamic_pointer_cast<const core::ProjectNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::FilterProject>(id, ctx, nullptr, projectNode));
-    } else if (
-        auto valuesNode =
-            std::dynamic_pointer_cast<const core::ValuesNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::Values>(id, ctx, valuesNode));
-    } else if (
-        auto tableScanNode =
-            std::dynamic_pointer_cast<const core::TableScanNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::TableScan>(id, ctx, tableScanNode));
-    } else if (
-        auto tableWriteNode =
-            std::dynamic_pointer_cast<const core::TableWriteNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::TableWriter>(id, ctx, tableWriteNode));
-    } else if (
-        auto tableWriteMergeNode =
-            std::dynamic_pointer_cast<const core::TableWriteMergeNode>(
-                planNode)) {
-      operators.push_back(std::make_unique<exec::TableWriteMerge>(
-          id, ctx, tableWriteMergeNode));
-    } else if (
-        auto joinNode =
-            std::dynamic_pointer_cast<const core::HashJoinNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::HashProbe>(id, ctx, joinNode));
-    } else if (
-        auto joinNode =
-            std::dynamic_pointer_cast<const core::NestedLoopJoinNode>(
-                planNode)) {
-      operators.push_back(
-          std::make_unique<exec::NestedLoopJoinProbe>(id, ctx, joinNode));
-    } else if (
-        auto joinNode =
-            std::dynamic_pointer_cast<const core::IndexLookupJoinNode>(
-                planNode)) {
-      operators.push_back(
-          std::make_unique<exec::IndexLookupJoin>(id, ctx, joinNode));
-    } else if (
-        auto aggregationNode =
-            std::dynamic_pointer_cast<const core::AggregationNode>(planNode)) {
-      if (aggregationNode->isPreGrouped()) {
-        operators.push_back(std::make_unique<exec::StreamingAggregation>(
-            id, ctx, aggregationNode));
-      } else {
-        operators.push_back(
-            std::make_unique<exec::HashAggregation>(id, ctx, aggregationNode));
-      }
-    } else if (
-        auto expandNode =
-            std::dynamic_pointer_cast<const core::ExpandNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::Expand>(id, ctx, expandNode));
-    } else if (
-        auto groupIdNode =
-            std::dynamic_pointer_cast<const core::GroupIdNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::GroupId>(id, ctx, groupIdNode));
-    } else if (
-        auto topNNode =
-            std::dynamic_pointer_cast<const core::TopNNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::TopN>(id, ctx, topNNode));
-    } else if (
-        auto limitNode =
-            std::dynamic_pointer_cast<const core::LimitNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::Limit>(id, ctx, limitNode));
-    } else if (
-        auto orderByNode =
-            std::dynamic_pointer_cast<const core::OrderByNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::OrderBy>(id, ctx, orderByNode));
-    } else if (
-        auto windowNode =
-            std::dynamic_pointer_cast<const core::WindowNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::Window>(id, ctx, windowNode));
-    } else if (
-        auto rowNumberNode =
-            std::dynamic_pointer_cast<const core::RowNumberNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::RowNumber>(id, ctx, rowNumberNode));
-    } else if (
-        auto topNRowNumberNode =
-            std::dynamic_pointer_cast<const core::TopNRowNumberNode>(
-                planNode)) {
-      operators.push_back(
-          std::make_unique<exec::TopNRowNumber>(id, ctx, topNRowNumberNode));
-    } else if (
-        auto markDistinctNode =
-            std::dynamic_pointer_cast<const core::MarkDistinctNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<exec::MarkDistinct>(id, ctx, markDistinctNode));
-    } else if (
-        auto mergeJoin =
-            std::dynamic_pointer_cast<const core::MergeJoinNode>(planNode)) {
-      auto mergeJoinOp = std::make_unique<exec::MergeJoin>(id, ctx, mergeJoin);
-      ctx->task->createMergeJoinSource(ctx->splitGroupId, mergeJoin->id());
-      operators.push_back(std::move(mergeJoinOp));
-    } else if (
-        auto unnest =
-            std::dynamic_pointer_cast<const core::UnnestNode>(planNode)) {
-      operators.push_back(std::make_unique<exec::Unnest>(id, ctx, unnest));
-    } else if (
-        auto enforceSingleRow =
-            std::dynamic_pointer_cast<const core::EnforceSingleRowNode>(
-                planNode)) {
-      operators.push_back(
-          std::make_unique<exec::EnforceSingleRow>(id, ctx, enforceSingleRow));
-    } else if (
-        auto assignUniqueIdNode =
-            std::dynamic_pointer_cast<const core::AssignUniqueIdNode>(
-                planNode)) {
-      operators.push_back(std::make_unique<exec::AssignUniqueId>(
-          id,
-          ctx,
-          assignUniqueIdNode,
-          assignUniqueIdNode->taskUniqueId(),
-          assignUniqueIdNode->uniqueIdCounter()));
-    } else if (
+    }
+    return std::make_unique<exec::FilterProject>(opId, ctx, filterNode, nullptr);
+  } else if (
+      auto projectNode =
+          std::dynamic_pointer_cast<const core::ProjectNode>(planNode)) {
+    return std::make_unique<exec::FilterProject>(opId, ctx, nullptr, projectNode);
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const StreamJoinNode>(planNode)) {
+    VELOX_CHECK(joinNode->sources().size() == 2, "StreamJoinNode should have 2 sources");
+    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
+    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
+    return std::make_unique<StreamJoin>(opId, ctx, joinNode, std::move(left), std::move(right));
+  } else if (
+    auto exchangeNode =
+        std::dynamic_pointer_cast<const StreamExchangeNode>(planNode)) {
+  return std::make_unique<StreamExchange>(opId, ctx, exchangeNode);
+} else if (
+      auto valuesNode =
+          std::dynamic_pointer_cast<const core::ValuesNode>(planNode)) {
+    return std::make_unique<exec::Values>(opId, ctx, valuesNode);
+  } else if (
+      auto tableScanNode =
+          std::dynamic_pointer_cast<const core::TableScanNode>(planNode)) {
+    std::cout << "TableScan " << tableScanNode->id() << std::endl;
+    return std::make_unique<exec::TableScan>(opId, ctx, tableScanNode);
+  } else if (
+      auto tableWriteNode =
+          std::dynamic_pointer_cast<const core::TableWriteNode>(planNode)) {
+      return std::make_unique<exec::TableWriter>(opId, ctx, tableWriteNode);
+  } else if (
+      auto tableWriteMergeNode =
+          std::dynamic_pointer_cast<const core::TableWriteMergeNode>(planNode)) {
+    return std::make_unique<exec::TableWriteMerge>(opId, ctx, tableWriteMergeNode);
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const core::HashJoinNode>(planNode)) {
+    return std::make_unique<exec::HashProbe>(opId, ctx, joinNode);
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const core::NestedLoopJoinNode>(planNode)) {
+    return std::make_unique<exec::NestedLoopJoinProbe>(opId, ctx, joinNode);
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const core::IndexLookupJoinNode>(planNode)) {
+    return std::make_unique<exec::IndexLookupJoin>(opId, ctx, joinNode);
+  } else if (
+      auto aggregationNode =
+          std::dynamic_pointer_cast<const core::AggregationNode>(planNode)) {
+    if (aggregationNode->isPreGrouped()) {
+      return std::make_unique<exec::StreamingAggregation>(opId, ctx, aggregationNode);
+    } else {
+      return std::make_unique<exec::HashAggregation>(opId, ctx, aggregationNode);
+    }
+  } else if (
+      auto expandNode =
+          std::dynamic_pointer_cast<const core::ExpandNode>(planNode)) {
+    return std::make_unique<exec::Expand>(opId, ctx, expandNode);
+  } else if (
+      auto groupIdNode =
+          std::dynamic_pointer_cast<const core::GroupIdNode>(planNode)) {
+    return std::make_unique<exec::GroupId>(opId, ctx, groupIdNode);
+  } else if (
+      auto topNNode =
+          std::dynamic_pointer_cast<const core::TopNNode>(planNode)) {
+      return std::make_unique<exec::TopN>(opId, ctx, topNNode);
+  } else if (
+      auto limitNode =
+          std::dynamic_pointer_cast<const core::LimitNode>(planNode)) {
+    return std::make_unique<exec::Limit>(opId, ctx, limitNode);
+  } else if (
+      auto orderByNode =
+          std::dynamic_pointer_cast<const core::OrderByNode>(planNode)) {
+    return std::make_unique<exec::OrderBy>(opId, ctx, orderByNode);
+  } else if (
+      auto windowNode =
+          std::dynamic_pointer_cast<const core::WindowNode>(planNode)) {
+    return std::make_unique<exec::Window>(opId, ctx, windowNode);
+  } else if (
+      auto rowNumberNode =
+          std::dynamic_pointer_cast<const core::RowNumberNode>(planNode)) {
+    return std::make_unique<exec::RowNumber>(opId, ctx, rowNumberNode);
+  } else if (
+      auto topNRowNumberNode =
+          std::dynamic_pointer_cast<const core::TopNRowNumberNode>(planNode)) {
+    return std::make_unique<exec::TopNRowNumber>(opId, ctx, topNRowNumberNode);
+  } else if (
+      auto markDistinctNode =
+          std::dynamic_pointer_cast<const core::MarkDistinctNode>(planNode)) {
+    return std::make_unique<exec::MarkDistinct>(opId, ctx, markDistinctNode);
+  } else if (
+      auto mergeJoin =
+          std::dynamic_pointer_cast<const core::MergeJoinNode>(planNode)) {
+    auto mergeJoinOp = std::make_unique<exec::MergeJoin>(opId, ctx, mergeJoin);
+    ctx->task->createMergeJoinSource(ctx->splitGroupId, mergeJoin->id());
+    return std::move(mergeJoinOp);
+  } else if (
+      auto unnest =
+          std::dynamic_pointer_cast<const core::UnnestNode>(planNode)) {
+    return std::make_unique<exec::Unnest>(opId, ctx, unnest);
+  } else if (
+      auto enforceSingleRow =
+          std::dynamic_pointer_cast<const core::EnforceSingleRowNode>(planNode)) {
+    return std::make_unique<exec::EnforceSingleRow>(opId, ctx, enforceSingleRow);
+  } else if (
+      auto assignUniqueIdNode =
+          std::dynamic_pointer_cast<const core::AssignUniqueIdNode>(planNode)) {
+    return std::make_unique<exec::AssignUniqueId>(
+        opId,
+        ctx,
+        assignUniqueIdNode,
+        assignUniqueIdNode->taskUniqueId(),
+        assignUniqueIdNode->uniqueIdCounter());
+  } else if (
       auto watermarkAssignerNode =
           std::dynamic_pointer_cast<const stateful::WatermarkAssignerNode>(planNode)) {
-      operators.push_back(
-          std::make_unique<stateful::WatermarkAssigner>(id, ctx, watermarkAssignerNode));
-    } else {
-      std::unique_ptr<exec::Operator> extended;
-      extended = exec::Operator::fromPlanNode(ctx, id, planNode);
-      VELOX_CHECK(extended, "Unsupported plan node: {}", planNode->toString());
-      operators.push_back(std::move(extended));
-    }
+    return std::make_unique<exec::FilterProject>(opId, ctx, nullptr, watermarkAssignerNode->project());
+  } else {
+    std::unique_ptr<exec::Operator> extended;
+    extended = exec::Operator::fromPlanNode(ctx, opId, planNode);
+    VELOX_CHECK(extended, "Unsupported plan node: {}", planNode->toString());
+    return extended;
   }
 }
 

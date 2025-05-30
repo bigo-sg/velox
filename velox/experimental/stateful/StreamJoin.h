@@ -15,36 +15,47 @@
  */
 #pragma once
 
-#include "velox/exec/FilterProject.h"
-#include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 
 namespace facebook::velox::stateful {
 
-/// It is related to org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
-/// in Flink. It extracts timestamp from each row and generate periodic watermark.
-class WatermarkAssigner : public StatefulOperator {
+class StreamJoin : public exec::Operator {
  public:
-  WatermarkAssigner(
-    std::unique_ptr<exec::Operator> op,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    const long idleTimeout,
-    const int rowtimeFieldIndex,
-    const long watermarkInterval);
+  StreamJoin( 
+    int32_t operatorId,
+    exec::DriverCtx* driverCtx,
+    const std::shared_ptr<const StreamJoinNode>& joinNode,
+    std::unique_ptr<exec::Operator> left,
+    std::unique_ptr<exec::Operator> right);
+
+  void initialize() override;
+
+  bool needsInput() const override {
+    VELOX_NYI();
+  }
+
+  bool isFinished() override;
+
+  void traceInput(const RowVectorPtr& input) override;
 
   void addInput(RowVectorPtr input) override;
 
-  void getOutput() override;
+  RowVectorPtr getOutput() override;
+
+  void noMoreInput() override {
+    VELOX_NYI();
+  }
+
+  exec::BlockingReason isBlocked(ContinueFuture* future) override {
+    VELOX_NYI();
+  }
+
+  void close() override;
 
  private:
-  void advanceWatermark();
-
-  RowVectorPtr input_;
-  const long idleTimeout_;
-  const int rowtimeFieldIndex_;
-  const long watermarkInterval_;
-
-  long currentWatermark = 0;
-  long lastWatermark = 0;
+  const std::unique_ptr<exec::Operator> left_;
+  const std::unique_ptr<exec::Operator> right_;
 };
+
 } // namespace facebook::velox::stateful

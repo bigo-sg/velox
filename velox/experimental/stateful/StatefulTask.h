@@ -17,6 +17,8 @@
 
 #include "velox/exec/Operator.h"
 #include "velox/exec/Task.h"
+#include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StreamElement.h"
 
 namespace facebook::velox::stateful {
 
@@ -52,12 +54,16 @@ class StatefulTask : public exec::Task {
   ///
   /// The caller is required to add all the necessary splits, and signal
   /// no-more-splits before calling 'next' for the first time.
-  RowVectorPtr next(int32_t& retCode);
+  StreamElementPtr next(int32_t& retCode);
+
+  void notifyWatermark(long watermark, int index);
 
   void initOperators();
 
   // The task is finished, close all operators and reset driver
   void finish();
+
+  void addOutput(StreamElementPtr element);
 
  private:
  
@@ -66,7 +72,13 @@ class StatefulTask : public exec::Task {
       core::PlanFragment planFragment,
       std::shared_ptr<core::QueryCtx> queryCtx);
 
-  std::vector<std::unique_ptr<exec::Operator>> operators_;
+  StreamElementPtr popOutput();
+
+  std::unique_ptr<StatefulOperator> operatorChain_;
+
+  // A task may have multi outputs once run,
+  // store them and return one by one.
+  std::list<StreamElementPtr> pendings_;
 
   // hold the driver only to avoid it be released.
   std::shared_ptr<exec::Driver> driver;

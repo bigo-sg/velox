@@ -16,6 +16,7 @@
 #pragma once
 
 #include "velox/exec/Operator.h"
+#include "velox/experimental/stateful/StatefulOperator.h"
 
 namespace facebook::velox::core {
 struct PlanFragment;
@@ -26,15 +27,18 @@ namespace facebook::velox::stateful {
 class StatefulPlanner {
 
  public:
-  // Create operators according to plan.
-  static void plan(
-    const core::PlanFragment& planFragment,
-    exec::DriverCtx* ctx,
-    std::vector<std::unique_ptr<exec::Operator>>& operators);
+  // Create stateful operator chain according to plan.
+  static StatefulOperatorPtr plan(
+      const core::PlanFragment& planFragment,
+      exec::DriverCtx* ctx);
 
  private:
-  static void getAllNodesInOrder(
-    std::shared_ptr<const core::PlanNode> planNode,
-    std::vector<std::shared_ptr<const core::PlanNode>>& planNodes);
+  static std::unique_ptr<StatefulOperator> nodeToStatefulOperator(
+      const core::PlanNodePtr& planNode,
+      exec::DriverCtx* ctx);
+
+  static std::unique_ptr<exec::Operator> nodeToOperator(
+      const core::PlanNodePtr& planNode,
+      exec::DriverCtx* ctx);
 };
 } // namespace facebook::velox::stateful

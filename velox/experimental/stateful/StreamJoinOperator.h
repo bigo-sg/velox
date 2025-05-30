@@ -15,36 +15,32 @@
  */
 #pragma once
 
-#include "velox/exec/FilterProject.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 
 namespace facebook::velox::stateful {
 
-/// It is related to org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
-/// in Flink. It extracts timestamp from each row and generate periodic watermark.
-class WatermarkAssigner : public StatefulOperator {
+class StreamJoinOperator : public StatefulOperator {
  public:
-  WatermarkAssigner(
+  StreamJoinOperator(
     std::unique_ptr<exec::Operator> op,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
-    const long idleTimeout,
-    const int rowtimeFieldIndex,
-    const long watermarkInterval);
+    std::unique_ptr<exec::Operator> left,
+    std::unique_ptr<exec::Operator> right);
 
-  void addInput(RowVectorPtr input) override;
+  void initialize() override;
+
+  void addInput(RowVectorPtr input) override {
+    VELOX_NYI();
+  }
 
   void getOutput() override;
 
+  void close() override;
+
  private:
-  void advanceWatermark();
-
-  RowVectorPtr input_;
-  const long idleTimeout_;
-  const int rowtimeFieldIndex_;
-  const long watermarkInterval_;
-
-  long currentWatermark = 0;
-  long lastWatermark = 0;
+  const std::unique_ptr<exec::Operator> left_;
+  const std::unique_ptr<exec::Operator> right_;
 };
+
 } // namespace facebook::velox::stateful

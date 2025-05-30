@@ -18,6 +18,10 @@ velox_add_library(
   StatefulTask.cpp
   StatefulPlanner.cpp
   StatefulPlanNode.cpp
+  StatefulOperator.cpp
+  StreamExchange.cpp
+  StreamJoin.cpp
+  StreamJoinOperator.cpp
   WatermarkAssigner.cpp)
 
 velox_link_libraries(
