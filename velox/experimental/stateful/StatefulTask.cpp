@@ -92,7 +92,7 @@ exec::TaskStats StatefulTask::statefulTaskStats() {
 
 RowVectorPtr StatefulTask::next(int32_t& retCode) {
   retCode = 0;
-  initOperators();
+  // initOperators();
 
   // Run operators one by one. If an operator has output, run its downstream operators.
   // If the last operator has output, return the output.
@@ -126,7 +126,8 @@ RowVectorPtr StatefulTask::next(int32_t& retCode) {
           }
           return nullptr;
         } else {
-          break;
+          // break;
+          return nullptr;
         }
       }
 
