@@ -17,7 +17,6 @@
 
 #include "velox/exec/Operator.h"
 #include "velox/exec/Task.h"
-#include "velox/exec/TaskStats.h"
 
 namespace facebook::velox::stateful {
 
@@ -59,9 +58,6 @@ class StatefulTask : public exec::Task {
 
   // The task is finished, close all operators and reset driver
   void finish();
-
-  // get stats for stateful task.
-  exec::TaskStats statefulTaskStats();
 
  private:
  
