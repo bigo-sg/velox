@@ -65,7 +65,7 @@ class WatermarkAssignerNode :  public core::PlanNode {
  public:
   WatermarkAssignerNode(
       const core::PlanNodeId& id,
-      std::shared_ptr<const core::ProjectNode> project,
+      std::shared_ptr<const core::ProjectNode>& project,
       long idleTimeout,
       int rowtimeFieldIndex,
       long watermarkInterval)
@@ -89,7 +89,7 @@ class WatermarkAssignerNode :  public core::PlanNode {
 
   static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
 
-  const std::shared_ptr<const core::ProjectNode> project() const {
+  const std::shared_ptr<const core::ProjectNode>& project() const {
     return project_;
   }
 
@@ -118,22 +118,15 @@ class StreamJoinNode :  public core::PlanNode {
  public:
   StreamJoinNode(
       const core::PlanNodeId& id,
-      core::JoinType joinType,
-      bool nullAware,
-      const std::vector<core::FieldAccessTypedExprPtr>& leftKeys,
-      const std::vector<core::FieldAccessTypedExprPtr>& rightKeys,
-      core::TypedExprPtr filter,
-      core::PlanNodePtr leftNode,
-      core::PlanNodePtr rightNode,
+      const std::vector<core::PlanNodePtr>& sources,
+      const std::shared_ptr<const core::NestedLoopJoinNode>& build,
+      const std::shared_ptr<const core::NestedLoopJoinNode>& probe,
       RowTypePtr outputType)
       : core::PlanNode(id),
-        joinType_(joinType),
-        leftKeys_(std::move(leftKeys)),
-        rightKeys_(std::move(rightKeys)),
-        filter_(std::move(filter)),
-        sources_({std::move(leftNode), std::move(rightNode)}),
-        outputType_(std::move(outputType)),
-        nullAware_(nullAware) {}
+        sources_(std::move(sources)),
+        build_(std::move(build)),
+        probe_(std::move(probe)),
+        outputType_(std::move(outputType)) {}
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -147,6 +140,14 @@ class StreamJoinNode :  public core::PlanNode {
     return "StreamJoin";
   }
 
+  const std::shared_ptr<const core::NestedLoopJoinNode>& build() const {
+    return build_;
+  }
+
+  const std::shared_ptr<const core::NestedLoopJoinNode>& probe() const {
+    return probe_;
+  }
+
   folly::dynamic serialize() const override;
 
   static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
@@ -154,30 +155,39 @@ class StreamJoinNode :  public core::PlanNode {
  private:
   void addDetails(std::stringstream& stream) const override;
 
-  const core::JoinType joinType_;
-  const std::vector<core::FieldAccessTypedExprPtr> leftKeys_;
-  const std::vector<core::FieldAccessTypedExprPtr> rightKeys_;
-  const core::TypedExprPtr filter_;
   const std::vector<core::PlanNodePtr> sources_;
+  const std::shared_ptr<const core::NestedLoopJoinNode> build_;
+  const std::shared_ptr<const core::NestedLoopJoinNode> probe_;
   const RowTypePtr outputType_;
-  const bool nullAware_;
 };
 
 // Generate hash for RowVector to exchange by key.
-class StreamExchangeNode : public core::PlanNode {
-  public:
-  StreamExchangeNode(const core::PlanNodeId& id, RowTypePtr outputType) :
-       PlanNode(id),
-       outputType_(std::move(outputType)) {}
+class StreamPartitionNode : public core::PlanNode {
+ public:
+  StreamPartitionNode(
+      const core::PlanNodeId& id,
+      std::shared_ptr<const core::LocalPartitionNode>& partitionNode,
+      int numPartitions) :
+        PlanNode(id),
+        partition_(std::move(partitionNode)),
+        numPartitions_(numPartitions) {}
 
-  const RowTypePtr& outputType() const override {
-    return outputType_;
+        const RowTypePtr& outputType() const override {
+    return partition_->outputType();
+  }
+
+  const int numPartitions() const {
+    return numPartitions_;
+  }
+
+  const std::shared_ptr<const core::LocalPartitionNode>& partition() const {
+    return partition_;
   }
 
   const std::vector<core::PlanNodePtr>& sources() const override;
 
   std::string_view name() const override {
-    return "Exchange";
+    return "Partition";
   }
 
   folly::dynamic serialize() const override;
@@ -187,7 +197,8 @@ class StreamExchangeNode : public core::PlanNode {
  private:
   void addDetails(std::stringstream& stream) const override {}
 
-  const RowTypePtr outputType_;
+  const std::shared_ptr<const core::LocalPartitionNode> partition_;
+  const int numPartitions_;
 };
 
 // Only used to make other PlanNode sources valid.

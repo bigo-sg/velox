@@ -65,13 +65,22 @@ class StreamRecord :  public StreamElement {
       : StreamElement(nodeId),
         record_(std::move(record)),
         timestamp_(-1),
-        hasTimestamp_(false) {}
+        hasTimestamp_(false),
+        key_(-1) {}
 
   StreamRecord(std::string nodeId, RowVectorPtr record, long timestamp)
       : StreamElement(nodeId),
         record_(std::move(record)),
         timestamp_(timestamp),
-        hasTimestamp_(true) {}
+        hasTimestamp_(true),
+        key_(-1) {}
+
+  StreamRecord(std::string nodeId, int key, RowVectorPtr record)
+      : StreamElement(nodeId),
+        record_(std::move(record)),
+        timestamp_(-1),
+        hasTimestamp_(false),
+        key_(key) {}
 
   const RowVectorPtr& record() const {
     return record_;
@@ -79,6 +88,10 @@ class StreamRecord :  public StreamElement {
 
   long timestamp() const {
     return timestamp_;
+  }
+
+  int key() const {
+    return key_;
   }
 
   bool isWatermark() override {
@@ -97,5 +110,6 @@ class StreamRecord :  public StreamElement {
   const RowVectorPtr record_;
   const long timestamp_;
   bool hasTimestamp_ = false;
+  const int key_;
 };
 } // namespace facebook::velox::stateful

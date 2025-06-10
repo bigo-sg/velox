@@ -25,11 +25,13 @@ class StatefulOperator {
       std::unique_ptr<exec::Operator> op,
       std::vector<std::unique_ptr<StatefulOperator>> targets)
       : operator_(std::move(op)),
-        targets_(std::move(targets)) {}
+        targets_(std::move(targets)) {
+    sink = operator_->operatorType() == "TableWrite";
+  }
 
   virtual void initialize();
 
-  bool isFinished();
+  virtual bool isFinished();
 
   virtual void addInput(RowVectorPtr input);
 
@@ -50,8 +52,13 @@ class StatefulOperator {
   }
 
  private:
+  bool isSink() {
+    return sink;
+  }
+
   std::unique_ptr<exec::Operator> operator_;
   std::vector<std::unique_ptr<StatefulOperator>> targets_;
+  bool sink;
   bool sourceEmpty_ = true;
 };
 

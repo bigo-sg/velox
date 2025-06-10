@@ -77,10 +77,14 @@ void StatefulOperator::pushOutput(RowVectorPtr output) {
 }
 
 void StatefulOperator::pushWatermark(long timestamp, int index) {
+  if (isSink())
+    return;
   if (targets_.empty()) {
-    auto outNodeId = operator_->planNodeId();
-    auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
-    task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
+    if (!isSink()) {
+      auto outNodeId = operator_->planNodeId();
+      auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
+      task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
+    }
     return;
   }
   for (int i = 0; i < targets_.size() - 1; i++) {
@@ -90,6 +94,7 @@ void StatefulOperator::pushWatermark(long timestamp, int index) {
 }
 
 void StatefulOperator::processWatermark(long timestamp, int index) {
+  // TODO: notify opeartor
   pushWatermark(timestamp, index);
 }
 

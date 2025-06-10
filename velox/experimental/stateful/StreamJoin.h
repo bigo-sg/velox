@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include "velox/exec/NestedLoopJoinBuild.h"
+#include "velox/exec/NestedLoopJoinProbe.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 
@@ -26,8 +28,10 @@ class StreamJoin : public exec::Operator {
     int32_t operatorId,
     exec::DriverCtx* driverCtx,
     const std::shared_ptr<const StreamJoinNode>& joinNode,
-    std::unique_ptr<exec::Operator> left,
-    std::unique_ptr<exec::Operator> right);
+    std::unique_ptr<exec::Operator> leftInput,
+    std::unique_ptr<exec::Operator> rightInput,
+    std::unique_ptr<exec::Operator> build,
+    std::unique_ptr<exec::Operator> probe);
 
   void initialize() override;
 
@@ -54,8 +58,10 @@ class StreamJoin : public exec::Operator {
   void close() override;
 
  private:
-  const std::unique_ptr<exec::Operator> left_;
-  const std::unique_ptr<exec::Operator> right_;
+  const std::unique_ptr<exec::Operator> leftInput_;
+  const std::unique_ptr<exec::Operator> rightInput_;
+  const std::unique_ptr<exec::NestedLoopJoinBuild> build_;
+  const std::unique_ptr<exec::NestedLoopJoinProbe> probe_;
 };
 
 } // namespace facebook::velox::stateful

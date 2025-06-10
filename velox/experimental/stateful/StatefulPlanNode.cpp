@@ -66,7 +66,7 @@ void StatefulPlanNode::registerSerDe() {
   registry.Register("StatefulPlanNode", StatefulPlanNode::create);
   registry.Register("EmptyNode", EmptyNode::create);
   registry.Register("StreamJoinNode", StreamJoinNode::create);
-  registry.Register("StreamExchangeNode", StreamExchangeNode::create);
+  registry.Register("StreamPartitionNode", StreamPartitionNode::create);
 }
 
 const std::vector<core::PlanNodePtr>& WatermarkAssignerNode::sources() const {
@@ -100,33 +100,15 @@ core::PlanNodePtr WatermarkAssignerNode::create(const folly::dynamic& obj, void*
 }
 
 void StreamJoinNode::addDetails(std::stringstream& stream) const {
-  stream << joinTypeName(joinType_) << " ";
-
-  for (auto i = 0; i < leftKeys_.size(); ++i) {
-    if (i > 0) {
-      stream << " AND ";
-    }
-    stream << leftKeys_[i]->name() << "=" << rightKeys_[i]->name();
-  }
-
-  if (filter_) {
-    stream << ", filter: " << filter_->toString();
-  }
-  if (nullAware_) {
-    stream << ", null aware";
-  }
+  stream << "build: " << build_->toString();
+  stream << ", probe: " << probe_->toString();
 }
 
 folly::dynamic StreamJoinNode::serialize() const {
   auto obj = core::PlanNode::serialize();
-  obj["joinType"] = core::joinTypeName(joinType_);
-  obj["leftKeys"] = ISerializable::serialize(leftKeys_);
-  obj["rightKeys"] = ISerializable::serialize(rightKeys_);
-  if (filter_) {
-    obj["filter"] = filter_->serialize();
-  }
+  obj["build"] = build_->serialize();
+  obj["probe"] = probe_->serialize();
   obj["outputType"] = outputType_->serialize();
-  obj["nullAware"] = nullAware_;
   return obj;
 }
 
@@ -137,46 +119,42 @@ core::PlanNodePtr StreamJoinNode::create(const folly::dynamic& obj, void* contex
       obj["sources"], context);
   VELOX_CHECK_EQ(2, sources.size());
 
-  auto nullAware = obj["nullAware"].asBool();
-  auto leftKeys = ISerializable::deserialize<std::vector<core::FieldAccessTypedExpr>>(
-      obj["leftKeys"], context);
-  auto rightKeys = ISerializable::deserialize<std::vector<core::FieldAccessTypedExpr>>(
-      obj["rightKeys"], context);
-
-  core::TypedExprPtr filter;
-  if (obj.count("filter")) {
-    filter = ISerializable::deserialize<core::ITypedExpr>(obj["filter"]);
-  }
+  auto build = ISerializable::deserialize<core::NestedLoopJoinNode>(
+      obj["build"], context);
+  auto probe = ISerializable::deserialize<core::NestedLoopJoinNode>(
+      obj["probe"], context);
 
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
 
   return std::make_shared<StreamJoinNode>(
       planNodeId,
-      core::joinTypeFromName(obj["joinType"].asString()),
-      nullAware,
-      std::move(leftKeys),
-      std::move(rightKeys),
-      filter,
-      sources[0],
-      sources[1],
+      std::move(sources),
+      std::move(build),
+      std::move(probe),
       outputType);
 }
 
-const std::vector<core::PlanNodePtr>& StreamExchangeNode::sources() const {
+const std::vector<core::PlanNodePtr>& StreamPartitionNode::sources() const {
   return kEmptySources;
 }
 
-folly::dynamic StreamExchangeNode::serialize() const {
+folly::dynamic StreamPartitionNode::serialize() const {
   auto obj = core::PlanNode::serialize();
-  obj["outputType"] = outputType_->serialize();
+  obj["numPartitions"] = numPartitions_;
+  obj["partition"] = partition_->serialize();
   return obj;
 }
 
 // static
-core::PlanNodePtr StreamExchangeNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamPartitionNode::create(const folly::dynamic& obj, void* context) {
+  std::cout << "" << "StreamPartitionNode created 1" << std::endl;
   auto planNodeId = obj["id"].asString();
-  auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
-  return std::make_shared<const StreamExchangeNode>(planNodeId, outputType);
+  auto numPartitions = obj["numPartitions"].asInt();
+  std::cout << "" << "StreamPartitionNode created 2" << std::endl;
+  auto partition = ISerializable::deserialize<core::LocalPartitionNode>(
+      obj["partition"], context);
+  std::cout << "" << "StreamPartitionNode created with numPartitions: " << numPartitions << std::endl;
+  return std::make_shared<const StreamPartitionNode>(planNodeId, partition, numPartitions);
 }
 
 const std::vector<core::PlanNodePtr>& EmptyNode::sources() const {

@@ -16,30 +16,44 @@
 #pragma once
 
 #include "velox/exec/Operator.h"
-#include "velox/experimental/stateful/StatefulPlanNode.h"
 
 namespace facebook::velox::stateful {
 
-class StreamExchange : public exec::Operator {
+// This is used to make some stateful operators that do not require an operator valid.
+class EmptyOperator : public exec::Operator {
  public:
- StreamExchange(
-    int32_t operatorId,
-    exec::DriverCtx* driverCtx,
-    const std::shared_ptr<const StreamExchangeNode>& exchangeNode);
+  EmptyOperator( 
+      int32_t operatorId,
+      exec::DriverCtx* driverCtx,
+      const core::PlanNodePtr& node) :
+      Operator(
+          driverCtx,
+          node->outputType(),
+          operatorId,
+          node->id(),
+          "EmptyOperator") {}
 
-  void initialize() override;
+  void initialize() override {}
 
   bool needsInput() const override {
     VELOX_NYI();
   }
 
-  bool isFinished() override;
+  bool isFinished() override {
+    VELOX_NYI();
+  }
 
-  void traceInput(const RowVectorPtr& input) override;
+  void traceInput(const RowVectorPtr& input) override {
+    VELOX_NYI();
+  }
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(RowVectorPtr input) override {
+    VELOX_NYI();
+  }
 
-  RowVectorPtr getOutput() override;
+  RowVectorPtr getOutput() override {
+    VELOX_NYI();
+  }
 
   void noMoreInput() override {
     VELOX_NYI();
@@ -49,11 +63,8 @@ class StreamExchange : public exec::Operator {
     VELOX_NYI();
   }
 
-  void close() override;
+  void close() override {}
 
- private:
-  const std::shared_ptr<const StreamExchangeNode> exchangeNode_;
-  RowVectorPtr input_;
 };
 
 } // namespace facebook::velox::stateful
