@@ -49,7 +49,6 @@
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamPartition.h"
 #include "velox/experimental/stateful/StreamJoin.h"
-#include "velox/experimental/stateful/StreamJoinOperator.h"
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 
 namespace facebook::velox::stateful {
@@ -83,16 +82,6 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
         watermarkAssignerNode->idleTimeout(),
         watermarkAssignerNode->rowtimeFieldIndex(),
         watermarkAssignerNode->watermarkInterval());
-  } else if (auto joinNode =
-      std::dynamic_pointer_cast<const core::HashJoinNode>(statefulNode->node())) {
-    VELOX_CHECK(joinNode->sources().size() == 2, "HashJoinNode should have 2 sources");
-    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
-    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
-    return std::make_unique<StreamJoinOperator>(
-        std::move(op),
-        std::move(targets),
-        std::move(left),
-        std::move(right));
   } else if (auto partitionNode =
       std::dynamic_pointer_cast<const StreamPartitionNode>(statefulNode->node())) {
     VELOX_CHECK(targets.size() == 0, "StreamPartitionNode should have no targets");
