@@ -21,7 +21,6 @@ velox_add_library(
   StatefulOperator.cpp
   StreamPartition.cpp
   StreamJoin.cpp
-  StreamJoinOperator.cpp
   WatermarkAssigner.cpp)
 
 velox_link_libraries(
