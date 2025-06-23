@@ -87,41 +87,39 @@ RowVectorPtr StatefulTask::next(int32_t& retCode) {
   // TODO: only support operators in a sequence mode.
   const auto numOperators = operators_.size();
 
-  for (;;) {
-    VELOX_CHECK_EQ(
-        state(), exec::TaskState::kRunning, "Task has already finished processing.");
+  VELOX_CHECK_EQ(
+      state(), exec::TaskState::kRunning, "Task has already finished processing.");
 
-    for (auto i = 0; i < numOperators; ++i) {
-      auto op = operators_[i].get();
-      auto intermediateResult = op->getOutput();
-      if (intermediateResult) {
-        if (i == numOperators - 1) {
-          return intermediateResult;
-        } else {
-          auto nextOp = operators_[i + 1].get();
-          nextOp->traceInput(intermediateResult);
-          nextOp->addInput(intermediateResult);
-        }
+  for (auto i = 0; i < numOperators; ++i) {
+    auto op = operators_[i].get();
+    auto intermediateResult = op->getOutput();
+    if (intermediateResult) {
+      if (i == numOperators - 1) {
+        return intermediateResult;
       } else {
-        // Source operator has no result
-        if (i == 0) {
-          // TODO: when source is finished, maybe other operators need to do something.
-          if (op->isFinished()) {
-            retCode = 1;
-            finish();
-          }
-          return nullptr;
-        } else {
-          break;
-        }
+        auto nextOp = operators_[i + 1].get();
+        nextOp->traceInput(intermediateResult);
+        nextOp->addInput(intermediateResult);
       }
-
-    }
-
-    if (error()) {
-      std::rethrow_exception(error());
+    } else {
+      // Source operator has no result
+      if (i == 0) {
+        // TODO: when source is finished, maybe other operators need to do something.
+        if (op->isFinished()) {
+          retCode = 1;
+          finish();
+        }
+        return nullptr;
+      } else {
+        break;
+      }
     }
   }
+
+  if (error()) {
+    std::rethrow_exception(error());
+  }
+  return nullptr;
 }
 
 void StatefulTask::finish() {
