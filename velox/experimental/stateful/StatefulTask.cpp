@@ -63,13 +63,6 @@ void StatefulTask::initOperators() {
   operatorChain_ = std::move(StatefulPlanner::plan(planFragment(), driver->driverCtx()));
 
   operatorChain_->initialize();
-
-  if (pool()->reservedBytes() != 0) {
-    VELOX_FAIL(
-        "Unexpected memory pool allocations during stateful task[{}] initialization: {}",
-        taskId(),
-        pool()->treeMemoryUsage());
-  }
 }
 
 StreamElementPtr StatefulTask::next(int32_t& retCode) {
