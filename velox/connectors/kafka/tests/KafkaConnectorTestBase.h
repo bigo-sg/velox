@@ -178,7 +178,7 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
     builder.payload(message);
     producer.produce(builder);
     producer.flush();
-    sleep(5);
+    sleep(1);
   }
 };
 
