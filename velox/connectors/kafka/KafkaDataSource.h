@@ -87,8 +87,6 @@ class KafkaDataSource : public DataSource {
   uint64_t completedRows_ = 0;
   /// Count how many bytes consumed.
   uint64_t completedBytes_ = 0;
-  /// The empty row to be returned if nothing consumed.
-  RowVectorPtr emptyRow_;
   /// The output row to be returned.
   VectorPtr outRow_;
   /// Whether to accmulate batch when deserialize single row from kafka consumed.

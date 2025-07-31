@@ -101,7 +101,6 @@ void KafkaDataSource::createRecordDeserializer(
     VELOX_FAIL_UNSUPPORTED_INPUT_UNCATCHABLE(
         "The data format {} is not supported for kafka.", format);
   }
-  emptyRow_ = RowVector::createEmpty(outputType_, queryCtx_->memoryPool());
   outRow_ = RowVector::createEmpty(outputType_, queryCtx_->memoryPool());
   outRow_->resize(1);
 }
@@ -135,7 +134,7 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
   if (accumulateBatchEnabled_) {
     consumer_->consumeBatch(queue_, consumedMsgBytes);
     if (queue_.empty()) {
-      res.emplace(emptyRow_);
+      return res;
     } else {
       completedRows_ += queue_.size();
       completedBytes_ += consumedMsgBytes;
@@ -153,7 +152,6 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
       queue_.clear();
       consumer_->consumeBatch(queue_, consumedMsgBytes);
       consumePos_ = 0;
-      res.emplace(emptyRow_);
     } else {
       outRow_->prepareForReuse();
       deserializer_->deserialize(queue_[consumePos_], 0, outRow_);
