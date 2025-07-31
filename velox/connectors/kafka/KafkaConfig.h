@@ -15,9 +15,9 @@
  */
 #pragma once
 
-#include <optional>
-#include "cppkafka/cppkafka.h"
 #include "velox/common/config/Config.h"
+#include <cppkafka/cppkafka.h>
+#include <optional>
 
 namespace facebook::velox::connector::kafka {
 
@@ -91,10 +91,9 @@ class ConnectionConfig : public KafkaConfig {
   /// The startup mode of kafka consumer, its value canbe `group-offsets`,
   /// `latest-offsets`, `earliest-offsets`, `timestamp`.
   static constexpr const char* kStartupMode = "scan.startup.mode";
-  /// Whether deserialze the consumed data into a batch and then process the by
-  /// batch.
-  static constexpr const char* kProcessDataByBatch =
-      "enable.batch.process.data";
+  /// Whether accumulate the consumed/deserialized data into a batch.
+  static constexpr const char* kEnableAccumulateDataBatch =
+      "enable.accumulate.data.batch";
   /// The config of kafka client, to define the default value of minimum
   /// messages size of kafka client queue.
   static constexpr const uint32_t defaultQueuedMinMessages = 1000000;
@@ -129,7 +128,7 @@ class ConnectionConfig : public KafkaConfig {
   const uint32_t getPollTimeoutMills() const;
   const uint32_t getConsumeQueueSize() const;
   const std::string getStartupMode() const;
-  const bool getEnableBatchProcessData() const;
+  const bool getEnableAccumulateDataBatch() const;
   /// Get the configuration for kafka client to consume.
   cppkafka::Configuration getCppKafkaConfiguration() const;
 };

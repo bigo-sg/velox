@@ -18,9 +18,9 @@
 #include "velox/connectors/kafka/KafkaDataSource.h"
 #include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
 #include "velox/connectors/kafka/tests/KafkaConnectorTestBase.h"
+#include "velox/vector/ComplexVector.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/StringView.h"
-
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 
@@ -99,7 +99,7 @@ TEST_F(KafkaConnectorTest, testDeserializeMessages) {
   ASSERT_TRUE(kafkaDataSource != nullptr);
   const auto & deserializer = kafkaDataSource->getDeserializer();
   std::string msg = "{\"event_type\":1, \"bid\": {\"auction\":1, \"bidder\":222, \"price\":1113, \"channel\":\"OTS\", \"url\":\"http://testkafka/a/b/c\", \"dateTime\":\"2025-06-18 11:22:33\", \"extra\":\"xxxx\"}}";
-  VectorPtr vec1 = deserializer->emptyRow();
+  VectorPtr vec1 = RowVector::createEmpty(outputType, memoryPool.get());
   vec1->resize(1);
   deserializer->deserialize(msg, 0, vec1);
   std::shared_ptr<RowVector> rowVector1 = std::dynamic_pointer_cast<RowVector>(vec1);

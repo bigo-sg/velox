@@ -16,11 +16,11 @@
 
 #pragma once
 
-#include "folly/dynamic.h"
 #include "velox/connectors/Connector.h"
 #include "velox/core/ITypedExpr.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
+#include <folly/dynamic.h>
 
 namespace facebook::velox::connector::kafka {
 

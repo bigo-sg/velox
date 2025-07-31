@@ -35,7 +35,7 @@ KafkaDataSource::KafkaDataSource(
     : queryCtx_(connectorQueryCtx),
       config_(config),
       outputType_(outputType),
-      processByBatch_(config_->getEnableBatchProcessData()),
+      accumulateBatchEnabled_(config_->getEnableAccumulateDataBatch()),
       consumeBatchSize_(config_->getPollMaxBatchSize()) {
   const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
       std::dynamic_pointer_cast<KafkaTableHandle>(tableHandle);
@@ -101,8 +101,8 @@ void KafkaDataSource::createRecordDeserializer(
     VELOX_FAIL_UNSUPPORTED_INPUT_UNCATCHABLE(
         "The data format {} is not supported for kafka.", format);
   }
-  emptyRow_ = deserializer_->emptyRow();
-  outRow_ = deserializer_->emptyRow();
+  emptyRow_ = RowVector::createEmpty(outputType_, queryCtx_->memoryPool());
+  outRow_ = RowVector::createEmpty(outputType_, queryCtx_->memoryPool());
   outRow_->resize(1);
 }
 
@@ -132,7 +132,7 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
     velox::ContinueFuture&) {
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
-  if (processByBatch_) {
+  if (accumulateBatchEnabled_) {
     consumer_->consumeBatch(queue_, consumedMsgBytes);
     if (queue_.empty()) {
       res.emplace(emptyRow_);

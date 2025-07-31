@@ -44,11 +44,6 @@ class KafkaRecordDeserializer {
       VectorPtr& vec) {
   }
 
-  /// Return a empty row.
-  const RowVectorPtr emptyRow() {
-    return RowVector::createEmpty(outputType_, memoryPool_);
-  }
-
  protected:
   RowTypePtr outputType_;
   memory::MemoryPool* memoryPool_;

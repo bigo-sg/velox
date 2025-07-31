@@ -15,8 +15,8 @@
  */
 
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
+#include <folly/dynamic.h>
 #include <sstream>
-#include "folly/dynamic.h"
 
 namespace facebook::velox::connector::kafka {
 
