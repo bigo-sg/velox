@@ -84,8 +84,8 @@ const uint32_t ConnectionConfig::getPollMaxBatchSize() const {
       kPollMaxBatchSize, defaultPollMaxBatchSize);
 }
 
-const bool ConnectionConfig::getEnableBatchProcessData() const {
-  return checkAndGetConfigValue<std::string, false>(kProcessDataByBatch, "true") ==
+const bool ConnectionConfig::getEnableAccumulateDataBatch() const {
+  return checkAndGetConfigValue<std::string, false>(kEnableAccumulateDataBatch, "true") ==
                  "true"
              ? true
              : false;

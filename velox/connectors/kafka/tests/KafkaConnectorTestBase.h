@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include <fstream>
 #include "velox/connectors/kafka/KafkaConnector.h"
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaTableHandle.h"
@@ -24,8 +23,8 @@
 #include "velox/type/Type.h"
 #include "velox/type/Filter.h"
 #include "velox/exec/tests/utils/OperatorTestBase.h"
-
-#include "cppkafka/cppkafka.h"
+#include <cppkafka/cppkafka.h>
+#include <fstream>
 
 namespace facebook::velox::connector::kafka::test {
 

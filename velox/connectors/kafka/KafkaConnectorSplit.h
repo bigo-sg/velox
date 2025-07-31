@@ -16,10 +16,10 @@
 
 #pragma once
 
-#include "cppkafka/topic_partition.h"
-#include "cppkafka/topic_partition_list.h"
-#include "folly/dynamic.h"
 #include "velox/connectors/Connector.h"
+#include <cppkafka/topic_partition.h>
+#include <cppkafka/topic_partition_list.h>
+#include <folly/dynamic.h>
 
 namespace facebook::velox::connector::kafka {
 

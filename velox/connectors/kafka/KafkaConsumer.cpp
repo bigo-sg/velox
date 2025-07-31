@@ -15,9 +15,9 @@
  */
 
 #include "velox/connectors/kafka/KafkaConsumer.h"
+#include <cppkafka/buffer.h>
+#include <cppkafka/consumer.h>
 #include <sstream>
-#include "cppkafka/buffer.h"
-#include "cppkafka/consumer.h"
 
 namespace facebook::velox::connector::kafka {
 

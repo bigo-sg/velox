@@ -15,9 +15,6 @@
  */
 #pragma once
 
-#include "cppkafka/cppkafka.h"
-#include "folly/Executor.h"
-#include "folly/ProducerConsumerQueue.h"
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/connectors/Connector.h"
@@ -27,6 +24,7 @@
 #include "velox/connectors/kafka/KafkaRecordDeserializer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
+#include <cppkafka/cppkafka.h>
 
 namespace facebook::velox::connector::kafka {
 
@@ -93,11 +91,11 @@ class KafkaDataSource : public DataSource {
   RowVectorPtr emptyRow_;
   /// The output row to be returned.
   VectorPtr outRow_;
-  /// Whether to consume, deserialize, and return the data by batch.
-  /// If `true`, the consumed data would be deserialized by batch in one go, and
+  /// Whether to accmulate batch when deserialize single row from kafka consumed.
+  /// If `true`, the consumed data would be deserialized into a batch in one go, and
   /// return a row vector with batch rows. If `false`, the consumed data would
   /// be deserilized one by one, and return a row vector with a single row.
-  bool processByBatch_;
+  bool accumulateBatchEnabled_;
   /// The batch size of data are consumed at once .
   uint64_t consumeBatchSize_;
   /// The cache queue for storing consumed data.
