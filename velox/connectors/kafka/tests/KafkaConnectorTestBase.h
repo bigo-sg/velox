@@ -35,7 +35,7 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
   const std::string kafkaConsumeGroupId = "test_kafka_group_id";
   const std::string kafkaDataFormat = "json";
   const std::string kafkaClientId = "test_kafka_client";
-  const std::string kafkaAutoOffsetReset = "latest";
+  const std::string kafkaAutoOffsetReset = "earliest";
   const std::string kafkaStartupMode = "latest-offsets";
   const std::string kKafkaConnectorId = "test-kafka";
   const std::shared_ptr<RowType> outputType = createOutputType();
