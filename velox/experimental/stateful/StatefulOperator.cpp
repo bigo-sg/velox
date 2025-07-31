@@ -26,6 +26,7 @@ void StatefulOperator::initialize() {
   for (auto& target : targets_) {
     target->initialize();
   }
+  combinedWatermarkStatus_ = std::make_shared<CombinedWatermarkStatus>(numInputs());
 }
   
 bool StatefulOperator::isFinished() {
@@ -94,8 +95,11 @@ void StatefulOperator::pushWatermark(long timestamp, int index) {
 }
 
 void StatefulOperator::processWatermark(long timestamp, int index) {
-  // TODO: notify opeartor
-  pushWatermark(timestamp, index);
+  if (combinedWatermarkStatus_->updateWatermark(index - 1, timestamp)) {
+    // If the watermark is updated, we need to advance the timer service.
+    long combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
+    processWatermarkInternal(combinedWatermark);
+    pushWatermark(combinedWatermark, 1);
+  }
 }
-
 } // namespace facebook::velox::stateful

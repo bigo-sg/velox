@@ -16,7 +16,9 @@
 #pragma once
 
 #include "velox/exec/Operator.h"
+#include "velox/experimental/stateful/CombinedWatermarkStatus.h"
 
+#include <iostream>
 namespace facebook::velox::stateful {
 
 class StatefulOperator {
@@ -41,11 +43,29 @@ class StatefulOperator {
 
   virtual void close();
 
-  virtual void processWatermark(long timestamp, int index);
+  void processWatermark(long timestamp, int index);
+
+  const std::string detail() const {
+    std::stringstream stream;
+    stream << "StatefulOperator: " << name() << "\n";
+    for (size_t i = 0; i < targets_.size(); ++i) {
+      stream << "\tTarget " << i << ": " << targets_[i]->detail() << "\n";
+    }
+    return stream.str();
+  }
+
+  virtual std::string name() const {
+    return operator_->operatorType();
+  }
 
  protected:
   void pushOutput(RowVectorPtr output);
   void pushWatermark(long timestamp, int index);
+  virtual void processWatermarkInternal(long timestamp) {}
+
+  virtual int numInputs() const {
+    return 1;
+  }
 
   std::unique_ptr<exec::Operator>& op() {
     return operator_;
@@ -60,6 +80,7 @@ class StatefulOperator {
   std::vector<std::unique_ptr<StatefulOperator>> targets_;
   bool sink;
   bool sourceEmpty_ = true;
+  std::shared_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
 };
 
 using StatefulOperatorPtr = std::unique_ptr<StatefulOperator>;

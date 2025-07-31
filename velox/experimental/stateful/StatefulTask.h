@@ -19,6 +19,7 @@
 #include "velox/exec/Task.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StreamElement.h"
+#include "velox/experimental/stateful/state/StateBackend.h"
 
 namespace facebook::velox::stateful {
 
@@ -58,7 +59,7 @@ class StatefulTask : public exec::Task {
 
   void notifyWatermark(long watermark, int index);
 
-  void initOperators();
+  void init();
 
   // The task is finished, close all operators and reset driver
   void finish();
@@ -72,6 +73,10 @@ class StatefulTask : public exec::Task {
       core::PlanFragment planFragment,
       std::shared_ptr<core::QueryCtx> queryCtx);
 
+  void initOperators();
+
+  void initStateBackend();
+
   StreamElementPtr popOutput();
 
   std::unique_ptr<StatefulOperator> operatorChain_;
@@ -82,6 +87,9 @@ class StatefulTask : public exec::Task {
 
   // hold the driver only to avoid it be released.
   std::shared_ptr<exec::Driver> driver;
+
+  // The state backend used by this task.
+  std::unique_ptr<StateBackend> statebackend_;
 };
 
 } // namespace facebook::velox::stateful

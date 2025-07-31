@@ -253,6 +253,10 @@ RowVectorPtr NestedLoopJoinProbe::getOutput() {
     // Generate actual join output by processing probe and build matches, and
     // probe mismaches (for left joins).
     output = generateOutput();
+    if (input_ != nullptr) {
+      finishProbeInput();
+    }
+    return output;
   }
   return output;
 }

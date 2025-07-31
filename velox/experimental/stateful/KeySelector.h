@@ -15,35 +15,31 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
-#include "velox/experimental/stateful/StreamElement.h"
+#include "velox/vector/ComplexVector.h"
+#include <climits>
+#include <map>
 
 namespace facebook::velox::stateful {
 
-class StreamPartition : public StatefulOperator {
+/// This class is relevent to flink KeySelector.
+/// It can partition the RowVector according to the key fields.
+class KeySelector {
  public:
-  StreamPartition(
-      std::unique_ptr<exec::Operator> op,
-      const core::PartitionFunctionSpec& partitionFunctionSpec,
-      int numPartitions);
+  KeySelector(
+      std::unique_ptr<core::PartitionFunction> partitionFunction,
+      memory::MemoryPool* pool,
+      int numPartitions = INT_MAX);
 
-  bool isFinished() override;
-
-  void addInput(RowVectorPtr input) override;
-
-  void getOutput() override;
-
-  std::string name() const override {
-    return "StreamPartition";
-  }
+  std::map<uint32_t, RowVectorPtr> partition(const RowVectorPtr& input);
 
  private:
-  void pushToTask(StreamElementPtr output);
+  void prepareForInput(const RowVectorPtr& input);
 
-  void prepareForInput(RowVectorPtr& input);
-
-  void allocateIndexBuffers(const std::vector<vector_size_t>& sizes);
+  void allocateIndexBuffers(
+      const std::map<uint32_t, vector_size_t>& numOfKeys,
+      std::map<uint32_t, BufferPtr>& keyToIndexBuffers,
+      std::map<uint32_t, vector_size_t*>& keyToRawIndices);
 
   RowVectorPtr wrapChildren(
       const RowVectorPtr& input,
@@ -51,15 +47,8 @@ class StreamPartition : public StatefulOperator {
       const BufferPtr& indices);
 
   const std::unique_ptr<core::PartitionFunction> partitionFunction_;
+  memory::MemoryPool* pool_;
   const int numPartitions_;
-
-  RowVectorPtr input_;
-
-  /// Reusable memory for hash calculation.
-  std::vector<uint32_t> partitions_;
-  /// Reusable buffers for input partitioning.
-  std::vector<BufferPtr> indexBuffers_;
-  std::vector<vector_size_t*> rawIndices_;
 };
 
 } // namespace facebook::velox::stateful

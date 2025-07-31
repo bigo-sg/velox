@@ -119,14 +119,18 @@ class StreamJoinNode :  public core::PlanNode {
   StreamJoinNode(
       const core::PlanNodeId& id,
       const std::vector<core::PlanNodePtr>& sources,
-      const std::shared_ptr<const core::NestedLoopJoinNode>& build,
+      const std::shared_ptr<const core::PartitionFunctionSpec>& leftPartFuncSpec,
+      const std::shared_ptr<const core::PartitionFunctionSpec>& rightPartFuncSpec,
       const std::shared_ptr<const core::NestedLoopJoinNode>& probe,
-      RowTypePtr outputType)
+      RowTypePtr outputType,
+      int numPartitions)
       : core::PlanNode(id),
         sources_(std::move(sources)),
-        build_(std::move(build)),
+        leftPartFuncSpec_(std::move(leftPartFuncSpec)),
+        rightPartFuncSpec_(std::move(rightPartFuncSpec)),
         probe_(std::move(probe)),
-        outputType_(std::move(outputType)) {}
+        outputType_(std::move(outputType)),
+        numPartitions_(numPartitions) {}
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -140,12 +144,20 @@ class StreamJoinNode :  public core::PlanNode {
     return "StreamJoin";
   }
 
-  const std::shared_ptr<const core::NestedLoopJoinNode>& build() const {
-    return build_;
+  const std::shared_ptr<const core::PartitionFunctionSpec>& leftPartFuncSpec() const {
+    return leftPartFuncSpec_;
+  }
+
+  const std::shared_ptr<const core::PartitionFunctionSpec>& rightPartFuncSpec() const {
+    return rightPartFuncSpec_;
   }
 
   const std::shared_ptr<const core::NestedLoopJoinNode>& probe() const {
     return probe_;
+  }
+
+  const int numPartitions() const {
+    return numPartitions_;
   }
 
   folly::dynamic serialize() const override;
@@ -156,9 +168,11 @@ class StreamJoinNode :  public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const std::vector<core::PlanNodePtr> sources_;
-  const std::shared_ptr<const core::NestedLoopJoinNode> build_;
+  const std::shared_ptr<const core::PartitionFunctionSpec> leftPartFuncSpec_;
+  const std::shared_ptr<const core::PartitionFunctionSpec> rightPartFuncSpec_;
   const std::shared_ptr<const core::NestedLoopJoinNode> probe_;
   const RowTypePtr outputType_;
+  const int numPartitions_;
 };
 
 // Generate hash for RowVector to exchange by key.
@@ -227,4 +241,185 @@ class EmptyNode : public core::PlanNode {
 
   const RowTypePtr outputType_;
 };
+
+class WindowJoinNode :  public core::PlanNode {
+ public:
+  WindowJoinNode(
+      const core::PlanNodeId& id,
+      const std::vector<core::PlanNodePtr>& sources,
+      const std::shared_ptr<const core::PartitionFunctionSpec>& leftPartFuncSpec,
+      const std::shared_ptr<const core::PartitionFunctionSpec>& rightPartFuncSpec,
+      const std::shared_ptr<const core::NestedLoopJoinNode>& probe,
+      RowTypePtr outputType,
+      int numPartitions,
+      int leftWindowEndIndex,
+      int rightWindowEndIndex)
+      : core::PlanNode(id),
+        sources_(std::move(sources)),
+        leftPartFuncSpec_(std::move(leftPartFuncSpec)),
+        rightPartFuncSpec_(std::move(rightPartFuncSpec)),
+        probe_(std::move(probe)),
+        outputType_(std::move(outputType)),
+        numPartitions_(numPartitions),
+        leftWindowEndIndex_(leftWindowEndIndex),
+        rightWindowEndIndex_(rightWindowEndIndex) {}
+
+  const RowTypePtr& outputType() const override {
+    return outputType_;
+  }
+
+  const std::vector<core::PlanNodePtr>& sources() const override {
+    return sources_;
+  }
+
+  std::string_view name() const override {
+    return "WindowJoin";
+  }
+
+  const std::shared_ptr<const core::PartitionFunctionSpec>& leftPartFuncSpec() const {
+    return leftPartFuncSpec_;
+  }
+
+  const std::shared_ptr<const core::PartitionFunctionSpec>& rightPartFuncSpec() const {
+    return rightPartFuncSpec_;
+  }
+
+  const std::shared_ptr<const core::NestedLoopJoinNode>& probe() const {
+    return probe_;
+  }
+
+  const int numPartitions() const {
+    return numPartitions_;
+  }
+
+  const int leftWindowEndIndex() const {
+    return leftWindowEndIndex_;
+  }
+
+  const int rightWindowEndIndex() const {
+    return rightWindowEndIndex_;
+  }
+
+  folly::dynamic serialize() const override;
+
+  static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
+
+ private:
+  void addDetails(std::stringstream& stream) const override;
+
+  const std::vector<core::PlanNodePtr> sources_;
+  const std::shared_ptr<const core::PartitionFunctionSpec> leftPartFuncSpec_;
+  const std::shared_ptr<const core::PartitionFunctionSpec> rightPartFuncSpec_;
+  const std::shared_ptr<const core::NestedLoopJoinNode> probe_;
+  const RowTypePtr outputType_;
+  const int numPartitions_;
+  const int leftWindowEndIndex_;
+  const int rightWindowEndIndex_;
+};
+
+class WindowAggregationNode : public core::PlanNode {
+ public:
+  WindowAggregationNode(
+      const core::PlanNodeId& id,
+      std::shared_ptr<const core::AggregationNode>& aggregationNode,
+      std::shared_ptr<const core::AggregationNode>& localAgg,
+      const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
+      const std::shared_ptr<const core::PartitionFunctionSpec>& sliceAssignerSpec,
+      long windowInterval,
+      bool useDayLightSaving,
+      bool isLocalAgg,
+      long size,
+      long step,
+      long offset,
+      int windowType,
+      const RowTypePtr& outputType) :
+        PlanNode(id),
+        aggregation_(std::move(aggregationNode)),
+        localAgg_(std::move(localAgg)),
+        keySelectorSpec_(std::move(keySelectorSpec)),
+        sliceAssignerSpec_(std::move(sliceAssignerSpec)),
+        windowInterval_(windowInterval),
+        useDayLightSaving_(useDayLightSaving),
+        isLocalAgg_(isLocalAgg),
+        size_(size),
+        step_(step),
+        offset_(offset),
+        windowType_(windowType),
+        outputType_(std::move(outputType)) {}
+
+  const RowTypePtr& outputType() const override {
+    return outputType_;
+  }
+
+  const std::shared_ptr<const core::AggregationNode>& aggregation() const {
+    return aggregation_;
+  }
+
+  const std::shared_ptr<const core::AggregationNode>& localAgg() const {
+    return localAgg_;
+  }
+
+  const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec() const {
+    return keySelectorSpec_;
+  }
+
+  const std::shared_ptr<const core::PartitionFunctionSpec>& sliceAssignerSpec() const {
+    return sliceAssignerSpec_;
+  }
+
+  long windowInterval() const {
+    return windowInterval_;
+  }
+
+  bool useDayLightSaving() const {
+    return useDayLightSaving_;
+  }
+
+  bool isLocalAgg() const {
+    return isLocalAgg_;
+  }
+
+  long size() const {
+    return size_;
+  }
+
+  long step() const {
+    return step_;
+  }
+
+  long offset() const {
+    return offset_;
+  }
+
+  int windowType() const {
+    return windowType_;
+  }
+
+  const std::vector<core::PlanNodePtr>& sources() const override;
+
+  std::string_view name() const override {
+    return "WindowAggregationNode";
+  }
+
+  folly::dynamic serialize() const override;
+
+  static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
+
+ private:
+  void addDetails(std::stringstream& stream) const override;
+
+  const std::shared_ptr<const core::AggregationNode> aggregation_;
+  const std::shared_ptr<const core::AggregationNode> localAgg_;
+  const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
+  const std::shared_ptr<const core::PartitionFunctionSpec> sliceAssignerSpec_;
+  long windowInterval_ = 0;
+  bool useDayLightSaving_ = false;
+  bool isLocalAgg_;
+  long size_;
+  long step_;
+  long offset_;
+  int windowType_;
+  const RowTypePtr outputType_;
+};
+
 } // namespace facebook::velox::stateful

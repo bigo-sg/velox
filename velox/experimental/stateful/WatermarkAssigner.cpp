@@ -52,7 +52,6 @@ void WatermarkAssigner::getOutput() {
     timestamps->size() == input_->size(),
     "Timestamps are not equal to input.");
 
-  // TODO: generate watermark according to timestamps;
   auto timestamp = timestamps->childAt(0)->asFlatVector<int64_t>();
   int lastIndex = 0;
   for (int i = 0; i < timestamps->size(); i++) {

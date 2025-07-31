@@ -15,40 +15,49 @@
  */
 #pragma once
 
-#include "velox/exec/FilterProject.h"
+#include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
-#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/window/WindowBuffer.h"
 
 namespace facebook::velox::stateful {
 
-/// It is related to org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
-/// in Flink. It extracts timestamp from each row and generate periodic watermark.
-class WatermarkAssigner : public StatefulOperator {
+/// It is related to LocalSlicingWindowAggOperator in Flink.
+/// It aggregates the records when window fires.
+class LocalWindowAggregator : public StatefulOperator {
  public:
-  WatermarkAssigner(
+  LocalWindowAggregator(
     std::unique_ptr<exec::Operator> op,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
-    const long idleTimeout,
-    const int rowtimeFieldIndex,
-    const long watermarkInterval);
+    std::unique_ptr<KeySelector> keySelector,
+    std::unique_ptr<KeySelector> sliceAssigner,
+    const long windowInterval,
+    const bool useDayLightSaving,
+    RowTypePtr outputType);
 
   void addInput(RowVectorPtr input) override;
 
   void getOutput() override;
 
+  void close() override;
+
   std::string name() const override {
-    return "WatermarkAssigner";
+    return "LocalWindowAggregator";
   }
 
  private:
-  void advanceWatermark();
+  void processWatermarkInternal(long timestamp) override;
+  RowVectorPtr addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd);
+
+  std::unique_ptr<KeySelector> keySelector_;
+  std::unique_ptr<KeySelector> sliceAssigner_;
+  WindowBufferPtr windowBuffer_;
+  const long windowInterval_;
+  const bool useDayLightSaving_;
+  const int shiftTimeZone_ = 0; // TODO: support time zone shift
+  RowTypePtr outputType_;
 
   RowVectorPtr input_;
-  const long idleTimeout_;
-  const int rowtimeFieldIndex_;
-  const long watermarkInterval_;
-
-  long currentWatermark = 0;
-  long lastWatermark = 0;
+  long currentWatermark_ = 0;
+  long nextTriggerWatermark_ = 0;
 };
 } // namespace facebook::velox::stateful

@@ -15,6 +15,7 @@
  */
 #include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StatefulTask.h"
+#include "velox/experimental/stateful/state/HashMapStateBackend.h"
 
 #include <iostream>
 
@@ -53,14 +54,23 @@ StatefulTask::StatefulTask(
 StatefulTask::~StatefulTask() {
 }
 
-void StatefulTask::initOperators() {
+void StatefulTask::init() {
+  initStateBackend();
+  initOperators();
+}
 
+void StatefulTask::initStateBackend() {
+  statebackend_ = std::make_unique<HashMapStateBackend>();
+}
+
+void StatefulTask::initOperators() {
   auto self = shared_from_this();
   // Create the operators.
   VELOX_CHECK_NULL(operatorChain_);
   auto driverCtx = std::make_unique<exec::DriverCtx>(self, 0, 0, -1, 0);
   driver = exec::Driver::testingCreate(std::move(driverCtx));
-  operatorChain_ = std::move(StatefulPlanner::plan(planFragment(), driver->driverCtx()));
+  operatorChain_ =
+      std::move(StatefulPlanner::plan(planFragment(), driver->driverCtx(), statebackend_.get()));
 
   operatorChain_->initialize();
 }
@@ -70,6 +80,10 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
 
   if (!pendings_.empty()) {
     return std::move(popOutput());
+  } else if (state() == exec::TaskState::kFinished) {
+    // If the task is already finished, return null and 1 for retCode.
+    retCode = 1;
+    return nullptr;
   }
 
   // Run operators one by one. If an operator has output, run its downstream operators.
@@ -84,9 +98,12 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
     operatorChain_->getOutput();
     if (pendings_.empty()) {
       if (operatorChain_->isFinished()) {
-        retCode = 1;
         finish();
-        return nullptr;
+        // finish may trigger window flush and generate output.
+        if (pendings_.empty()) {
+          retCode = 1;
+          return nullptr;
+        }
       } else if (operatorChain_->sourceEmpty()) {
         return nullptr;
       } else {

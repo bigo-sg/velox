@@ -15,8 +15,6 @@
  */
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 namespace {
@@ -67,6 +65,8 @@ void StatefulPlanNode::registerSerDe() {
   registry.Register("EmptyNode", EmptyNode::create);
   registry.Register("StreamJoinNode", StreamJoinNode::create);
   registry.Register("StreamPartitionNode", StreamPartitionNode::create);
+  registry.Register("WindowJoinNode", WindowJoinNode::create);
+  registry.Register("WindowAggregationNode", WindowAggregationNode::create);
 }
 
 const std::vector<core::PlanNodePtr>& WatermarkAssignerNode::sources() const {
@@ -100,15 +100,18 @@ core::PlanNodePtr WatermarkAssignerNode::create(const folly::dynamic& obj, void*
 }
 
 void StreamJoinNode::addDetails(std::stringstream& stream) const {
-  stream << "build: " << build_->toString();
+  stream << "leftPartFuncSpec: " << leftPartFuncSpec_->toString();
+  stream << ", rightPartFuncSpec: " << rightPartFuncSpec_->toString();
   stream << ", probe: " << probe_->toString();
 }
 
 folly::dynamic StreamJoinNode::serialize() const {
   auto obj = core::PlanNode::serialize();
-  obj["build"] = build_->serialize();
+  obj["leftPartFuncSpec"] = leftPartFuncSpec_->serialize();
+  obj["rightPartFuncSpec"] = rightPartFuncSpec_->serialize();
   obj["probe"] = probe_->serialize();
   obj["outputType"] = outputType_->serialize();
+  obj["numPartitions"] = numPartitions_;
   return obj;
 }
 
@@ -119,8 +122,10 @@ core::PlanNodePtr StreamJoinNode::create(const folly::dynamic& obj, void* contex
       obj["sources"], context);
   VELOX_CHECK_EQ(2, sources.size());
 
-  auto build = ISerializable::deserialize<core::NestedLoopJoinNode>(
-      obj["build"], context);
+  auto leftPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
+      obj["leftPartFuncSpec"], context);
+  auto rightPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
+      obj["rightPartFuncSpec"], context);
   auto probe = ISerializable::deserialize<core::NestedLoopJoinNode>(
       obj["probe"], context);
 
@@ -129,9 +134,11 @@ core::PlanNodePtr StreamJoinNode::create(const folly::dynamic& obj, void* contex
   return std::make_shared<StreamJoinNode>(
       planNodeId,
       std::move(sources),
-      std::move(build),
+      std::move(leftPartFuncSpec),
+      std::move(rightPartFuncSpec),
       std::move(probe),
-      outputType);
+      outputType,
+      obj["numPartitions"].asInt());
 }
 
 const std::vector<core::PlanNodePtr>& StreamPartitionNode::sources() const {
@@ -147,13 +154,10 @@ folly::dynamic StreamPartitionNode::serialize() const {
 
 // static
 core::PlanNodePtr StreamPartitionNode::create(const folly::dynamic& obj, void* context) {
-  std::cout << "" << "StreamPartitionNode created 1" << std::endl;
   auto planNodeId = obj["id"].asString();
   auto numPartitions = obj["numPartitions"].asInt();
-  std::cout << "" << "StreamPartitionNode created 2" << std::endl;
   auto partition = ISerializable::deserialize<core::LocalPartitionNode>(
       obj["partition"], context);
-  std::cout << "" << "StreamPartitionNode created with numPartitions: " << numPartitions << std::endl;
   return std::make_shared<const StreamPartitionNode>(planNodeId, partition, numPartitions);
 }
 
@@ -171,6 +175,113 @@ folly::dynamic EmptyNode::serialize() const {
 core::PlanNodePtr EmptyNode::create(const folly::dynamic& obj, void* context) {
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const EmptyNode>(outputType);
+}
+
+void WindowJoinNode::addDetails(std::stringstream& stream) const {
+  stream << "leftPartFuncSpec: " << leftPartFuncSpec_->toString();
+  stream << ", rightPartFuncSpec: " << rightPartFuncSpec_->toString();
+  stream << ", probe: " << probe_->toString();
+}
+
+folly::dynamic WindowJoinNode::serialize() const {
+  auto obj = core::PlanNode::serialize();
+  obj["leftPartFuncSpec"] = leftPartFuncSpec_->serialize();
+  obj["rightPartFuncSpec"] = rightPartFuncSpec_->serialize();
+  obj["probe"] = probe_->serialize();
+  obj["outputType"] = outputType_->serialize();
+  obj["numPartitions"] = numPartitions_;
+  obj["leftWindowEndIndex"] = leftWindowEndIndex_;
+  obj["rightWindowEndIndex"] = rightWindowEndIndex_;
+  return obj;
+}
+
+// static
+core::PlanNodePtr WindowJoinNode::create(const folly::dynamic& obj, void* context) {
+  auto planNodeId = obj["id"].asString();
+  auto sources = ISerializable::deserialize<std::vector<PlanNode>>(
+      obj["sources"], context);
+  VELOX_CHECK_EQ(2, sources.size());
+
+  auto leftPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
+      obj["leftPartFuncSpec"], context);
+  auto rightPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
+      obj["rightPartFuncSpec"], context);
+  auto probe = ISerializable::deserialize<core::NestedLoopJoinNode>(
+      obj["probe"], context);
+
+  auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
+
+  return std::make_shared<WindowJoinNode>(
+      planNodeId,
+      std::move(sources),
+      std::move(leftPartFuncSpec),
+      std::move(rightPartFuncSpec),
+      std::move(probe),
+      outputType,
+      obj["numPartitions"].asInt(),
+      obj["leftWindowEndIndex"].asInt(),
+      obj["rightWindowEndIndex"].asInt());
+}
+
+const std::vector<core::PlanNodePtr>& WindowAggregationNode::sources() const {
+  return kEmptySources;
+}
+
+folly::dynamic WindowAggregationNode::serialize() const {
+  auto obj = core::PlanNode::serialize();
+  obj["aggregation"] = aggregation_->serialize();
+  obj["localAgg"] = localAgg_ ? localAgg_->serialize() : nullptr;
+  obj["keySelectorSpec"] = keySelectorSpec_->serialize();
+  obj["sliceAssignerSpec"] = sliceAssignerSpec_->serialize();
+  obj["windowInterval"] = windowInterval_;
+  obj["useDayLightSaving"] = useDayLightSaving_;
+  obj["isLocalAgg"] = isLocalAgg_;
+  obj["size"] = size_;
+  obj["step"] = step_;
+  obj["offset"] = offset_;
+  obj["windowType"] = windowType_;
+  obj["outputType"] = outputType_->serialize();
+  return obj;
+}
+
+void WindowAggregationNode::addDetails(std::stringstream& stream) const {
+  stream << "aggregation: " << aggregation_->toString();
+  stream << ", keySelector: " << keySelectorSpec_->toString();
+  stream << ", sliceAssigner: " << sliceAssignerSpec_->toString();
+  stream << ", windowType: " << windowType_;
+  stream << ", isLocalAgg: " << isLocalAgg_;
+  stream << ", output: " << outputType_->toString();
+}
+
+// static
+core::PlanNodePtr WindowAggregationNode::create(const folly::dynamic& obj, void* context) {
+  auto planNodeId = obj["id"].asString();
+  auto aggregation = ISerializable::deserialize<core::AggregationNode>(
+      obj["aggregation"], context);
+  auto keySelectorSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
+      obj["keySelectorSpec"], context);
+  auto sliceAssignerSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
+      obj["sliceAssignerSpec"], context);
+  auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
+  std::shared_ptr<const core::AggregationNode> localAgg;
+  if (obj.count("localAgg")) {
+    localAgg = ISerializable::deserialize<core::AggregationNode>(
+        obj["localAgg"], context);
+  }
+  return std::make_shared<const WindowAggregationNode>(
+      planNodeId,
+      aggregation,
+      localAgg,
+      keySelectorSpec,
+      sliceAssignerSpec,
+      obj["windowInterval"].asInt(),
+      obj["useDayLightSaving"].asBool(),
+      obj["isLocalAgg"].asBool(),
+      obj["size"].asInt(),
+      obj["step"].asInt(),
+      obj["offset"].asInt(),
+      obj["windowType"].asInt(),
+      outputType);
 }
 
 } // namespace facebook::velox::stateful

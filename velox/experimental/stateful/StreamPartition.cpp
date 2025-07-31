@@ -34,20 +34,13 @@ StreamPartition::StreamPartition(
   rawIndices_.resize(numPartitions_);
 }
 
-void StreamPartition::initialize() {
-}
-  
 bool StreamPartition::isFinished() {
   return false;
 }
 
 void StreamPartition::addInput(RowVectorPtr input) {
-  std::cout << "StreamPartition::addInput: " << std::endl;
   VELOX_CHECK_NULL(input_);
   input_ = std::move(input);
-}
-
-void StreamPartition::close() {
 }
 
 void StreamPartition::getOutput() {
@@ -83,10 +76,9 @@ void StreamPartition::getOutput() {
       continue;
     }
     auto partitionData = wrapChildren(input_, partitionSize, indexBuffers_[i]);
-    pushToTask(std::make_shared<StreamRecord>(op()->planNodeId(), i, input_));
+    pushToTask(std::make_shared<StreamRecord>(op()->planNodeId(), i, partitionData));
   }
   input_.reset();
-  std::cout << "StreamPartition::resetInput: " << input_ << std::endl;
 }
 
 void StreamPartition::pushToTask(StreamElementPtr output) {

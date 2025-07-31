@@ -45,34 +45,40 @@
 #include "velox/exec/Values.h"
 #include "velox/exec/Window.h"
 #include "velox/experimental/stateful/EmptyOperator.h"
+#include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamPartition.h"
 #include "velox/experimental/stateful/StreamJoin.h"
 #include "velox/experimental/stateful/WatermarkAssigner.h"
+#include "velox/experimental/stateful/WindowAggregator.h"
+#include "velox/experimental/stateful/WindowJoin.h"
 
 namespace facebook::velox::stateful {
 
-static int opId = 0;
+static std::atomic<int> opId = 0;
 
 // static
 StatefulOperatorPtr StatefulPlanner::plan(
     const core::PlanFragment& planFragment,
-    exec::DriverCtx* ctx) {
-  return nodeToStatefulOperator(planFragment.planNode, ctx);
+    exec::DriverCtx* ctx,
+    StateBackend* stateBackend) {
+  return nodeToStatefulOperator(planFragment.planNode, ctx, stateBackend);
 }
 
 //static
 StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
     const core::PlanNodePtr& planNode,
-    exec::DriverCtx* ctx) {
+    exec::DriverCtx* ctx,
+    StateBackend* stateBackend) {
   auto statefulNode =
       std::dynamic_pointer_cast<const StatefulPlanNode>(planNode);
   VELOX_CHECK(statefulNode, "Not stateful node: {}", planNode->toString());
   std::vector<StatefulOperatorPtr> targets;
   std::unique_ptr<exec::Operator> op = std::move(nodeToOperator(statefulNode->node(), ctx));
   for (auto target : statefulNode->targets()) {
-    targets.push_back(std::move(nodeToStatefulOperator(target, ctx)));
+    targets.push_back(std::move(nodeToStatefulOperator(target, ctx, stateBackend)));
   }
   if (auto watermarkAssignerNode =
       std::dynamic_pointer_cast<const WatermarkAssignerNode>(statefulNode->node())) {
@@ -90,6 +96,107 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
         std::move(op),
         partitionNode->partition()->partitionFunctionSpec(),
         numPartitions);
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const StreamJoinNode>(statefulNode->node())) {
+    VELOX_CHECK(joinNode->sources().size() == 2, "StreamJoinNode should have 2 sources");
+    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
+    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
+    std::unique_ptr<KeySelector> leftKeySelector =
+        std::make_unique<KeySelector>(
+            std::move(joinNode->leftPartFuncSpec()->create(INT_MAX, false)),
+            op->pool(),
+            joinNode->numPartitions());
+    std::unique_ptr<KeySelector> rightKeySelector =
+        std::make_unique<KeySelector>(
+            std::move(joinNode->rightPartFuncSpec()->create(INT_MAX, false)),
+            op->pool(),
+            joinNode->numPartitions());
+    KeyedStateBackendParameters parameters(ctx->task->taskId(), op->operatorId());
+    auto runtime =
+        std::make_unique<RuntimeContext>(
+            op->operatorId(), stateBackend->createKeyedStateBackend(parameters));
+    return std::make_unique<StreamJoin>(
+        std::move(left),
+        std::move(right),
+        std::move(leftKeySelector),
+        std::move(rightKeySelector),
+        std::move(op),
+        std::move(targets),
+        std::move(runtime));
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const WindowJoinNode>(statefulNode->node())) {
+    VELOX_CHECK(joinNode->sources().size() == 2, "WindowJoinNode should have 2 sources");
+    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
+    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
+    std::unique_ptr<KeySelector> leftKeySelector =
+        std::make_unique<KeySelector>(
+            std::move(joinNode->leftPartFuncSpec()->create(INT_MAX, false)),
+            op->pool(),
+            joinNode->numPartitions());
+    std::unique_ptr<KeySelector> rightKeySelector =
+        std::make_unique<KeySelector>(
+            std::move(joinNode->rightPartFuncSpec()->create(INT_MAX, false)),
+            op->pool(),
+            joinNode->numPartitions());
+    KeyedStateBackendParameters parameters(ctx->task->taskId(), op->operatorId());
+    auto runtime =
+        std::make_unique<RuntimeContext>(
+            op->operatorId(), stateBackend->createKeyedStateBackend(parameters));
+    return std::make_unique<WindowJoin>(
+        std::move(left),
+        std::move(right),
+        std::move(leftKeySelector),
+        std::move(rightKeySelector),
+        std::move(op),
+        std::move(targets),
+        std::move(runtime),
+        joinNode->leftWindowEndIndex(),
+        joinNode->rightWindowEndIndex());
+  } else if (
+      auto windowAggNode =
+          std::dynamic_pointer_cast<const WindowAggregationNode>(statefulNode->node())) {
+    std::unique_ptr<KeySelector> keySelector =
+        std::make_unique<KeySelector>(
+            std::move(windowAggNode->keySelectorSpec()->create(INT_MAX, true)),
+            op->pool());
+    std::unique_ptr<KeySelector> sliceAssigner =
+        std::make_unique<KeySelector>(
+            std::move(windowAggNode->sliceAssignerSpec()->create(INT_MAX, true)),
+            op->pool());
+    if (windowAggNode->isLocalAgg()) {
+      return std::make_unique<LocalWindowAggregator>(
+          std::move(op),
+          std::move(targets),
+          std::move(keySelector),
+          std::move(sliceAssigner),
+          windowAggNode->windowInterval(),
+          windowAggNode->useDayLightSaving(),
+          windowAggNode->outputType());
+    } else {
+      auto localAggregator = nodeToOperator(windowAggNode->localAgg(), ctx);
+      std::unique_ptr<SliceAssigner> globalSliceAssigner =
+          std::make_unique<SliceAssigner>(
+              std::move(sliceAssigner),
+              windowAggNode->size(),
+              windowAggNode->step(),
+              windowAggNode->offset(),
+              windowAggNode->windowType());
+      KeyedStateBackendParameters parameters(ctx->task->taskId(), op->operatorId());
+      auto runtime =
+          std::make_unique<RuntimeContext>(
+              op->operatorId(), stateBackend->createKeyedStateBackend(parameters));
+      return std::make_unique<WindowAggregator>(
+          std::move(localAggregator),
+          std::move(op),
+          std::move(targets),
+          std::move(keySelector),
+          std::move(globalSliceAssigner),
+          windowAggNode->windowInterval(),
+          windowAggNode->useDayLightSaving(),
+          std::move(runtime));
+    }
   }
   return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
 }
@@ -104,126 +211,117 @@ std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
       auto next = planNode->sources()[0];
       if (auto projectNode =
           std::dynamic_pointer_cast<const core::ProjectNode>(next)) {
-        return std::make_unique<exec::FilterProject>(opId++, ctx, filterNode, projectNode);
+        return std::make_unique<exec::FilterProject>(
+            opId.fetch_add(1),
+            ctx,
+            filterNode,
+            projectNode);
       }
     }
-    return std::make_unique<exec::FilterProject>(opId++, ctx, filterNode, nullptr);
+    return std::make_unique<exec::FilterProject>(opId.fetch_add(1), ctx, filterNode, nullptr);
   } else if (
       auto projectNode =
           std::dynamic_pointer_cast<const core::ProjectNode>(planNode)) {
-    return std::make_unique<exec::FilterProject>(opId++, ctx, nullptr, projectNode);
+    return std::make_unique<exec::FilterProject>(opId.fetch_add(1), ctx, nullptr, projectNode);
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const StreamJoinNode>(planNode)) {
-    VELOX_CHECK(joinNode->sources().size() == 2, "StreamJoinNode should have 2 sources");
-    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
-    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
-    std::unique_ptr<exec::Operator> build =
-        std::make_unique<exec::NestedLoopJoinBuild>(opId++, ctx, joinNode->build());
-    std::unique_ptr<exec::Operator> probe = std::move(nodeToOperator(joinNode->probe(), ctx));
-    return std::make_unique<StreamJoin>(
-        opId++,
-        ctx,
-        std::move(joinNode),
-        std::move(left),
-        std::move(right),
-        std::move(build),
-        std::move(probe));
+    return nodeToOperator(joinNode->probe(), ctx);
   } else if (
       auto partitionNode =
         std::dynamic_pointer_cast<const StreamPartitionNode>(planNode)) {
-    return std::make_unique<EmptyOperator>(opId++, ctx, partitionNode->partition());
+    return std::make_unique<EmptyOperator>(opId.fetch_add(1), ctx, partitionNode->partition());
   } else if (
       auto valuesNode =
           std::dynamic_pointer_cast<const core::ValuesNode>(planNode)) {
-    return std::make_unique<exec::Values>(opId++, ctx, valuesNode);
+    return std::make_unique<exec::Values>(opId.fetch_add(1), ctx, valuesNode);
   } else if (
       auto tableScanNode =
           std::dynamic_pointer_cast<const core::TableScanNode>(planNode)) {
-    return std::make_unique<exec::TableScan>(opId++, ctx, tableScanNode);
+    return std::make_unique<exec::TableScan>(opId.fetch_add(1), ctx, tableScanNode);
   } else if (
       auto tableWriteNode =
           std::dynamic_pointer_cast<const core::TableWriteNode>(planNode)) {
-      return std::make_unique<exec::TableWriter>(opId++, ctx, tableWriteNode);
+      return std::make_unique<exec::TableWriter>(opId.fetch_add(1), ctx, tableWriteNode);
   } else if (
       auto tableWriteMergeNode =
           std::dynamic_pointer_cast<const core::TableWriteMergeNode>(planNode)) {
-    return std::make_unique<exec::TableWriteMerge>(opId++, ctx, tableWriteMergeNode);
+    return std::make_unique<exec::TableWriteMerge>(opId.fetch_add(1), ctx, tableWriteMergeNode);
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const core::HashJoinNode>(planNode)) {
-    return std::make_unique<exec::HashProbe>(opId++, ctx, joinNode);
+    return std::make_unique<exec::HashProbe>(opId.fetch_add(1), ctx, joinNode);
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const core::NestedLoopJoinNode>(planNode)) {
-    return std::make_unique<exec::NestedLoopJoinProbe>(opId++, ctx, joinNode);
+    return std::make_unique<exec::NestedLoopJoinProbe>(opId.fetch_add(1), ctx, joinNode);
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const core::IndexLookupJoinNode>(planNode)) {
-    return std::make_unique<exec::IndexLookupJoin>(opId++, ctx, joinNode);
+    return std::make_unique<exec::IndexLookupJoin>(opId.fetch_add(1), ctx, joinNode);
   } else if (
       auto aggregationNode =
           std::dynamic_pointer_cast<const core::AggregationNode>(planNode)) {
     if (aggregationNode->isPreGrouped()) {
-      return std::make_unique<exec::StreamingAggregation>(opId++, ctx, aggregationNode);
+      return std::make_unique<exec::StreamingAggregation>(opId.fetch_add(1), ctx, aggregationNode);
     } else {
-      return std::make_unique<exec::HashAggregation>(opId++, ctx, aggregationNode);
+      return std::make_unique<exec::HashAggregation>(opId.fetch_add(1), ctx, aggregationNode);
     }
   } else if (
       auto expandNode =
           std::dynamic_pointer_cast<const core::ExpandNode>(planNode)) {
-    return std::make_unique<exec::Expand>(opId++, ctx, expandNode);
+    return std::make_unique<exec::Expand>(opId.fetch_add(1), ctx, expandNode);
   } else if (
       auto groupIdNode =
           std::dynamic_pointer_cast<const core::GroupIdNode>(planNode)) {
-    return std::make_unique<exec::GroupId>(opId++, ctx, groupIdNode);
+    return std::make_unique<exec::GroupId>(opId.fetch_add(1), ctx, groupIdNode);
   } else if (
       auto topNNode =
           std::dynamic_pointer_cast<const core::TopNNode>(planNode)) {
-      return std::make_unique<exec::TopN>(opId++, ctx, topNNode);
+      return std::make_unique<exec::TopN>(opId.fetch_add(1), ctx, topNNode);
   } else if (
       auto limitNode =
           std::dynamic_pointer_cast<const core::LimitNode>(planNode)) {
-    return std::make_unique<exec::Limit>(opId++, ctx, limitNode);
+    return std::make_unique<exec::Limit>(opId.fetch_add(1), ctx, limitNode);
   } else if (
       auto orderByNode =
           std::dynamic_pointer_cast<const core::OrderByNode>(planNode)) {
-    return std::make_unique<exec::OrderBy>(opId++, ctx, orderByNode);
+    return std::make_unique<exec::OrderBy>(opId.fetch_add(1), ctx, orderByNode);
   } else if (
       auto windowNode =
           std::dynamic_pointer_cast<const core::WindowNode>(planNode)) {
-    return std::make_unique<exec::Window>(opId++, ctx, windowNode);
+    return std::make_unique<exec::Window>(opId.fetch_add(1), ctx, windowNode);
   } else if (
       auto rowNumberNode =
           std::dynamic_pointer_cast<const core::RowNumberNode>(planNode)) {
-    return std::make_unique<exec::RowNumber>(opId++, ctx, rowNumberNode);
+    return std::make_unique<exec::RowNumber>(opId.fetch_add(1), ctx, rowNumberNode);
   } else if (
       auto topNRowNumberNode =
           std::dynamic_pointer_cast<const core::TopNRowNumberNode>(planNode)) {
-    return std::make_unique<exec::TopNRowNumber>(opId++, ctx, topNRowNumberNode);
+    return std::make_unique<exec::TopNRowNumber>(opId.fetch_add(1), ctx, topNRowNumberNode);
   } else if (
       auto markDistinctNode =
           std::dynamic_pointer_cast<const core::MarkDistinctNode>(planNode)) {
-    return std::make_unique<exec::MarkDistinct>(opId++, ctx, markDistinctNode);
+    return std::make_unique<exec::MarkDistinct>(opId.fetch_add(1), ctx, markDistinctNode);
   } else if (
       auto mergeJoin =
           std::dynamic_pointer_cast<const core::MergeJoinNode>(planNode)) {
-    auto mergeJoinOp = std::make_unique<exec::MergeJoin>(opId++, ctx, mergeJoin);
+    auto mergeJoinOp = std::make_unique<exec::MergeJoin>(opId.fetch_add(1), ctx, mergeJoin);
     ctx->task->createMergeJoinSource(ctx->splitGroupId, mergeJoin->id());
     return std::move(mergeJoinOp);
   } else if (
       auto unnest =
           std::dynamic_pointer_cast<const core::UnnestNode>(planNode)) {
-    return std::make_unique<exec::Unnest>(opId++, ctx, unnest);
+    return std::make_unique<exec::Unnest>(opId.fetch_add(1), ctx, unnest);
   } else if (
       auto enforceSingleRow =
           std::dynamic_pointer_cast<const core::EnforceSingleRowNode>(planNode)) {
-    return std::make_unique<exec::EnforceSingleRow>(opId++, ctx, enforceSingleRow);
+    return std::make_unique<exec::EnforceSingleRow>(opId.fetch_add(1), ctx, enforceSingleRow);
   } else if (
       auto assignUniqueIdNode =
           std::dynamic_pointer_cast<const core::AssignUniqueIdNode>(planNode)) {
     return std::make_unique<exec::AssignUniqueId>(
-        opId++,
+        opId.fetch_add(1),
         ctx,
         assignUniqueIdNode,
         assignUniqueIdNode->taskUniqueId(),
@@ -231,10 +329,22 @@ std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
   } else if (
       auto watermarkAssignerNode =
           std::dynamic_pointer_cast<const stateful::WatermarkAssignerNode>(planNode)) {
-    return std::make_unique<exec::FilterProject>(opId++, ctx, nullptr, watermarkAssignerNode->project());
+    return std::make_unique<exec::FilterProject>(
+        opId.fetch_add(1),
+        ctx,
+        nullptr,
+        watermarkAssignerNode->project());
+  } else if (
+      auto joinNode =
+          std::dynamic_pointer_cast<const WindowJoinNode>(planNode)) {
+    return nodeToOperator(joinNode->probe(), ctx);
+  } else if (
+      auto windowAggNode =
+          std::dynamic_pointer_cast<const WindowAggregationNode>(planNode)) {
+    return nodeToOperator(windowAggNode->aggregation(), ctx);
   } else {
     std::unique_ptr<exec::Operator> extended;
-    extended = exec::Operator::fromPlanNode(ctx, opId++, planNode);
+    extended = exec::Operator::fromPlanNode(ctx, opId.fetch_add(1), planNode);
     VELOX_CHECK(extended, "Unsupported plan node: {}", planNode->toString());
     return extended;
   }

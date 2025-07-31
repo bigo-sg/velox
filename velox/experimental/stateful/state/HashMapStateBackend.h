@@ -15,33 +15,25 @@
  */
 #pragma once
 
-#include "velox/exec/Operator.h"
-#include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/common/serialization/Serializable.h"
+#include "velox/experimental/stateful/state/KeyedStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
-
-namespace facebook::velox::core {
-struct PlanFragment;
-} // namespace facebook::velox::core
 
 namespace facebook::velox::stateful {
 
-class StatefulPlanner {
-
+// This class is relevent to flink org.apache.flink.runtime.state.hashmap.HashMapStateBackend.
+class HashMapStateBackend : public StateBackend {
  public:
-  // Create stateful operator chain according to plan.
-  static StatefulOperatorPtr plan(
-      const core::PlanFragment& planFragment,
-      exec::DriverCtx* ctx,
-      StateBackend* stateBackend);
+  std::string getName() const {
+    return "HashMapStateBackend";
+  }
 
- private:
-  static std::unique_ptr<StatefulOperator> nodeToStatefulOperator(
-      const core::PlanNodePtr& planNode,
-      exec::DriverCtx* ctx,
-      StateBackend* stateBackend);
+  folly::dynamic serialize() const override {
+    return nullptr;
+  }
 
-  static std::unique_ptr<exec::Operator> nodeToOperator(
-      const core::PlanNodePtr& planNode,
-      exec::DriverCtx* ctx);
+  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
+      KeyedStateBackendParameters parameters) override;
 };
+
 } // namespace facebook::velox::stateful

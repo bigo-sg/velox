@@ -16,24 +16,29 @@
 #pragma once
 
 #include "velox/exec/NestedLoopJoinProbe.h"
+#include "velox/experimental/stateful/InternalTimerService.h"
+#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/RuntimeContext.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 
 namespace facebook::velox::stateful {
 
-class StreamJoin : public StatefulOperator {
+class WindowJoin : public StatefulOperator, public Triggerable {
  public:
-  StreamJoin(
+  WindowJoin(
       std::unique_ptr<exec::Operator> leftInput,
       std::unique_ptr<exec::Operator> rightInput,
       std::unique_ptr<KeySelector> leftKeySelector,
       std::unique_ptr<KeySelector> rightKeySelector,
       std::unique_ptr<exec::Operator> probe,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
-      RuntimeContextPtr runtimeCtx);
+      RuntimeContextPtr runtimeCtx,
+      int leftWindowEndIndex,
+      int rightWindowEndIndex);
 
   void initialize() override;
 
@@ -46,8 +51,10 @@ class StreamJoin : public StatefulOperator {
   void close() override;
 
   std::string name() const override {
-    return "StreamJoin";
+    return "WindowJoin";
   }
+
+  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
 
  protected:
   int numInputs() const override {
@@ -55,11 +62,19 @@ class StreamJoin : public StatefulOperator {
   }
 
  private:
-  RowVectorPtr join(
-      uint32_t key,
-      RowVectorPtr input,
-      const JoinRecordStateViewPtr& otherSideStateView,
-      bool inputIsLeft);
+  void join(uint32_t key, long windowEnd);
+
+  void processWatermarkInternal(long timestamp) override;
+
+  void processData(
+      exec::Operator* input,
+      KeySelector* keySelector,
+      int windowEndIndex,
+      ListState<uint32_t, long, RowVectorPtr>* state);
+
+  RowVectorPtr filterWindowFiredRows(RowVectorPtr& input);
+
+  std::map<long, RowVectorPtr> partitionWindowData(RowVectorPtr& input, int windowEndIndex);
 
   const std::unique_ptr<exec::Operator> leftInput_;
   const std::unique_ptr<exec::Operator> rightInput_;
@@ -67,8 +82,11 @@ class StreamJoin : public StatefulOperator {
   const std::unique_ptr<KeySelector> rightKeySelector_;
   exec::NestedLoopJoinProbe* probe_;
   const std::unique_ptr<RuntimeContext> runtimeCtx_;
-  JoinRecordStateViewPtr leftRecordStateView_;
-  JoinRecordStateViewPtr rightRecordStateView_;
+  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> leftWindowState_;
+  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> rightWindowState_;
+  const int leftWindowEndIndex_;
+  const int rightWindowEndIndex_;
+  std::shared_ptr<InternalTimerService<uint32_t, long>> timerService_;
 };
 
 } // namespace facebook::velox::stateful
