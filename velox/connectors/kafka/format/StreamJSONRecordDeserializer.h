@@ -15,7 +15,9 @@
  */
 #pragma once
 
-#include "velox/connectors/kafka/KafkaRecordDeserializer.h"
+#include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
+#include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
+
 #include "velox/type/StringView.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/Type.h"
@@ -32,10 +34,12 @@ using JSONArray = simdjson::ondemand::array;
 
 struct StreamJSONDeserializer {
  public:
+  virtual ~StreamJSONDeserializer() = default;
+
   static const std::shared_ptr<StreamJSONDeserializer> create(
       const TypePtr& type);
 
-  inline virtual const void
+  virtual const void
   deserialize(JSONValue& e, const size_t index, VectorPtr& vec) = 0;
 };
 

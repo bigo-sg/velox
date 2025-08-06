@@ -18,8 +18,10 @@ add_test(velox_kafka_connector_test velox_kafka_connector_test)
 target_link_libraries(
   velox_kafka_connector_test
   velox_kafka_connector
+  velox_kafka_connector_format
   velox_vector_test_lib
-  velox_exec
   velox_exec_test_lib
+  velox_exec
+  velox_common_base
   GTest::gtest
   GTest::gtest_main)

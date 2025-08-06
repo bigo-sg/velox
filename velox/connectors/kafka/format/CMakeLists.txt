@@ -16,7 +16,6 @@ velox_add_library(velox_kafka_connector_format OBJECT
 
 velox_link_libraries(
   velox_kafka_connector_format
-  velox_kafka_connector
   velox_common_io
   velox_connector
   simdjson::simdjson)

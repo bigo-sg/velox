@@ -21,7 +21,6 @@
 #include "velox/connectors/kafka/KafkaConfig.h"
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaConsumer.h"
-#include "velox/connectors/kafka/KafkaRecordDeserializer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
 #include <cppkafka/cppkafka.h>
@@ -30,6 +29,9 @@ namespace facebook::velox::connector::kafka {
 
 using TableHandlePtr = std::shared_ptr<connector::ConnectorTableHandle>;
 using ConnectorSplitPtr = std::shared_ptr<ConnectorSplit>;
+
+class KafkaRecordDeserializer;
+using KafkaRecordDeserializerPtr = std::shared_ptr<KafkaRecordDeserializer>;
 
 class KafkaDataSource : public DataSource {
  public:

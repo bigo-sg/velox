@@ -37,12 +37,13 @@ class KafkaRecordDeserializer {
         memoryPool_, "Memory pool of record deserializer must not be null.");
   }
 
+  virtual ~KafkaRecordDeserializer() = default;
+
   /// Deserialize a single message.
   virtual const void deserialize(
       const std::string & message,
       const size_t index,
-      VectorPtr& vec) {
-  }
+      VectorPtr& vec) = 0;
 
  protected:
   RowTypePtr outputType_;

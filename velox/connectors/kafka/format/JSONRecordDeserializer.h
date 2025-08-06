@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "velox/connectors/kafka/KafkaRecordDeserializer.h"
+#include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
 #include "velox/type/StringView.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/TimestampConversion.h"
@@ -128,7 +128,7 @@ struct MapDeserializer : public JSONDeserializer {
 
   inline const void
   deserialize(const Element& e, const size_t index, VectorPtr& vec) override {}
-  
+
  private:
   TypePtr keyType_;
   TypePtr valueType_;

@@ -17,7 +17,6 @@
 #pragma once
 
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
-#include "velox/connectors/kafka/KafkaRecordDeserializer.h"
 #include <cppkafka/cppkafka.h>
 #include <cppkafka/topic_partition_list.h>
 
