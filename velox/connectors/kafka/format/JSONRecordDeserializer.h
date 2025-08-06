@@ -16,12 +16,12 @@
 
 #pragma once
 
+#include "velox/functions/prestosql/json/SIMDJsonWrapper.h"
 #include "velox/connectors/kafka/KafkaRecordDeserializer.h"
 #include "velox/type/StringView.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/TimestampConversion.h"
 #include "velox/type/Type.h"
-#include "simdjson.h"
 #include <type_traits>
 #include <typeinfo>
 
