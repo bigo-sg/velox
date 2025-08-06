@@ -15,6 +15,8 @@
 # velox_add_library(velox_kafka_config OBJECT KafkaConfig.cpp)
 # velox_link_libraries(velox_kafka_config velox_core velox_exception)
 
+add_subdirectory(format)
+
 velox_add_library(
   velox_kafka_connector
   OBJECT
@@ -25,14 +27,14 @@ velox_add_library(
   KafkaConnector.cpp
   KafkaConnectorSplit.cpp)
 
-add_subdirectory(format)
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
-
 velox_link_libraries(
   velox_kafka_connector
+  velox_kafka_connector_format
   velox_common_io
   velox_connector
   Folly::folly
   CppKafka::cppkafka)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()

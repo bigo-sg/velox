@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include "velox/connectors/kafka/KafkaRecordDeserializer.h"
+#include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
 
 namespace facebook::velox::connector::kafka {
 /// Class for kafka record deserialization of csv format.
@@ -30,7 +30,7 @@ class KafkaCSVRecordDeserializer : public KafkaRecordDeserializer {
       const std::string & message,
       const size_t index,
       VectorPtr& vec) override {
-        VELOX_NYI("Not implemented.");   
+        VELOX_NYI("Not implemented.");
     }
 };
 

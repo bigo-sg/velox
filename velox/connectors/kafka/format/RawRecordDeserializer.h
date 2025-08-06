@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include "velox/connectors/kafka/KafkaRecordDeserializer.h"
+#include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
 #include "velox/type/Type.h"
 
 namespace facebook::velox::connector::kafka {
