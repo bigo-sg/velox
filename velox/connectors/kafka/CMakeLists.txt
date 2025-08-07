@@ -35,5 +35,4 @@ velox_link_libraries(
   velox_common_io
   velox_connector
   Folly::folly
-  CppKafka::cppkafka
-  simdjson::simdjson)
+  CppKafka::cppkafka)
