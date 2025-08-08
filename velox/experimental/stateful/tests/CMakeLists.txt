@@ -11,37 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+add_executable(velox_stateful_test StringFormatterTest.cpp)
 
-add_subdirectory(join)
-add_subdirectory(state)
-add_subdirectory(window)
+add_test(velox_stateful_test velox_stateful_test)
 
-velox_add_library(
+target_link_libraries(
+  velox_stateful_test
   velox_stateful_exec
-  OBJECT
-  StatefulTask.cpp
-  StatefulPlanner.cpp
-  StatefulPlanNode.cpp
-  StatefulOperator.cpp
-  StreamPartition.cpp
-  StreamJoin.cpp
-  WindowJoin.cpp
-  KeySelector.cpp
-  CombinedWatermarkStatus.cpp
-  LocalWindowAggregator.cpp
-  WindowAggregator.cpp
-  WatermarkAssigner.cpp
-  StringFormatter.cpp)
-
-velox_link_libraries(
-  velox_stateful_exec
-  PRIVATE
-  velox_stateful_join
-  velox_stateful_state
-  velox_stateful_window
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
   velox_common_base
-  velox_exec)
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+  GTest::gtest
+  GTest::gtest_main)
