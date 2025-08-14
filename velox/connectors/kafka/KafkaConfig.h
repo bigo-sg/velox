@@ -17,7 +17,6 @@
 
 #include "velox/common/config/Config.h"
 #include <cppkafka/cppkafka.h>
-#include <optional>
 
 namespace facebook::velox::connector::kafka {
 
@@ -83,7 +82,7 @@ class ConnectionConfig : public KafkaConfig {
   /// The config key of whether to ignore partition eof
   static constexpr const char* kEnablePartitionEof = "enable.partition.eof";
   /// The config key of max batch size to poll kafka messages.
-  static constexpr const char* kPollMaxBatchSize = "poll.max.batch.size";
+  static constexpr const char* kDataBatchSize = "data.batch.size";
   /// The config key of timeout milliseconds to poll kafka messages.
   static constexpr const char* kPollTimeoutMills = "poll.timeout.mills";
   /// The config key of queue buffer size of cppkafka client
@@ -91,9 +90,6 @@ class ConnectionConfig : public KafkaConfig {
   /// The startup mode of kafka consumer, its value canbe `group-offsets`,
   /// `latest-offsets`, `earliest-offsets`, `timestamp`.
   static constexpr const char* kStartupMode = "scan.startup.mode";
-  /// Whether accumulate the consumed/deserialized data into a batch.
-  static constexpr const char* kEnableAccumulateDataBatch =
-      "enable.accumulate.data.batch";
   /// The config of kafka client, to define the default value of minimum
   /// messages size of kafka client queue.
   static constexpr const uint32_t defaultQueuedMinMessages = 1000000;
@@ -102,9 +98,10 @@ class ConnectionConfig : public KafkaConfig {
   static constexpr const char* defaultClientSoftwareName = "velox";
   /// The config of the kafka client, to define the default version of client.
   static constexpr const char* defaultClientSoftwareVersion = "***";
-  /// The config the kafka client, to define the default batch size of a single
-  /// message consumption.
-  static constexpr const uint32_t defaultPollMaxBatchSize = 500;
+  /// Define the default batch size of a data process.
+  static constexpr const uint32_t defaultDataBatchSize = 500;
+  /// Define the default poll batch size of kafka client.
+  static constexpr const uint32_t defaultPollBatchSize = 500;
   /// The config of the kafka client, to define the default timeout millseconds
   /// of a single consumption.
   static constexpr const uint32_t defaultPollTimeoutMills = 100;
@@ -124,11 +121,10 @@ class ConnectionConfig : public KafkaConfig {
   const uint32_t getQueuedMinMessages() const;
   const bool getEnableAutoCommit() const;
   const bool getEnablePartitionEof() const;
-  const uint32_t getPollMaxBatchSize() const;
+  const uint32_t getDataBatchSize() const;
   const uint32_t getPollTimeoutMills() const;
   const uint32_t getConsumeQueueSize() const;
   const std::string getStartupMode() const;
-  const bool getEnableAccumulateDataBatch() const;
   /// Get the configuration for kafka client to consume.
   cppkafka::Configuration getCppKafkaConfiguration() const;
 };

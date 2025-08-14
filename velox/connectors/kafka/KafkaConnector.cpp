@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/kafka/KafkaConnector.h"
+#include "velox/connectors/kafka/KafkaDataSource.h"
 
 namespace facebook::velox::connector::kafka {
 

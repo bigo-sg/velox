@@ -18,12 +18,10 @@
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/connectors/kafka/KafkaTableHandle.h"
 #include "velox/connectors/kafka/format/CSVRecordDeserializer.h"
-#include "velox/connectors/kafka/format/JSONRecordDeserializer.h"
 #include "velox/connectors/kafka/format/RawRecordDeserializer.h"
 #include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
-#include "velox/type/StringView.h"
+#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/vector/BaseVector.h"
-#include "velox/vector/FlatVector.h"
 
 namespace facebook::velox::connector::kafka {
 
@@ -35,8 +33,8 @@ KafkaDataSource::KafkaDataSource(
     : queryCtx_(connectorQueryCtx),
       config_(config),
       outputType_(outputType),
-      accumulateBatchEnabled_(config_->getEnableAccumulateDataBatch()),
-      consumeBatchSize_(config_->getPollMaxBatchSize()) {
+      batchSize_(config_->getDataBatchSize()) {
+  VELOX_CHECK(batchSize_ > 0, "Batch size config value must greater than 0.");
   const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
       std::dynamic_pointer_cast<KafkaTableHandle>(tableHandle);
   if (kafkaTableHandle) {
@@ -53,7 +51,7 @@ KafkaDataSource::KafkaDataSource(
         config_->getCppKafkaConfiguration();
     createConsumer(cppKafkaConfig);
   }
-  createCachedQueue(consumeBatchSize_);
+  createCachedQueue(batchSize_);
   createRecordDeserializer(config_->getFormat(), outputType_);
 }
 
@@ -73,7 +71,7 @@ void KafkaDataSource::createConsumer(cppkafka::Configuration& config) {
       std::make_shared<cppkafka::Consumer>(config);
   cppKafkaConsumer->set_destroy_flags(RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE);
   consumer_ = std::make_shared<KafkaConsumer>(
-      cppKafkaConsumer, config_->getPollTimeoutMills(), consumeBatchSize_);
+      cppKafkaConsumer, config_->getPollTimeoutMills(), batchSize_);
   std::string topic = config_->getTopic();
   topics_.emplace_back(topic);
   consumer_->subscribe(topics_);
@@ -131,35 +129,24 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
     velox::ContinueFuture&) {
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
-  if (accumulateBatchEnabled_) {
+  if (queue_.empty()) {
     consumer_->consumeBatch(queue_, consumedMsgBytes);
-    if (queue_.empty()) {
+    if (consumedMsgBytes == 0) {
       return res;
-    } else {
-      completedRows_ += queue_.size();
-      completedBytes_ += consumedMsgBytes;
-      outRow_->prepareForReuse();
-      outRow_->resize(queue_.size());
-      for (consumePos_ = 0; consumePos_ < queue_.size(); ++consumePos_) {
-        deserializer_->deserialize(queue_[consumePos_], consumePos_, outRow_);
-      }
-      res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
     }
-    consumePos_  = 0;
-    queue_.clear();
-  } else {
-    if (consumePos_ == queue_.size()) {
-      queue_.clear();
-      consumer_->consumeBatch(queue_, consumedMsgBytes);
-      consumePos_ = 0;
-    } else {
-      outRow_->prepareForReuse();
-      deserializer_->deserialize(queue_[consumePos_], 0, outRow_);
-      completedRows_ += 1;
+  }
+  outRow_->prepareForReuse();
+  size_t processDataSize = batchSize_ > 1 ? queue_.size() : batchSize_;
+  outRow_->resize(processDataSize);
+  for (consumePos_ = 0; consumePos_ < processDataSize; ++consumePos_) {
+      deserializer_->deserialize(queue_[consumePos_], consumePos_, outRow_);
       completedBytes_ += queue_[consumePos_].size();
-      res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
-      consumePos_++;
-    }
+      completedRows_ += 1;
+  }
+  res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
+  if (consumePos_ >= queue_.size()) {
+    queue_.clear();
+    consumePos_ = 0;
   }
   return res;
 }

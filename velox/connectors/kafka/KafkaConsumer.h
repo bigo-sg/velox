@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "velox/connectors/kafka/KafkaConnectorSplit.h"
+#include "velox/connectors/kafka/KafkaConfig.h"
 #include <cppkafka/cppkafka.h>
 #include <cppkafka/topic_partition_list.h>
 
@@ -33,7 +33,7 @@ class KafkaConsumer {
       const uint32_t pollBatchSize)
       : consumer_(consumer),
         pollTimeOutMillis_(pollTimeOut),
-        pollBatchSize_(pollBatchSize) {}
+        pollBatchSize_(pollBatchSize > 1 ? pollBatchSize : ConnectionConfig::defaultPollBatchSize) {}
 
   ~KafkaConsumer() {}
 

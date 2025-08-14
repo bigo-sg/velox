@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/kafka/KafkaConsumer.h"
+#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include <cppkafka/buffer.h>
 #include <cppkafka/consumer.h>
 #include <sstream>

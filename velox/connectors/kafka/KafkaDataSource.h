@@ -19,7 +19,6 @@
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/connectors/Connector.h"
 #include "velox/connectors/kafka/KafkaConfig.h"
-#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaConsumer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
@@ -91,13 +90,8 @@ class KafkaDataSource : public DataSource {
   uint64_t completedBytes_ = 0;
   /// The output row to be returned.
   VectorPtr outRow_;
-  /// Whether to accmulate batch when deserialize single row from kafka consumed.
-  /// If `true`, the consumed data would be deserialized into a batch in one go, and
-  /// return a row vector with batch rows. If `false`, the consumed data would
-  /// be deserilized one by one, and return a row vector with a single row.
-  bool accumulateBatchEnabled_;
-  /// The batch size of data are consumed at once .
-  uint64_t consumeBatchSize_;
+  /// The batch size of data are consumed/processed at once .
+  uint64_t batchSize_;
   /// The cache queue for storing consumed data.
   std::vector<std::string> queue_;
   /// The consumed position of the cache queue when handle the consumed data one

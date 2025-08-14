@@ -79,16 +79,9 @@ const bool ConnectionConfig::getEnablePartitionEof() const {
   return checkAndGetConfigValue<bool, false>(kEnablePartitionEof, false);
 }
 
-const uint32_t ConnectionConfig::getPollMaxBatchSize() const {
+const uint32_t ConnectionConfig::getDataBatchSize() const {
   return checkAndGetConfigValue<uint32_t, false>(
-      kPollMaxBatchSize, defaultPollMaxBatchSize);
-}
-
-const bool ConnectionConfig::getEnableAccumulateDataBatch() const {
-  return checkAndGetConfigValue<std::string, false>(kEnableAccumulateDataBatch, "true") ==
-                 "true"
-             ? true
-             : false;
+      kDataBatchSize, defaultDataBatchSize);
 }
 
 const uint32_t ConnectionConfig::getPollTimeoutMills() const {
