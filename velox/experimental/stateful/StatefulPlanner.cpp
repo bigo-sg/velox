@@ -126,8 +126,8 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
         std::move(runtime));
   } else if (
       auto joinNode =
-          std::dynamic_pointer_cast<const WindowJoinNode>(statefulNode->node())) {
-    VELOX_CHECK(joinNode->sources().size() == 2, "WindowJoinNode should have 2 sources");
+          std::dynamic_pointer_cast<const StreamWindowJoinNode>(statefulNode->node())) {
+    VELOX_CHECK(joinNode->sources().size() == 2, "StreamWindowJoinNode should have 2 sources");
     std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
     std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
     std::unique_ptr<KeySelector> leftKeySelector =
@@ -156,7 +156,7 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
         joinNode->rightWindowEndIndex());
   } else if (
       auto windowAggNode =
-          std::dynamic_pointer_cast<const WindowAggregationNode>(statefulNode->node())) {
+          std::dynamic_pointer_cast<const StreamWindowAggregationNode>(statefulNode->node())) {
     std::unique_ptr<KeySelector> keySelector =
         std::make_unique<KeySelector>(
             std::move(windowAggNode->keySelectorSpec()->create(INT_MAX, true)),
@@ -336,11 +336,11 @@ std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
         watermarkAssignerNode->project());
   } else if (
       auto joinNode =
-          std::dynamic_pointer_cast<const WindowJoinNode>(planNode)) {
+          std::dynamic_pointer_cast<const StreamWindowJoinNode>(planNode)) {
     return nodeToOperator(joinNode->probe(), ctx);
   } else if (
       auto windowAggNode =
-          std::dynamic_pointer_cast<const WindowAggregationNode>(planNode)) {
+          std::dynamic_pointer_cast<const StreamWindowAggregationNode>(planNode)) {
     return nodeToOperator(windowAggNode->aggregation(), ctx);
   } else {
     std::unique_ptr<exec::Operator> extended;

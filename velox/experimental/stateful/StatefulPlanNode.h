@@ -242,9 +242,9 @@ class EmptyNode : public core::PlanNode {
   const RowTypePtr outputType_;
 };
 
-class WindowJoinNode :  public core::PlanNode {
+class StreamWindowJoinNode :  public core::PlanNode {
  public:
-  WindowJoinNode(
+  StreamWindowJoinNode(
       const core::PlanNodeId& id,
       const std::vector<core::PlanNodePtr>& sources,
       const std::shared_ptr<const core::PartitionFunctionSpec>& leftPartFuncSpec,
@@ -273,7 +273,7 @@ class WindowJoinNode :  public core::PlanNode {
   }
 
   std::string_view name() const override {
-    return "WindowJoin";
+    return "StreamWindowJoin";
   }
 
   const std::shared_ptr<const core::PartitionFunctionSpec>& leftPartFuncSpec() const {
@@ -317,9 +317,9 @@ class WindowJoinNode :  public core::PlanNode {
   const int rightWindowEndIndex_;
 };
 
-class WindowAggregationNode : public core::PlanNode {
+class StreamWindowAggregationNode : public core::PlanNode {
  public:
-  WindowAggregationNode(
+  StreamWindowAggregationNode(
       const core::PlanNodeId& id,
       std::shared_ptr<const core::AggregationNode>& aggregationNode,
       std::shared_ptr<const core::AggregationNode>& localAgg,
@@ -398,7 +398,7 @@ class WindowAggregationNode : public core::PlanNode {
   const std::vector<core::PlanNodePtr>& sources() const override;
 
   std::string_view name() const override {
-    return "WindowAggregationNode";
+    return "StreamWindowAggregation";
   }
 
   folly::dynamic serialize() const override;

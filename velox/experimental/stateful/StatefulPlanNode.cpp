@@ -65,8 +65,8 @@ void StatefulPlanNode::registerSerDe() {
   registry.Register("EmptyNode", EmptyNode::create);
   registry.Register("StreamJoinNode", StreamJoinNode::create);
   registry.Register("StreamPartitionNode", StreamPartitionNode::create);
-  registry.Register("WindowJoinNode", WindowJoinNode::create);
-  registry.Register("WindowAggregationNode", WindowAggregationNode::create);
+  registry.Register("StreamWindowJoinNode", StreamWindowJoinNode::create);
+  registry.Register("StreamWindowAggregationNode", StreamWindowAggregationNode::create);
 }
 
 const std::vector<core::PlanNodePtr>& WatermarkAssignerNode::sources() const {
@@ -177,13 +177,13 @@ core::PlanNodePtr EmptyNode::create(const folly::dynamic& obj, void* context) {
   return std::make_shared<const EmptyNode>(outputType);
 }
 
-void WindowJoinNode::addDetails(std::stringstream& stream) const {
+void StreamWindowJoinNode::addDetails(std::stringstream& stream) const {
   stream << "leftPartFuncSpec: " << leftPartFuncSpec_->toString();
   stream << ", rightPartFuncSpec: " << rightPartFuncSpec_->toString();
   stream << ", probe: " << probe_->toString();
 }
 
-folly::dynamic WindowJoinNode::serialize() const {
+folly::dynamic StreamWindowJoinNode::serialize() const {
   auto obj = core::PlanNode::serialize();
   obj["leftPartFuncSpec"] = leftPartFuncSpec_->serialize();
   obj["rightPartFuncSpec"] = rightPartFuncSpec_->serialize();
@@ -196,7 +196,7 @@ folly::dynamic WindowJoinNode::serialize() const {
 }
 
 // static
-core::PlanNodePtr WindowJoinNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamWindowJoinNode::create(const folly::dynamic& obj, void* context) {
   auto planNodeId = obj["id"].asString();
   auto sources = ISerializable::deserialize<std::vector<PlanNode>>(
       obj["sources"], context);
@@ -211,7 +211,7 @@ core::PlanNodePtr WindowJoinNode::create(const folly::dynamic& obj, void* contex
 
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
 
-  return std::make_shared<WindowJoinNode>(
+  return std::make_shared<StreamWindowJoinNode>(
       planNodeId,
       std::move(sources),
       std::move(leftPartFuncSpec),
@@ -223,11 +223,11 @@ core::PlanNodePtr WindowJoinNode::create(const folly::dynamic& obj, void* contex
       obj["rightWindowEndIndex"].asInt());
 }
 
-const std::vector<core::PlanNodePtr>& WindowAggregationNode::sources() const {
+const std::vector<core::PlanNodePtr>& StreamWindowAggregationNode::sources() const {
   return kEmptySources;
 }
 
-folly::dynamic WindowAggregationNode::serialize() const {
+folly::dynamic StreamWindowAggregationNode::serialize() const {
   auto obj = core::PlanNode::serialize();
   obj["aggregation"] = aggregation_->serialize();
   obj["localAgg"] = localAgg_ ? localAgg_->serialize() : nullptr;
@@ -244,7 +244,7 @@ folly::dynamic WindowAggregationNode::serialize() const {
   return obj;
 }
 
-void WindowAggregationNode::addDetails(std::stringstream& stream) const {
+void StreamWindowAggregationNode::addDetails(std::stringstream& stream) const {
   stream << "aggregation: " << aggregation_->toString();
   stream << ", keySelector: " << keySelectorSpec_->toString();
   stream << ", sliceAssigner: " << sliceAssignerSpec_->toString();
@@ -254,7 +254,7 @@ void WindowAggregationNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr WindowAggregationNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamWindowAggregationNode::create(const folly::dynamic& obj, void* context) {
   auto planNodeId = obj["id"].asString();
   auto aggregation = ISerializable::deserialize<core::AggregationNode>(
       obj["aggregation"], context);
@@ -268,7 +268,7 @@ core::PlanNodePtr WindowAggregationNode::create(const folly::dynamic& obj, void*
     localAgg = ISerializable::deserialize<core::AggregationNode>(
         obj["localAgg"], context);
   }
-  return std::make_shared<const WindowAggregationNode>(
+  return std::make_shared<const StreamWindowAggregationNode>(
       planNodeId,
       aggregation,
       localAgg,

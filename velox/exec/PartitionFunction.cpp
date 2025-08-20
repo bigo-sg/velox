@@ -29,7 +29,7 @@ void registerPartitionFunctionSerDe() {
       "RoundRobinPartitionFunctionSpec",
       RoundRobinPartitionFunctionSpec::deserialize);
   registry.Register(
-      "WindowPartitionFunctionSpec", stateful::WindowPartitionFunctionSpec::deserialize);
+      "StreamWindowPartitionFunctionSpec", stateful::StreamWindowPartitionFunctionSpec::deserialize);
 }
 
 } // namespace facebook::velox::exec

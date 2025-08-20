@@ -46,9 +46,9 @@ class WindowPartitionFunction : public core::PartitionFunction {
   long sliceSize_;
 };
 
-class WindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
+class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
  public:
-  WindowPartitionFunctionSpec(
+  StreamWindowPartitionFunctionSpec(
       const RowTypePtr& inputType,
       column_index_t rowtimeIndex,
       long size,

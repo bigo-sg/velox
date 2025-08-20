@@ -78,20 +78,20 @@ long getTimestamp(
   return 0;
 }
 
-std::unique_ptr<core::PartitionFunction> WindowPartitionFunctionSpec::create(
+std::unique_ptr<core::PartitionFunction> StreamWindowPartitionFunctionSpec::create(
     int numPartitions,
     bool localExchange) const {
   return std::make_unique<WindowPartitionFunction>(
       inputType_, rowtimeIndex_, size_, step_, offset_, windowType_);
 }
 
-std::string WindowPartitionFunctionSpec::toString() const {
+std::string StreamWindowPartitionFunctionSpec::toString() const {
   return fmt::format("FIELD()", rowtimeIndex_);
 }
 
-folly::dynamic WindowPartitionFunctionSpec::serialize() const {
+folly::dynamic StreamWindowPartitionFunctionSpec::serialize() const {
   folly::dynamic obj = folly::dynamic::object;
-  obj["name"] = "WindowPartitionFunctionSpec";
+  obj["name"] = "StreamWindowPartitionFunctionSpec";
   obj["inputType"] = inputType_->serialize();
   obj["rowtimeIndex"] = rowtimeIndex_;
   obj["size"] = size_;
@@ -102,7 +102,7 @@ folly::dynamic WindowPartitionFunctionSpec::serialize() const {
 }
 
 // static
-core::PartitionFunctionSpecPtr WindowPartitionFunctionSpec::deserialize(
+core::PartitionFunctionSpecPtr StreamWindowPartitionFunctionSpec::deserialize(
     const folly::dynamic& obj,
     void* /* context */) {
   auto rowtimeIndex = obj["rowtimeIndex"].asInt();
@@ -111,7 +111,7 @@ core::PartitionFunctionSpecPtr WindowPartitionFunctionSpec::deserialize(
   auto offset = obj["offset"].asInt();
   auto windowType = obj["windowType"].asInt();
 
-  return std::make_shared<WindowPartitionFunctionSpec>(
+  return std::make_shared<StreamWindowPartitionFunctionSpec>(
       ISerializable::deserialize<RowType>(obj["inputType"]),
       rowtimeIndex,
       size,
