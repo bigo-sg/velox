@@ -16,7 +16,7 @@
 # velox_link_libraries(velox_kafka_config velox_core velox_exception)
 
 velox_add_library(
-  velox_filesystem_connector
+  velox_print_connector
   OBJECT
   PrintSink.cpp
   PrintTableHandle.cpp
