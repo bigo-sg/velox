@@ -40,4 +40,3 @@ velox_link_libraries(
   velox_stateful_window
   velox_common_base
   velox_exec)
-
