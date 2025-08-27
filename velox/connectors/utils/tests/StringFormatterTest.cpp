@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/experimental/stateful/tests/StringFormatterTest.h"
-#include "velox/experimental/stateful/StringFormatter.h"
+#include "velox/connectors/utils/tests/StringFormatterTest.h"
+#include "velox/connectors/utils/StringFormatter.h"
 #include "velox/type/Type.h"
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 
-namespace facebook::velox::stateful::test {
+namespace facebook::velox::connector::test {
 
 class StringFormatterTest : public StringFormatterTestBase {};
 

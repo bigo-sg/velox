@@ -29,7 +29,7 @@ PrintSink::PrintSink(
       outputType_(createOutputType()),
       queryCtx_(queryCtx),
       writer_(createWriter(path)),
-      formatter_(stateful::createFormatter(inputType_)) {}
+      formatter_(createFormatter(inputType_)) {}
 
 std::unique_ptr<dwio::common::Writer> PrintSink::createWriter(
     const std::string& path) {

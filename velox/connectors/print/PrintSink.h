@@ -18,7 +18,7 @@
 
 #include "velox/connectors/Connector.h"
 #include "velox/dwio/common/Writer.h"
-#include "velox/experimental/stateful/StringFormatter.h"
+#include "velox/connectors/utils/StringFormatter.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include <cmath>
@@ -47,7 +47,7 @@ class PrintSink : public DataSink {
   const RowTypePtr outputType_;
   const ConnectorQueryCtx* queryCtx_;
   const std::unique_ptr<dwio::common::Writer> writer_;
-  const std::shared_ptr<stateful::StringFormatter> formatter_;
+  const std::shared_ptr<StringFormatter> formatter_;
   bool finished = true;
 
   std::unique_ptr<dwio::common::Writer> createWriter(const std::string& path);
@@ -55,7 +55,7 @@ class PrintSink : public DataSink {
   /// Format the input fields' data to a single string of flink-style. e.g. Row(1,2,3) -> +I[1, 2, 3],
   /// Row(1,Array(2,3)) -> +I[1, [2, 3]], Row(1,Map(2=3, 3=4)) -> +I[1, {2=3, 3=4}].
   const RowVectorPtr formatToSingleStringVector(const RowVectorPtr& input);
-  const std::shared_ptr<stateful::StringFormatter> createStringFormatter(
+  const std::shared_ptr<StringFormatter> createStringFormatter(
       const TypePtr& type);
 };
 

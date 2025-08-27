@@ -25,7 +25,7 @@ FromElementsSource::FromElementsSource(
   const std::vector<std::string>& s)
     : outputType_(outputType),
     queryCtx_(queryCtx),
-    formatter_(stateful::createFormatter(outputType)) {
+    formatter_(createFormatter(outputType)) {
       VELOX_CHECK(formatter_ != nullptr);
       auto row = RowVector::createEmpty(outputType_, queryCtx->memoryPool());
       row->resize(s.size());

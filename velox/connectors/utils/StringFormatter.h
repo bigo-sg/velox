@@ -29,7 +29,7 @@
 #include <memory>
 #include <type_traits>
 
-namespace facebook::velox::stateful {
+namespace facebook::velox::connector {
 
 struct StringFormatter {
  public:

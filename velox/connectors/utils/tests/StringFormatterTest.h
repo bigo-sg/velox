@@ -17,7 +17,7 @@
 
 #include "velox/exec/tests/utils/OperatorTestBase.h"
 
-namespace facebook::velox::stateful::test {
+namespace facebook::velox::connector::test {
 
 class StringFormatterTestBase : public exec::test::OperatorTestBase {
  public:

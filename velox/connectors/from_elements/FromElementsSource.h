@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 #pragma once
-#include "velox/experimental/stateful/StringFormatter.h"
+#include "velox/connectors/utils/StringFormatter.h"
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/connectors/Connector.h"
 #include "velox/type/Type.h"
@@ -54,7 +54,7 @@ class FromElementsSource : public DataSource {
  private:
   const RowTypePtr outputType_;
   const ConnectorQueryCtx* queryCtx_;
-  const stateful::FormatterPtr formatter_;
+  const FormatterPtr formatter_;
   RowVectorPtr data_;
   mutable uint64_t completedRows_ = 0;
   mutable uint64_t completedBytes_ = 0;

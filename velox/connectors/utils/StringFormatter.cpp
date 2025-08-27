@@ -14,50 +14,50 @@
  * limitations under the License.
  */
 
-#include "velox/experimental/stateful/StringFormatter.h"
+#include "velox/connectors/utils/StringFormatter.h"
 #include <boost/algorithm/string/erase.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <stack>
 
-namespace facebook::velox::stateful {
+namespace facebook::velox::connector {
 const FormatterPtr createFormatter(const TypePtr& type) {
   TypeKind typeKind = type->kind();
   switch (typeKind) {
     case TypeKind::INTEGER:
-      return std::make_shared<stateful::DefaultFormatter<int32_t>>();
+      return std::make_shared<DefaultFormatter<int32_t>>();
     case TypeKind::BIGINT:
-      return std::make_shared<stateful::DefaultFormatter<int64_t>>();
+      return std::make_shared<DefaultFormatter<int64_t>>();
     case TypeKind::HUGEINT:
-      return std::make_shared<stateful::DefaultFormatter<int128_t>>();
+      return std::make_shared<DefaultFormatter<int128_t>>();
     case TypeKind::SMALLINT:
-      return std::make_shared<stateful::DefaultFormatter<int16_t>>();
+      return std::make_shared<DefaultFormatter<int16_t>>();
     case TypeKind::TINYINT:
-      return std::make_shared<stateful::DefaultFormatter<int8_t>>();
+      return std::make_shared<DefaultFormatter<int8_t>>();
     case TypeKind::DOUBLE:
-      return std::make_shared<stateful::DefaultFormatter<double>>();
+      return std::make_shared<DefaultFormatter<double>>();
     case TypeKind::REAL:
-      return std::make_shared<stateful::DefaultFormatter<float>>();
+      return std::make_shared<DefaultFormatter<float>>();
     case TypeKind::BOOLEAN:
-      return std::make_shared<stateful::DefaultFormatter<bool>>();
+      return std::make_shared<DefaultFormatter<bool>>();
     case TypeKind::VARCHAR:
-      return std::make_shared<stateful::DefaultFormatter<StringView>>();
+      return std::make_shared<DefaultFormatter<StringView>>();
     case TypeKind::TIMESTAMP:
-      return std::make_shared<stateful::DefaultFormatter<Timestamp>>();
+      return std::make_shared<DefaultFormatter<Timestamp>>();
     case TypeKind::ROW: {
       const RowTypePtr rowType = std::dynamic_pointer_cast<const RowType>(type);
-      std::vector<stateful::FormatterPtr> formatters;
+      std::vector<FormatterPtr> formatters;
       for (size_t i = 0; i < rowType->children().size(); ++i) {
         const auto formatter = createFormatter(rowType->childAt(i));
         formatters.emplace_back(formatter);
       }
-      return std::make_shared<stateful::RowFormatter>(formatters);
+      return std::make_shared<RowFormatter>(formatters);
     }
     case TypeKind::ARRAY: {
       const std::shared_ptr<const ArrayType> arrayType =
           std::dynamic_pointer_cast<const ArrayType>(type);
       const TypePtr& elementType = arrayType->elementType();
       auto elemmentFormatter = createFormatter(elementType);
-      return std::make_shared<stateful::ArrayFormatter>(elemmentFormatter);
+      return std::make_shared<ArrayFormatter>(elemmentFormatter);
     }
     case TypeKind::MAP: {
       const std::shared_ptr<const MapType> mapType =
@@ -66,7 +66,7 @@ const FormatterPtr createFormatter(const TypePtr& type) {
       const TypePtr& valueType = mapType->valueType();
       auto keyFormatter = createFormatter(keyType);
       auto valueFormatter = createFormatter(valueType);
-      return std::make_shared<stateful::MapFormatter>(
+      return std::make_shared<MapFormatter>(
           keyFormatter, valueFormatter);
     }
     default:

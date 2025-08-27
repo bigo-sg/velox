@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-add_executable(velox_stateful_test StringFormatterTest.cpp)
+add_executable(velox_connector_util_test StringFormatterTest.cpp)
 
-add_test(velox_stateful_test velox_stateful_test)
+add_test(velox_connector_util_test velox_connector_util_test)
 
 target_link_libraries(
-  velox_stateful_test
-  velox_stateful_exec
+  velox_connector_util_test
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec

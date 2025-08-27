@@ -30,8 +30,7 @@ velox_add_library(
   CombinedWatermarkStatus.cpp
   LocalWindowAggregator.cpp
   WindowAggregator.cpp
-  WatermarkAssigner.cpp
-  StringFormatter.cpp)
+  WatermarkAssigner.cpp)
 
 velox_link_libraries(
   velox_stateful_exec
@@ -42,6 +41,3 @@ velox_link_libraries(
   velox_common_base
   velox_exec)
 
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
