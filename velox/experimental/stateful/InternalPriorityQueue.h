@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <algorithm>
 #include <vector>
 
 namespace facebook::velox::stateful {
@@ -33,6 +34,7 @@ class InternalPriorityQueue {
 };
 
 // This class is relevent to flink HeapPriorityQueue.
+// TODO: need to make it equal to flink
 template<typename T>
 class HeapPriorityQueue : public InternalPriorityQueue<T> {
  public:
@@ -71,6 +73,17 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
     size_ = 0;
   }
 
+  void remove(T toRemove) {
+    // Implementation for removing an element from the priority queue set
+    auto it = std::find(queue_.begin(), queue_.end(), toRemove);
+    if (it != queue_.end()) {
+      *it = queue_[size_ - 1]; // Replace with the last element
+      size_--;
+      if (size_ < 0) {
+        size_ = queue_.size() - 1;
+      }
+    }
+  }
  private:
   std::vector<T> queue_;
   int size_ = 0;

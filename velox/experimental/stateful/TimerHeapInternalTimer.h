@@ -43,6 +43,11 @@ class TimerHeapInternalTimer {
     return keyGroupIndex_;
   }
 
+  bool operator==(const TimerHeapInternalTimer& other) const {
+    return timestamp_ == other.timestamp_ &&
+        key_ == other.key_ &&
+        ns_ == other.ns_;
+  }
  private:
   long timestamp_;
   K key_;

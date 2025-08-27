@@ -23,7 +23,7 @@ namespace facebook::velox::stateful {
 
 /**
  * This class is relevent to flink org.apache.flink.runtime.state.heap.StateMap.
- * remove namespace first. 
+ * remove namespace first.
  * TODO: It is a simplified implementation, not equal to flink.
  * @param <K> type of key
  * @param <N> type of namespace

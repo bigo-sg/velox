@@ -54,6 +54,13 @@
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include "velox/experimental/stateful/WindowJoin.h"
+#include "velox/experimental/stateful/GroupWindowAggregator.h"
+#include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
+#include "velox/experimental/stateful/StreamKeyedOperator.h"
+#include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
+#include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
+#include "velox/experimental/stateful/agg/AggsHandleFunction.h"
+#include "velox/experimental/stateful/agg/GroupAggregator.h"
 
 namespace facebook::velox::stateful {
 
@@ -112,18 +119,13 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
             std::move(joinNode->rightPartFuncSpec()->create(INT_MAX, false)),
             op->pool(),
             joinNode->numPartitions());
-    KeyedStateBackendParameters parameters(ctx->task->taskId(), op->operatorId());
-    auto runtime =
-        std::make_unique<RuntimeContext>(
-            op->operatorId(), stateBackend->createKeyedStateBackend(parameters));
     return std::make_unique<StreamJoin>(
         std::move(left),
         std::move(right),
         std::move(leftKeySelector),
         std::move(rightKeySelector),
         std::move(op),
-        std::move(targets),
-        std::move(runtime));
+        std::move(targets));
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const StreamWindowJoinNode>(statefulNode->node())) {
@@ -140,10 +142,6 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
             std::move(joinNode->rightPartFuncSpec()->create(INT_MAX, false)),
             op->pool(),
             joinNode->numPartitions());
-    KeyedStateBackendParameters parameters(ctx->task->taskId(), op->operatorId());
-    auto runtime =
-        std::make_unique<RuntimeContext>(
-            op->operatorId(), stateBackend->createKeyedStateBackend(parameters));
     return std::make_unique<WindowJoin>(
         std::move(left),
         std::move(right),
@@ -151,7 +149,6 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
         std::move(rightKeySelector),
         std::move(op),
         std::move(targets),
-        std::move(runtime),
         joinNode->leftWindowEndIndex(),
         joinNode->rightWindowEndIndex());
   } else if (
@@ -182,11 +179,8 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
               windowAggNode->size(),
               windowAggNode->step(),
               windowAggNode->offset(),
-              windowAggNode->windowType());
-      KeyedStateBackendParameters parameters(ctx->task->taskId(), op->operatorId());
-      auto runtime =
-          std::make_unique<RuntimeContext>(
-              op->operatorId(), stateBackend->createKeyedStateBackend(parameters));
+              windowAggNode->windowType(),
+              windowAggNode->rowtimeIndex());
       return std::make_unique<WindowAggregator>(
           std::move(localAggregator),
           std::move(op),
@@ -194,10 +188,62 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
           std::move(keySelector),
           std::move(globalSliceAssigner),
           windowAggNode->windowInterval(),
-          windowAggNode->useDayLightSaving(),
-          std::move(runtime));
+          windowAggNode->useDayLightSaving());
     }
+  } else if (
+      auto windowAggNode =
+          std::dynamic_pointer_cast<const GroupWindowAggregationNode>(statefulNode->node())) {
+    std::unique_ptr<KeySelector> keySelector =
+        std::make_unique<KeySelector>(
+            std::move(windowAggNode->keySelectorSpec()->create(INT_MAX, true)),
+            op->pool());
+    std::unique_ptr<KeySelector> sliceAssigner =
+        std::make_unique<KeySelector>(
+            std::move(windowAggNode->sliceAssignerSpec()->create(INT_MAX, true)),
+            op->pool());
+    std::unique_ptr<SliceAssigner> windowAssigner =
+        std::make_unique<SliceAssigner>(
+            std::move(sliceAssigner),
+            0,
+            0,
+            0,
+            windowAggNode->windowType(),
+            windowAggNode->rowtimeIndex());
+    return std::make_unique<GroupWindowAggregator>(
+        std::unique_ptr<GroupWindowAggsHandler>(dynamic_cast<GroupWindowAggsHandler*>(op.release())),
+        // TODO: support window parameters
+        std::make_unique<SessionWindowAssigner>(10, windowAggNode->isEventTime()),
+        std::move(targets),
+        std::move(keySelector),
+        std::move(windowAssigner),
+        windowAggNode->allowedLateness(),
+        windowAggNode->produceUpdates(),
+        windowAggNode->rowtimeIndex(),
+        windowAggNode->isEventTime());
+  } else if (
+      auto rankNode =
+          std::dynamic_pointer_cast<const StreamRankNode>(statefulNode->node())) {
+    std::unique_ptr<KeySelector> keySelector =
+        std::make_unique<KeySelector>(
+            std::move(rankNode->keySelectorSpec()->create(INT_MAX, true)),
+            op->pool());
+    return std::make_unique<StreamKeyedOperator>(
+        std::move(op),
+        std::move(keySelector),
+        std::move(targets));
+  } else if (
+      auto aggNode =
+          std::dynamic_pointer_cast<const GroupAggregationNode>(statefulNode->node())) {
+    std::unique_ptr<KeySelector> keySelector =
+        std::make_unique<KeySelector>(
+            std::move(aggNode->keySelectorSpec()->create(INT_MAX, true)),
+            op->pool());
+    return std::make_unique<StreamKeyedOperator>(
+        std::move(op),
+        std::move(keySelector),
+        std::move(targets));
   }
+
   return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
 }
 
@@ -342,6 +388,61 @@ std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
       auto windowAggNode =
           std::dynamic_pointer_cast<const StreamWindowAggregationNode>(planNode)) {
     return nodeToOperator(windowAggNode->aggregation(), ctx);
+  } else if (
+      auto windowAggNode =
+          std::dynamic_pointer_cast<const GroupWindowAggregationNode>(planNode)) {
+    return nodeToOperator(windowAggNode->aggregation(), ctx);
+  } else if (
+      auto aggsHandlerNode =
+          std::dynamic_pointer_cast<const GroupWindowAggsHandlerNode>(planNode)) {
+    return std::make_unique<GroupWindowAggsHandler>(opId.fetch_add(1), ctx, aggsHandlerNode);
+  } else if (
+      auto deduplicateNode =
+          std::dynamic_pointer_cast<const DeduplicateNode>(planNode)) {
+    return std::make_unique<RowTimeDeduplicateRanker>(
+        opId.fetch_add(1),
+        ctx,
+        deduplicateNode,
+        deduplicateNode->rowtimeIndex(),
+        deduplicateNode->minRetentionTime(),
+        deduplicateNode->generateUpdateBefore(),
+        deduplicateNode->generateInsert(),
+        deduplicateNode->keepLastRow());
+  } else if (
+      auto topNNode =
+          std::dynamic_pointer_cast<const StreamTopNNode>(planNode)) {
+    auto op = nodeToOperator(topNNode->topN(), ctx);
+    std::unique_ptr<KeySelector> sortKeySelector =
+        std::make_unique<KeySelector>(
+            std::move(topNNode->sortKeySelectorSpec()->create(INT_MAX, true)),
+            op->pool());
+    return std::make_unique<AppendOnlyTopNRanker>(
+        opId.fetch_add(1),
+        ctx,
+        topNNode,
+        std::move(op),
+        std::move(sortKeySelector),
+        topNNode->generateUpdateBefore(),
+        topNNode->outputRankNumber(),
+        topNNode->cacheSize());
+  } else if (
+      auto rankNode =
+          std::dynamic_pointer_cast<const StreamRankNode>(planNode)) {
+    return nodeToOperator(rankNode->ranker(), ctx);
+  } else if (
+      auto groupAggNode =
+          std::dynamic_pointer_cast<const GroupAggregationNode>(planNode)) {
+    return nodeToOperator(groupAggNode->aggregation(), ctx);
+  } else if (
+      auto aggsHandlerNode =
+          std::dynamic_pointer_cast<const GroupAggsHandlerNode>(planNode)) {
+    return std::make_unique<GroupAggregator>(
+        opId.fetch_add(1),
+        ctx,
+        aggsHandlerNode,
+        std::make_unique<AggsHandleFunction>(), // TODO: not complete yet
+        aggsHandlerNode->generateUpdateBefore(),
+        aggsHandlerNode->needRetraction());
   } else {
     std::unique_ptr<exec::Operator> extended;
     extended = exec::Operator::fromPlanNode(ctx, opId.fetch_add(1), planNode);

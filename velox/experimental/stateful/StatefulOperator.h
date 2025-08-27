@@ -17,8 +17,9 @@
 
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/CombinedWatermarkStatus.h"
+#include "velox/experimental/stateful/state/StateBackend.h"
+#include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
 
-#include <iostream>
 namespace facebook::velox::stateful {
 
 class StatefulOperator {
@@ -44,6 +45,18 @@ class StatefulOperator {
   virtual void close();
 
   void processWatermark(long timestamp, int index);
+
+  void initializeState(StateBackend* stateBackend);
+
+  void snapshotState();
+
+  void notifyCheckpointComplete(long checkpointId);
+
+  void notifyCheckpointAborted(long checkpointId);
+
+  StreamOperatorStateHandlerPtr stateHandler() const {
+    return stateHandler_;
+  }
 
   const std::string detail() const {
     std::stringstream stream;
@@ -81,6 +94,7 @@ class StatefulOperator {
   bool sink;
   bool sourceEmpty_ = true;
   std::shared_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
+  StreamOperatorStateHandlerPtr stateHandler_;
 };
 
 using StatefulOperatorPtr = std::unique_ptr<StatefulOperator>;

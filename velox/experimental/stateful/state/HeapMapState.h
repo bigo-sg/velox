@@ -50,6 +50,12 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     stateTable_->clear();
   }
 
+  void remove(K key, N ns, UK userKey) override {
+    std::shared_ptr<std::map<UK, UV>> currentMap =
+        getOrCreate(key, ns);
+    currentMap->erase(userKey);
+  }
+
  private:
   std::shared_ptr<std::map<UK, UV>> getOrCreate(K key, N ns) {
     std::shared_ptr<std::map<UK, UV>> currentMap =

@@ -48,7 +48,7 @@ long TimeWindowUtil::getNextTriggerWatermark(
     return triggerWatermark + interval;
   }
 }
-  
+
 // static
 long TimeWindowUtil::getWindowStartWithOffset(long timestamp, long offset, long windowSize) {
   long remainder = (timestamp - offset) % windowSize;
@@ -67,14 +67,33 @@ bool TimeWindowUtil::isWindowFired(
     return false;
   }
   // TODO: support time zone
-  long windowTriggerTime = windowEnd - 1; //toEpochMillsForTimer(windowEnd - 1, shiftTimeZone);
+  long windowTriggerTime = toEpochMillsForTimer(windowEnd - 1, shiftTimeZone);
   return currentProgress >= windowTriggerTime;
+}
+
+// static
+long TimeWindowUtil::cleanupTime(long maxTimestamp, long allowedLateness, bool isEventTime) {
+  if (isEventTime) {
+    long cleanupTime = std::max(0L, maxTimestamp + allowedLateness);
+    return cleanupTime >= maxTimestamp ? cleanupTime : LONG_MAX;
+  } else {
+    return std::max(0L, maxTimestamp);
+  }
+}
+
+// static
+long TimeWindowUtil::toEpochMillsForTimer(long timestamp, int shiftTimeZone) {
+  // TODO: support time zone
+  return timestamp;
 }
 
 // static
 RowVectorPtr TimeWindowUtil::mergeVectors(
     const std::list<RowVectorPtr>& datas,
     memory::MemoryPool* pool) {
+  if (datas.empty()) {
+    return nullptr;
+  }
   // TODO: refine it
   auto numColumns = datas.front()->childrenSize();
   std::vector<VectorPtr> mergedColumns(numColumns);
@@ -96,5 +115,4 @@ RowVectorPtr TimeWindowUtil::mergeVectors(
   }
   return merged;
 }
-
 } // namespace facebook::velox::stateful

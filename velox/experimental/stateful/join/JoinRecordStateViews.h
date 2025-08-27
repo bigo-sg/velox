@@ -15,9 +15,9 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/RuntimeContext.h"
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 #include "velox/experimental/stateful/state/StateTtlConfig.h"
+#include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
 
 namespace facebook::velox::stateful {
 
@@ -25,7 +25,7 @@ namespace facebook::velox::stateful {
 class JoinRecordStateViews {
  public:
   static JoinRecordStateViewPtr create(
-      RuntimeContext* ctx,
+      StreamOperatorStateHandler* stateHandler,
       std::string stateName,
       // JoinInputSideSpec inputSideSpec,
       // InternalTypeInfo<RowData> recordType,
@@ -36,7 +36,10 @@ class JoinRecordStateViews {
 // This class is relevent to flink InputSideHasNoUniqueKey.
 class InputSideHasNoUniqueKey : public JoinRecordStateView {
  public:
-  InputSideHasNoUniqueKey(RuntimeContext* ctx, std::string& stateName, StateTtlConfig ttlConfig);
+  InputSideHasNoUniqueKey(
+      StreamOperatorStateHandler* stateHandler,
+      std::string& stateName,
+      StateTtlConfig ttlConfig);
 
   void addRecord(uint32_t key, RowVectorPtr record) override;
 

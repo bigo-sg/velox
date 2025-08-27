@@ -27,15 +27,13 @@ StreamJoin::StreamJoin(
     std::unique_ptr<KeySelector> leftKeySelector,
     std::unique_ptr<KeySelector> rightKeySelector,
     std::unique_ptr<exec::Operator> probe,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    RuntimeContextPtr runtimeCtx)
+    std::vector<std::unique_ptr<StatefulOperator>> targets)
     : StatefulOperator(std::move(probe), std::move(targets)),
       leftInput_(std::move(leftInput)),
       rightInput_(std::move(rightInput)),
       leftKeySelector_(std::move(leftKeySelector)),
       rightKeySelector_(std::move(rightKeySelector)),
-      probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())),
-      runtimeCtx_(std::move(runtimeCtx)) {
+      probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())) {
 }
 
 void StreamJoin::initialize() {
@@ -43,15 +41,15 @@ void StreamJoin::initialize() {
   leftInput_->initialize();
   rightInput_->initialize();
   leftRecordStateView_ = JoinRecordStateViews::create(
-      runtimeCtx_.get(),
+      stateHandler().get(),
       "left-records",
       0);
   rightRecordStateView_ = JoinRecordStateViews::create(
-      runtimeCtx_.get(),
+      stateHandler().get(),
       "right-records",
       0);
 }
-  
+
 bool StreamJoin::isFinished() {
   return leftInput_->isFinished() && rightInput_->isFinished();
 }

@@ -26,7 +26,6 @@ WindowJoin::WindowJoin(
     std::unique_ptr<KeySelector> rightKeySelector,
     std::unique_ptr<exec::Operator> probe,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
-    RuntimeContextPtr runtimeCtx,
     int leftWindowEndIndex,
     int rightWindowEndIndex)
     : StatefulOperator(std::move(probe), std::move(targets)),
@@ -35,7 +34,6 @@ WindowJoin::WindowJoin(
       leftKeySelector_(std::move(leftKeySelector)),
       rightKeySelector_(std::move(rightKeySelector)),
       probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())),
-      runtimeCtx_(std::move(runtimeCtx)),
       leftWindowEndIndex_(leftWindowEndIndex),
       rightWindowEndIndex_(rightWindowEndIndex) {
 }
@@ -46,10 +44,10 @@ void WindowJoin::initialize() {
   rightInput_->initialize();
 
   StateDescriptor leftStateDesc("left-records");
-  leftWindowState_ = runtimeCtx_->getListState(leftStateDesc);
+  leftWindowState_ = stateHandler()->getListState(leftStateDesc);
   StateDescriptor rightStateDesc("right-records");
-  rightWindowState_ = runtimeCtx_->getListState(rightStateDesc);
-  timerService_ = runtimeCtx_->createTimerService(this);
+  rightWindowState_ = stateHandler()->getListState(rightStateDesc);
+  timerService_ = stateHandler()->createTimerService(this);
 }
 
 bool WindowJoin::isFinished() {

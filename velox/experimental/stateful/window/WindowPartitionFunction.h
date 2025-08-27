@@ -69,7 +69,7 @@ class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
   std::string toString() const override;
 
   folly::dynamic serialize() const override;
-  
+
   static core::PartitionFunctionSpecPtr deserialize(
       const folly::dynamic& obj,
       void* /* context */);

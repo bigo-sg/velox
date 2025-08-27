@@ -34,8 +34,8 @@ WindowPartitionFunction::WindowPartitionFunction(
       step_(step),
       offset_(offset),
       windowType_(windowType) {
-  VELOX_CHECK_GT(inputType->size(), rowtimeIndex, "rowtimeIndex invalid: {}",
-      rowtimeIndex);
+  // VELOX_CHECK_GT(inputType->size(), rowtimeIndex, "rowtimeIndex invalid: {}",
+  //    rowtimeIndex);
   sliceSize_ = std::gcd(size, step);
 }
 

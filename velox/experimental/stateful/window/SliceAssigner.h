@@ -27,7 +27,8 @@ class SliceAssigner {
       long size,
       long step,
       long offset,
-      int windowType);
+      int windowType,
+      int rowtimeIndex);
 
   std::map<uint32_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
 
@@ -47,6 +48,7 @@ class SliceAssigner {
   const long offset_;
   const int windowType_; // 0: hopping window, 1: slide window
   long sliceSize_;
+  int rowtimeIndex_;
 };
 
 } // namespace facebook::velox::stateful

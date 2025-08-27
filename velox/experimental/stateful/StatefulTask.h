@@ -59,6 +59,14 @@ class StatefulTask : public exec::Task {
 
   void notifyWatermark(long watermark, int index);
 
+  void initializeState();
+
+  void snapshotState();
+
+  void notifyCheckpointComplete(long checkpointId);
+
+  void notifyCheckpointAborted(long checkpointId);
+
   void init();
 
   // The task is finished, close all operators and reset driver

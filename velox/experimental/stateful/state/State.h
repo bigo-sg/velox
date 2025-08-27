@@ -24,6 +24,7 @@ namespace facebook::velox::stateful {
 // This class is relevent to flink org.apache.flink.api.common.State.
 class State {
  public:
+  static const int VOID_NAMESPACE = 0;
   virtual void clear() = 0;
 };
 
@@ -38,6 +39,8 @@ class MapState : public State {
   virtual void put(K key, N ns, UK userKey, UV value) = 0;
 
   virtual std::map<UK, UV> entries(K key, N ns) = 0;
+
+  virtual void remove(K key, N ns, UK userKey) = 0;
 };
 
 // This class is relevent to flink org.apache.flink.api.common.ListState.

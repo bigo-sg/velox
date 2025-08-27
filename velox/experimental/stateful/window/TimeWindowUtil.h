@@ -30,7 +30,7 @@ class TimeWindowUtil {
     long interval,
     int shiftTimezone,
     bool useDayLightSaving);
-  
+
   static long getWindowStartWithOffset(long timestamp, long offset, long windowSize);
 
   static bool isWindowFired(
@@ -39,6 +39,10 @@ class TimeWindowUtil {
   static RowVectorPtr mergeVectors(
       const std::list<RowVectorPtr>& vectors,
       memory::MemoryPool* pool);
+
+  static long toEpochMillsForTimer(long timestamp, int shiftTimeZone);
+
+  static long cleanupTime(long maxTimestamp, long allowedLateness_, bool isEventTime);
 };
 
 

@@ -27,15 +27,13 @@ WindowAggregator::WindowAggregator(
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const long windowInterval,
-    const bool useDayLightSaving,
-    RuntimeContextPtr runtimeCtx)
+    const bool useDayLightSaving)
     : StatefulOperator(std::move(globalAggerator), std::move(targets)),
       localAggerator_(std::move(localAggerator)),
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
       windowInterval_(windowInterval),
-      useDayLightSaving_(useDayLightSaving),
-      runtimeCtx_(std::move(runtimeCtx)) {
+      useDayLightSaving_(useDayLightSaving) {
   windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
 }
 
@@ -44,8 +42,8 @@ void WindowAggregator::initialize() {
   localAggerator_->initialize();
 
   StateDescriptor stateDesc("window-aggs");
-  windowState_ = runtimeCtx_->getValueState(stateDesc);
-  windowTimerService_ = runtimeCtx_->createTimerService(this);
+  windowState_ = stateHandler()->getValueState(stateDesc);
+  windowTimerService_ = stateHandler()->createTimerService(this);
 }
 
 void WindowAggregator::addInput(RowVectorPtr input) {

@@ -88,10 +88,9 @@ void StatefulOperator::pushWatermark(long timestamp, int index) {
     }
     return;
   }
-  for (int i = 0; i < targets_.size() - 1; i++) {
+  for (int i = 0; i < targets_.size(); i++) {
     targets_[i]->processWatermark(timestamp, index);
   }
-  targets_[targets_.size() - 1]->processWatermark(timestamp, index);
 }
 
 void StatefulOperator::processWatermark(long timestamp, int index) {
@@ -102,4 +101,64 @@ void StatefulOperator::processWatermark(long timestamp, int index) {
     pushWatermark(combinedWatermark, 1);
   }
 }
+
+void StatefulOperator::initializeState(StateBackend* stateBackend) {
+  if (!stateHandler_) {
+    KeyedStateBackendParameters parameters(
+        op()->operatorCtx()->driverCtx()->task->taskId(), op()->operatorId());
+    stateHandler_ = std::make_shared<StreamOperatorStateHandler>(
+        op()->operatorId(),
+        stateBackend->createKeyedStateBackend(
+            KeyedStateBackendParameters(
+                op()->operatorCtx()->driverCtx()->task->taskId(),
+                op()->operatorId())));
+  }
+  auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
+  if (snapshotable) {
+    // TODO: flink restore is a seperated logic
+    // snapshotable->initializeState();
+  }
+  // TODO: flink restore is a seperated logic
+  // stateHandler_->initializeState();
+  for (auto& target : targets_) {
+    target->initializeState(stateBackend);
+  }
+}
+
+void StatefulOperator::snapshotState() {
+  stateHandler_->snapshotState();
+  auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
+  if (snapshotable) {
+    // If the operator is checkpointable, we need to snapshot it.
+    snapshotable->snapshot(0, 0, CheckpointOptions::defaultOptions());
+  }
+  for (auto& target : targets_) {
+    target->snapshotState();
+  }
+}
+
+void StatefulOperator::notifyCheckpointComplete(long checkpointId) {
+  stateHandler_->notifyCheckpointComplete(checkpointId);
+  auto checkpointListener = dynamic_cast<CheckpointListener*>(op().get());
+  if (checkpointListener) {
+    // If the operator is checkpointable, we need to snapshot it.
+    checkpointListener->notifyCheckpointComplete(checkpointId);
+  }
+  for (auto& target : targets_) {
+    target->notifyCheckpointComplete(checkpointId);
+  }
+}
+
+void StatefulOperator::notifyCheckpointAborted(long checkpointId) {
+  stateHandler_->notifyCheckpointAborted(checkpointId);
+  auto checkpointListener = dynamic_cast<CheckpointListener*>(op().get());
+  if (checkpointListener) {
+    // If the operator is checkpointable, we need to snapshot it.
+    checkpointListener->notifyCheckpointAborted(checkpointId);
+  }
+  for (auto& target : targets_) {
+    target->notifyCheckpointAborted(checkpointId);
+  }
+}
+
 } // namespace facebook::velox::stateful

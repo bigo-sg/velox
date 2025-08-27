@@ -17,7 +17,6 @@
 
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
-#include "velox/experimental/stateful/RuntimeContext.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
@@ -28,7 +27,7 @@ namespace facebook::velox::stateful {
 
 /// This class is related to XXXWindowAggProcessor in Flink.
 /// It's work includes both WindowAggOperator and XXXWindowAggOperator.
-class WindowAggregator : public StatefulOperator, public Triggerable {
+class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, long> {
  public:
   WindowAggregator(
     std::unique_ptr<exec::Operator> localAggerator,
@@ -37,8 +36,7 @@ class WindowAggregator : public StatefulOperator, public Triggerable {
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const long windowInterval,
-    const bool useDayLightSaving,
-    RuntimeContextPtr runtimeCtx);
+    const bool useDayLightSaving);
 
   void initialize() override;
 
@@ -67,7 +65,6 @@ class WindowAggregator : public StatefulOperator, public Triggerable {
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   const bool isEventTime = true; // TODO: support processing time
-  RuntimeContextPtr runtimeCtx_;
 
   RowVectorPtr input_;
   long currentProgress_ = 0;

@@ -18,4 +18,9 @@ velox_add_library(
   WindowBuffer.cpp
   WindowPartitionFunction.cpp
   SliceAssigner.cpp
+  GroupWindowAssigner.cpp
+  MergingWindowSet.cpp
+  WindowProcessFunction.cpp
+  GroupWindowAggsHandler.cpp
+  WindowTrigger.cpp
   TimeWindowUtil.cpp)

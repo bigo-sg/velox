@@ -28,7 +28,7 @@ class StateBackend : public ISerializable {
   virtual std::string getName() const = 0;
 
   virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
-    KeyedStateBackendParameters parameters) = 0;
+      KeyedStateBackendParameters parameters) = 0;
 };
 
 class KeyedStateBackendParameters {
@@ -46,7 +46,7 @@ class KeyedStateBackendParameters {
 
  private:
   const std::string jobId_;
-  int operatorId_; 
+  int operatorId_;
 };
 
 } // namespace facebook::velox::stateful

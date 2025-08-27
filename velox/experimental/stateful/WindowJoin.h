@@ -18,7 +18,6 @@
 #include "velox/exec/NestedLoopJoinProbe.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
-#include "velox/experimental/stateful/RuntimeContext.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
@@ -27,7 +26,7 @@
 
 namespace facebook::velox::stateful {
 
-class WindowJoin : public StatefulOperator, public Triggerable {
+class WindowJoin : public StatefulOperator, public Triggerable<uint32_t, long> {
  public:
   WindowJoin(
       std::unique_ptr<exec::Operator> leftInput,
@@ -36,7 +35,6 @@ class WindowJoin : public StatefulOperator, public Triggerable {
       std::unique_ptr<KeySelector> rightKeySelector,
       std::unique_ptr<exec::Operator> probe,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
-      RuntimeContextPtr runtimeCtx,
       int leftWindowEndIndex,
       int rightWindowEndIndex);
 
@@ -81,7 +79,6 @@ class WindowJoin : public StatefulOperator, public Triggerable {
   const std::unique_ptr<KeySelector> leftKeySelector_;
   const std::unique_ptr<KeySelector> rightKeySelector_;
   exec::NestedLoopJoinProbe* probe_;
-  const std::unique_ptr<RuntimeContext> runtimeCtx_;
   std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> leftWindowState_;
   std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> rightWindowState_;
   const int leftWindowEndIndex_;

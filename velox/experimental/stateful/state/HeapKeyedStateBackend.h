@@ -23,6 +23,7 @@ namespace facebook::velox::stateful {
 // This class is relevent to flink HeapKeyedStateBackend.
 class HeapKeyedStateBackend: public KeyedStateBackend {
  public:
+  // TODO: use template to support different key type.
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
       getOrCreateMapState(StateDescriptor& stateDescriptor) override;
 
@@ -32,8 +33,29 @@ class HeapKeyedStateBackend: public KeyedStateBackend {
   std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>>
       getOrCreateValueState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> 
-      createTimerService(Triggerable* triggerable) override;
+  std::shared_ptr<InternalTimerService<uint32_t, long>>
+      createTimerService(Triggerable<uint32_t, long>* triggerable) override;
+
+  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
+      getOrCreateGroupValueState(StateDescriptor& stateDescriptor) override;
+
+  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
+      getOrCreateGroupMapState(StateDescriptor& stateDescriptor) override;
+
+  std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
+      getOrCreateRankMapState(StateDescriptor& stateDescriptor) override;
+
+  virtual std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+      createGroupWindowAggTimerService(Triggerable<uint32_t, TimeWindow>* triggerable) override;
+
+  void snapshot(
+      long checkpointId,
+      long timestamp,
+      CheckpointOptions checkpointOptions) override;
+
+  void notifyCheckpointComplete(long checkpointId) override;
+
+  void notifyCheckpointAborted(long checkpointId) override;
 
  private:
   std::map<std::string, StatePtr> keyValueStatesByName_;

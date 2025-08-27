@@ -25,11 +25,35 @@ namespace facebook::velox::stateful {
 template<typename K, typename N>
 class InternalTimerService {
  public:
-  InternalTimerService(Triggerable* triggerable)
+  InternalTimerService(Triggerable<K, N>* triggerable)
       : triggerable_(triggerable) {}
 
   void registerEventTimeTimer(K key, N ns, long time) {
     eventTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  }
+
+  void deleteEventTimeTimer(K key, N ns, long time) {
+    eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  }
+
+  void registerProcessingTimeTimer(K key, N ns, long time) {
+  }
+
+  void deleteProcessingTimeTimer(K key, N ns, long time) {
+    eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  }
+
+  long currentWatermark() {
+    // TODO: Implement watermark logic if needed.
+    if (eventTimeTimersQueue_.peek() != nullptr) {
+      return eventTimeTimersQueue_.peek()->timestamp();
+    }
+    return 0; // or some other default value
+  }
+
+  long currentProcessingTime() {
+    // TODO: Implement processing time logic if needed.
+    return 0; // or some other default value
   }
 
   void advanceWatermark(long time) {
@@ -43,8 +67,9 @@ class InternalTimerService {
   void close() {
     eventTimeTimersQueue_.clear();
   }
+
  private:
-  Triggerable* triggerable_;
+  Triggerable<K, N>* triggerable_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> eventTimeTimersQueue_;
 };
 

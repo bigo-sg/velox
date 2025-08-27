@@ -38,9 +38,9 @@ class RuntimeContext {
   }
 
   std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> getValueState(
-    StateDescriptor& stateDescriptor) {
-  return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
-}
+      StateDescriptor& stateDescriptor) {
+    return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
+  }
 
   std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
       Triggerable* triggerable) {

@@ -55,8 +55,10 @@ StatefulTask::~StatefulTask() {
 }
 
 void StatefulTask::init() {
-  initStateBackend();
   initOperators();
+  initStateBackend();
+  operatorChain_->initializeState(statebackend_.get());
+  operatorChain_->initialize();
 }
 
 void StatefulTask::initStateBackend() {
@@ -71,8 +73,6 @@ void StatefulTask::initOperators() {
   driver = exec::Driver::testingCreate(std::move(driverCtx));
   operatorChain_ =
       std::move(StatefulPlanner::plan(planFragment(), driver->driverCtx(), statebackend_.get()));
-
-  operatorChain_->initialize();
 }
 
 StreamElementPtr StatefulTask::next(int32_t& retCode) {
@@ -120,6 +120,24 @@ void StatefulTask::addOutput(StreamElementPtr output) {
 
 void StatefulTask::notifyWatermark(long watermark, int index) {
   operatorChain_->processWatermark(watermark, index);
+}
+
+void StatefulTask::initializeState() {
+  // TODO: need to be call in flink operator's setup.
+  //operatorChain_->initializeState();
+}
+
+void StatefulTask::snapshotState() {
+  // TODO: this is a synchronous call now, maybe need to use async.
+  operatorChain_->snapshotState();
+}
+
+void StatefulTask::notifyCheckpointComplete(long checkpointId) {
+  operatorChain_->notifyCheckpointComplete(checkpointId);
+}
+
+void StatefulTask::notifyCheckpointAborted(long checkpointId) {
+  operatorChain_->notifyCheckpointAborted(checkpointId);
 }
 
 StreamElementPtr StatefulTask::popOutput() {

@@ -39,7 +39,7 @@ class WindowKey {
     return key_ == other.key() && window_ == other.window();
   }
 
-  private:
+ private:
   uint32_t key_;
   long window_;
 };

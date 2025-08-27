@@ -16,7 +16,6 @@
 #pragma once
 
 #include "velox/exec/NestedLoopJoinProbe.h"
-#include "velox/experimental/stateful/RuntimeContext.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
@@ -32,8 +31,7 @@ class StreamJoin : public StatefulOperator {
       std::unique_ptr<KeySelector> leftKeySelector,
       std::unique_ptr<KeySelector> rightKeySelector,
       std::unique_ptr<exec::Operator> probe,
-      std::vector<std::unique_ptr<StatefulOperator>> targets,
-      RuntimeContextPtr runtimeCtx);
+      std::vector<std::unique_ptr<StatefulOperator>> targets);
 
   void initialize() override;
 
@@ -66,7 +64,6 @@ class StreamJoin : public StatefulOperator {
   const std::unique_ptr<KeySelector> leftKeySelector_;
   const std::unique_ptr<KeySelector> rightKeySelector_;
   exec::NestedLoopJoinProbe* probe_;
-  const std::unique_ptr<RuntimeContext> runtimeCtx_;
   JoinRecordStateViewPtr leftRecordStateView_;
   JoinRecordStateViewPtr rightRecordStateView_;
 };

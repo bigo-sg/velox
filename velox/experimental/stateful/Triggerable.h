@@ -23,10 +23,11 @@
 namespace facebook::velox::stateful {
 
 // This class is relevent to flink Triggerable.
+template<typename K, typename N>
 class Triggerable {
  public:
   virtual void onEventTime(
-      std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) = 0;
+      std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) = 0;
 };
 
 } // namespace facebook::velox::stateful

@@ -28,7 +28,7 @@ class StateTtlConfig : public ISerializable {
   folly::dynamic serialize() const override {
     return nullptr;
   }
-    
+
  private:
   long retentionTime_;
 };

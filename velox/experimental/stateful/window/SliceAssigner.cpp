@@ -15,6 +15,7 @@
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 
+#include <chrono>
 #include <numeric>
 #include <iostream>
 
@@ -25,17 +26,26 @@ SliceAssigner::SliceAssigner(
     long size,
     long step,
     long offset,
-    int windowType)
+    int windowType,
+    int rowtimeIndex)
     : keySelector_(std::move(keySelector)),
       size_(size),
       step_(step),
       offset_(offset),
-      windowType_(windowType) {
+      windowType_(windowType),
+      rowtimeIndex_(rowtimeIndex) {
   // TODO: calculate sliceSize_ based on windowType.
   sliceSize_ = std::gcd(size, step);
 }
 
 std::map<uint32_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
+  if (rowtimeIndex_ < 0) {
+    // TODO: using Processing Time Service
+    auto now = std::chrono::system_clock::now();
+    long timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()).count();
+    return {{timestamp_ms, input}};
+  }
   return keySelector_->partition(input);
 }
 
