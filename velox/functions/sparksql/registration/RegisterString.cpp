@@ -147,6 +147,8 @@ void registerStringFunctions(const std::string& prefix) {
   registerFunctionCallToSpecialForm(
       ConcatWsCallToSpecialForm::kConcatWs,
       std::make_unique<ConcatWsCallToSpecialForm>());
+  registerFunction<SplitIndex, Varchar, Varchar, Varchar, int64_t>(
+      {prefix + "split_index"});
 }
 } // namespace sparksql
 } // namespace facebook::velox::functions

@@ -22,6 +22,7 @@
 #include "velox/functions/Macros.h"
 #include "velox/functions/lib/string/StringCore.h"
 #include "velox/functions/lib/string/StringImpl.h"
+#include "velox/functions/prestosql/SplitPart.h"
 
 namespace facebook::velox::functions::sparksql {
 
@@ -1555,5 +1556,8 @@ struct Empty2NullFunction {
     return true;
   }
 };
+
+template<typename T>
+struct SplitIndex : public functions::SplitPart<T> {};
 
 } // namespace facebook::velox::functions::sparksql
