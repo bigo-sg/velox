@@ -11,24 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-velox_add_library(velox_connector Connector.cpp)
+add_executable(velox_connector_util_test StringFormatterTest.cpp)
 
-velox_link_libraries(velox_connector velox_common_config velox_vector)
+add_test(velox_connector_util_test velox_connector_util_test)
 
-add_subdirectory(fuzzer)
-add_subdirectory(nexmark)
-add_subdirectory(print)
-add_subdirectory(from_elements)
-add_subdirectory(utils)
-
-if(${VELOX_ENABLE_HIVE_CONNECTOR})
-  add_subdirectory(hive)
-endif()
-
-if(${VELOX_ENABLE_TPCH_CONNECTOR})
-  add_subdirectory(tpch)
-endif()
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+target_link_libraries(
+  velox_connector_util_test
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
