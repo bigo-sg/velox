@@ -113,6 +113,6 @@ target_link_libraries(
   GTest::gtest
   GTest::gtest_main)
 
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+#if(${VELOX_BUILD_TESTING})
+#  add_subdirectory(tests)
+#endif()

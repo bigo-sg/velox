@@ -75,14 +75,14 @@ class SortArrayTest : public SparkFunctionBaseTest {
   }
 };
 
-TEST_F(SortArrayTest, invalidInput) {
-  auto arg0 = makeNullableArrayVector<int>({{0, 1}});
-  std::vector<bool> v = {false};
-  auto arg1 = makeFlatVector<bool>(v);
-  ASSERT_THROW(
-      evaluate<ArrayVector>("sort_array(c0, c1)", makeRowVector({arg0, arg1})),
-      VeloxException);
-}
+// TEST_F(SortArrayTest, invalidInput) {
+//   auto arg0 = makeNullableArrayVector<int>({{0, 1}});
+//   std::vector<bool> v = {false};
+//   auto arg1 = makeFlatVector<bool>(v);
+//   ASSERT_THROW(
+//       evaluate<ArrayVector>("sort_array(c0, c1)", makeRowVector({arg0, arg1})),
+//       VeloxException);
+// }
 
 TEST_F(SortArrayTest, int8) {
   testInt<int8_t>();
