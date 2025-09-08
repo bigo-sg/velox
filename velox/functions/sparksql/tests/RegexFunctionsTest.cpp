@@ -215,20 +215,20 @@ TEST_F(RegexFunctionsTest, allowSimpleConstantRegex) {
   EXPECT_EQ(rlike(std::nullopt, "a*"), std::nullopt);
 }
 
-// TEST_F(RegexFunctionsTest, blockUnsupportedEdgeCases) {
-//   // Non-constant pattern.
-//   EXPECT_THROW(
-//       evaluateOnce<bool>("rlike('a', c0)", std::optional<std::string>("a*")),
-//       VeloxUserError);
-// }
+TEST_F(RegexFunctionsTest, blockUnsupportedEdgeCases) {
+  // Non-constant pattern.
+  EXPECT_THROW(
+      evaluateOnce<bool>("rlike('a', c0)", std::optional<std::string>("a*")),
+      VeloxUserError);
+}
 
-// TEST_F(RegexFunctionsTest, regexMatchRegistration) {
-//   EXPECT_THROW(
-//       evaluateOnce<std::string>(
-//           "regexp_extract('a', c0)", std::optional<std::string>("a*")),
-//       VeloxUserError);
-//   EXPECT_EQ(regexp_extract("abc", "a."), "ab");
-// }
+TEST_F(RegexFunctionsTest, regexMatchRegistration) {
+  EXPECT_THROW(
+      evaluateOnce<std::string>(
+          "regexp_extract('a', c0)", std::optional<std::string>("a*")),
+      VeloxUserError);
+  EXPECT_EQ(regexp_extract("abc", "a."), "ab");
+}
 
 TEST_F(RegexFunctionsTest, regexpReplaceRegistration) {
   std::string output = "teeheebc";

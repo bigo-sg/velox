@@ -39,18 +39,18 @@ TEST_F(SparkPartitionIdTest, basic) {
   testSparkPartitionId(100, 100);
 }
 
-// TEST_F(SparkPartitionIdTest, error) {
-//   auto rowVector = makeRowVector(ROW({}), 1);
+TEST_F(SparkPartitionIdTest, error) {
+  auto rowVector = makeRowVector(ROW({}), 1);
 
-//   queryCtx_->testingOverrideConfigUnsafe({{}});
-//   VELOX_ASSERT_THROW(
-//       evaluate("spark_partition_id()", rowVector),
-//       "Spark partition id is not set");
+  queryCtx_->testingOverrideConfigUnsafe({{}});
+  VELOX_ASSERT_THROW(
+      evaluate("spark_partition_id()", rowVector),
+      "Spark partition id is not set");
 
-//   setSparkPartitionId(-1);
-//   VELOX_ASSERT_THROW(
-//       evaluate("spark_partition_id()", rowVector),
-//       "Invalid Spark partition id");
-// }
+  setSparkPartitionId(-1);
+  VELOX_ASSERT_THROW(
+      evaluate("spark_partition_id()", rowVector),
+      "Invalid Spark partition id");
+}
 } // namespace
 } // namespace facebook::velox::functions::sparksql::test

@@ -326,24 +326,24 @@ TEST_F(DateTimeFunctionsTest, unixTimestampTimestampInput) {
   EXPECT_EQ(kMin, unixTimestamp(Timestamp(kMin, 0)));
 }
 
-// TEST_F(DateTimeFunctionsTest, unixTimestampDateInput) {
-//   const auto unixTimestamp = [&](std::optional<int32_t> date) {
-//     return evaluateOnce<int64_t>("unix_timestamp(c0)", {DATE()}, date);
-//   };
-//   EXPECT_EQ(0, unixTimestamp(parseDate("1970-01-01")));
-//   EXPECT_EQ(1727740800, unixTimestamp(parseDate("2024-10-01")));
-//   EXPECT_EQ(-126065894400, unixTimestamp(parseDate("-2025-02-18")));
-//   setQueryTimeZone("America/Los_Angeles");
-//   EXPECT_EQ(1727766000, unixTimestamp(parseDate("2024-10-01")));
-//   EXPECT_EQ(-126065866022, unixTimestamp(parseDate("-2025-02-18")));
-//   EXPECT_EQ(2398320000, unixTimestamp(parseDate("2045-12-31")));
-//   VELOX_ASSERT_USER_THROW(
-//       unixTimestamp(kMax),
-//       "Could not convert date 5881580-07-11 to unix timestamp.");
-//   VELOX_ASSERT_USER_THROW(
-//       unixTimestamp(kMin),
-//       "Could not convert date -5877641-06-23 to unix timestamp.");
-// }
+TEST_F(DateTimeFunctionsTest, unixTimestampDateInput) {
+  const auto unixTimestamp = [&](std::optional<int32_t> date) {
+    return evaluateOnce<int64_t>("unix_timestamp(c0)", {DATE()}, date);
+  };
+  EXPECT_EQ(0, unixTimestamp(parseDate("1970-01-01")));
+  EXPECT_EQ(1727740800, unixTimestamp(parseDate("2024-10-01")));
+  EXPECT_EQ(-126065894400, unixTimestamp(parseDate("-2025-02-18")));
+  setQueryTimeZone("America/Los_Angeles");
+  EXPECT_EQ(1727766000, unixTimestamp(parseDate("2024-10-01")));
+  EXPECT_EQ(-126065866022, unixTimestamp(parseDate("-2025-02-18")));
+  EXPECT_EQ(2398320000, unixTimestamp(parseDate("2045-12-31")));
+  VELOX_ASSERT_USER_THROW(
+      unixTimestamp(kMax),
+      "Could not convert date 5881580-07-11 to unix timestamp.");
+  VELOX_ASSERT_USER_THROW(
+      unixTimestamp(kMin),
+      "Could not convert date -5877641-06-23 to unix timestamp.");
+}
 
 // unix_timestamp and to_unix_timestamp are aliases.
 TEST_F(DateTimeFunctionsTest, toUnixTimestamp) {

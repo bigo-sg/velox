@@ -48,32 +48,32 @@ class ElementAtTest : public SparkFunctionBaseTest {
 // #1 - start indices at 1. If Index is 0 will throw an error.
 // #2 - allow out of bounds access for arrays (return null).
 // #3 - allow negative indices (return elements from the last to the first).
-// TEST_F(ElementAtTest, allFlavors2) {
-//   auto arrayVector = makeArrayVector<int64_t>({{10, 11, 12}});
+TEST_F(ElementAtTest, allFlavors2) {
+  auto arrayVector = makeArrayVector<int64_t>({{10, 11, 12}});
 
-//   // Create a simple vector containing a single map ([10=>10, 11=>11, 12=>12]).
-//   auto keyAt = [](auto idx) { return idx + 10; };
-//   auto sizeAt = [](auto) { return 3; };
-//   auto mapValueAt = [](auto idx) { return idx + 10; };
-//   auto mapVector =
-//       makeMapVector<int64_t, int64_t>(1, sizeAt, keyAt, mapValueAt);
+  // Create a simple vector containing a single map ([10=>10, 11=>11, 12=>12]).
+  auto keyAt = [](auto idx) { return idx + 10; };
+  auto sizeAt = [](auto) { return 3; };
+  auto mapValueAt = [](auto idx) { return idx + 10; };
+  auto mapVector =
+      makeMapVector<int64_t, int64_t>(1, sizeAt, keyAt, mapValueAt);
 
-//   // #1
-//   EXPECT_EQ(elementAtSimple("element_at(C0, 1)", {arrayVector}), 10);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, 2)", {arrayVector}), 11);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, 3)", {arrayVector}), 12);
-//   VELOX_ASSERT_THROW(
-//       elementAtSimple("element_at(C0, 0)", {arrayVector}),
-//       "SQL array indices start at 1");
-//   // #2
-//   EXPECT_EQ(elementAtSimple("element_at(C0, 4)", {arrayVector}), std::nullopt);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, 5)", {arrayVector}), std::nullopt);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, 1001)", {mapVector}), std::nullopt);
+  // #1
+  EXPECT_EQ(elementAtSimple("element_at(C0, 1)", {arrayVector}), 10);
+  EXPECT_EQ(elementAtSimple("element_at(C0, 2)", {arrayVector}), 11);
+  EXPECT_EQ(elementAtSimple("element_at(C0, 3)", {arrayVector}), 12);
+  VELOX_ASSERT_THROW(
+      elementAtSimple("element_at(C0, 0)", {arrayVector}),
+      "SQL array indices start at 1");
+  // #2
+  EXPECT_EQ(elementAtSimple("element_at(C0, 4)", {arrayVector}), std::nullopt);
+  EXPECT_EQ(elementAtSimple("element_at(C0, 5)", {arrayVector}), std::nullopt);
+  EXPECT_EQ(elementAtSimple("element_at(C0, 1001)", {mapVector}), std::nullopt);
 
-//   // #3
-//   EXPECT_EQ(elementAtSimple("element_at(C0, -1)", {arrayVector}), 12);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, -2)", {arrayVector}), 11);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, -3)", {arrayVector}), 10);
-//   EXPECT_EQ(elementAtSimple("element_at(C0, -4)", {arrayVector}), std::nullopt);
-// }
+  // #3
+  EXPECT_EQ(elementAtSimple("element_at(C0, -1)", {arrayVector}), 12);
+  EXPECT_EQ(elementAtSimple("element_at(C0, -2)", {arrayVector}), 11);
+  EXPECT_EQ(elementAtSimple("element_at(C0, -3)", {arrayVector}), 10);
+  EXPECT_EQ(elementAtSimple("element_at(C0, -4)", {arrayVector}), std::nullopt);
+}
 } // namespace facebook::velox::functions::sparksql::test

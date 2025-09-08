@@ -94,23 +94,23 @@ TEST_F(AtLeastNNonNullsTest, basic) {
   testAtLeastNNonNulls(4, {maps, arrays, consts, dicts}, expected);
 }
 
-// TEST_F(AtLeastNNonNullsTest, error) {
-//   auto input = makeFlatVector<int32_t>({1, 2, 3});
+TEST_F(AtLeastNNonNullsTest, error) {
+  auto input = makeFlatVector<int32_t>({1, 2, 3});
 
-//   VELOX_ASSERT_USER_THROW(
-//       evaluate("at_least_n_non_nulls(1.0, c0)", makeRowVector({input})),
-//       "The first input type should be INTEGER but got DOUBLE");
-//   VELOX_ASSERT_USER_THROW(
-//       evaluate("at_least_n_non_nulls(1)", makeRowVector({})),
-//       "AtLeastNNonNulls expects to receive at least 2 arguments");
-//   VELOX_ASSERT_USER_THROW(
-//       evaluate("at_least_n_non_nulls(c0, c1)", makeRowVector({input, input})),
-//       "The first parameter should be constant expression");
-//   VELOX_ASSERT_USER_THROW(
-//       evaluate(
-//           "at_least_n_non_nulls(cast(null as int), c0)",
-//           makeRowVector({input})),
-//       "The first parameter should not be null");
-// }
+  VELOX_ASSERT_USER_THROW(
+      evaluate("at_least_n_non_nulls(1.0, c0)", makeRowVector({input})),
+      "The first input type should be INTEGER but got DOUBLE");
+  VELOX_ASSERT_USER_THROW(
+      evaluate("at_least_n_non_nulls(1)", makeRowVector({})),
+      "AtLeastNNonNulls expects to receive at least 2 arguments");
+  VELOX_ASSERT_USER_THROW(
+      evaluate("at_least_n_non_nulls(c0, c1)", makeRowVector({input, input})),
+      "The first parameter should be constant expression");
+  VELOX_ASSERT_USER_THROW(
+      evaluate(
+          "at_least_n_non_nulls(cast(null as int), c0)",
+          makeRowVector({input})),
+      "The first parameter should not be null");
+}
 } // namespace
 } // namespace facebook::velox::functions::sparksql::test

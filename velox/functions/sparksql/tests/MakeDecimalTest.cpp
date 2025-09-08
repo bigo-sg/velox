@@ -52,51 +52,51 @@ class MakeDecimalTest : public SparkFunctionBaseTest {
   }
 };
 
-// TEST_F(MakeDecimalTest, makeDecimal) {
-//   testMakeDecimal(
-//       makeFlatVector<int64_t>({1111, -1112, 9999, 0}),
-//       std::nullopt,
-//       makeFlatVector<int64_t>({1111, -1112, 9999, 0}, DECIMAL(5, 1)));
-//   testMakeDecimal(
-//       makeFlatVector<int64_t>({1111, -1112, 9999, 0}),
-//       true,
-//       makeFlatVector<int64_t>({1111, -1112, 9999, 0}, DECIMAL(5, 1)));
-//   testMakeDecimal(
-//       makeFlatVector<int64_t>(
-//           {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1}),
-//       true,
-//       makeFlatVector<int128_t>(
-//           {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1},
-//           DECIMAL(38, 19)));
-//   testMakeDecimal(
-//       makeFlatVector<int64_t>(
-//           {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1}),
-//       true,
-//       makeNullableFlatVector<int64_t>(
-//           {11111111, -11112112, 99999999, std::nullopt}, DECIMAL(18, 0)));
-//   VELOX_ASSERT_THROW(
-//       testMakeDecimal(
-//           makeFlatVector<int64_t>(
-//               {11111111,
-//                -11112112,
-//                99999999,
-//                DecimalUtil::kShortDecimalMax + 1}),
-//           false,
-//           makeNullableFlatVector<int64_t>(
-//               {11111111, -11112112, 99999999, std::nullopt}, DECIMAL(18, 0))),
-//       "Unscaled value 1000000000000000000 too large for precision 18.");
-//   testMakeDecimal(
-//       makeFlatVector<int64_t>(
-//           {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1}),
-//       false,
-//       makeNullableFlatVector<int64_t>(
-//           {11111111, -11112112, 99999999, std::nullopt}, DECIMAL(18, 0)),
-//       true /*tryMakeDecimal*/);
-//   testMakeDecimal(
-//       makeNullableFlatVector<int64_t>({101, std::nullopt, 1000}),
-//       true,
-//       makeNullableFlatVector<int64_t>(
-//           {101, std::nullopt, std::nullopt}, DECIMAL(3, 1)));
-// }
+TEST_F(MakeDecimalTest, makeDecimal) {
+  testMakeDecimal(
+      makeFlatVector<int64_t>({1111, -1112, 9999, 0}),
+      std::nullopt,
+      makeFlatVector<int64_t>({1111, -1112, 9999, 0}, DECIMAL(5, 1)));
+  testMakeDecimal(
+      makeFlatVector<int64_t>({1111, -1112, 9999, 0}),
+      true,
+      makeFlatVector<int64_t>({1111, -1112, 9999, 0}, DECIMAL(5, 1)));
+  testMakeDecimal(
+      makeFlatVector<int64_t>(
+          {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1}),
+      true,
+      makeFlatVector<int128_t>(
+          {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1},
+          DECIMAL(38, 19)));
+  testMakeDecimal(
+      makeFlatVector<int64_t>(
+          {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1}),
+      true,
+      makeNullableFlatVector<int64_t>(
+          {11111111, -11112112, 99999999, std::nullopt}, DECIMAL(18, 0)));
+  VELOX_ASSERT_THROW(
+      testMakeDecimal(
+          makeFlatVector<int64_t>(
+              {11111111,
+               -11112112,
+               99999999,
+               DecimalUtil::kShortDecimalMax + 1}),
+          false,
+          makeNullableFlatVector<int64_t>(
+              {11111111, -11112112, 99999999, std::nullopt}, DECIMAL(18, 0))),
+      "Unscaled value 1000000000000000000 too large for precision 18.");
+  testMakeDecimal(
+      makeFlatVector<int64_t>(
+          {11111111, -11112112, 99999999, DecimalUtil::kShortDecimalMax + 1}),
+      false,
+      makeNullableFlatVector<int64_t>(
+          {11111111, -11112112, 99999999, std::nullopt}, DECIMAL(18, 0)),
+      true /*tryMakeDecimal*/);
+  testMakeDecimal(
+      makeNullableFlatVector<int64_t>({101, std::nullopt, 1000}),
+      true,
+      makeNullableFlatVector<int64_t>(
+          {101, std::nullopt, std::nullopt}, DECIMAL(3, 1)));
+}
 } // namespace
 } // namespace facebook::velox::functions::sparksql::test
