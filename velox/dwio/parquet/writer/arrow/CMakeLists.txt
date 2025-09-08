@@ -14,9 +14,9 @@
 
 add_subdirectory(util)
 
-#if(${VELOX_BUILD_TESTING})
-	#  add_subdirectory(tests)
-#endif()
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()
 
 velox_add_library(
   velox_dwio_arrow_parquet_writer_lib
