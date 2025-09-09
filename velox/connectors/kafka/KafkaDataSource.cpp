@@ -130,20 +130,27 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
   if (queue_.empty()) {
+    // consume the data batch from kafka, and stored the consumed data in the queue.
     consumer_->consumeBatch(queue_, consumedMsgBytes);
+    consumePos_ = 0;
+    // If nothing consumed, return directly.
     if (consumedMsgBytes == 0) {
       return res;
     }
   }
   outRow_->prepareForReuse();
+  // If batchSize > 1 and set `processDataSize = queue.size`, means to process the entrie batch that consumed and stored in the `queue` at once;
+  // If batchSize = 1 and set `processDataSize = 1`, means to process the consumed batch data one by one.
   size_t processDataSize = batchSize_ > 1 ? queue_.size() : batchSize_;
   outRow_->resize(processDataSize);
-  for (consumePos_ = 0; consumePos_ < processDataSize; ++consumePos_) {
-      deserializer_->deserialize(queue_[consumePos_], consumePos_, outRow_);
-      completedBytes_ += queue_[consumePos_].size();
+  // Deserialize the consumed data. The `processDataSize` determines how many data would be deserialized at once.
+  for (size_t pos = 0; pos < processDataSize; ++pos) {
+      deserializer_->deserialize(queue_[pos + consumePos_], pos, outRow_);
+      completedBytes_ += queue_[pos + consumePos_].size();
       completedRows_ += 1;
   }
   res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
+  consumePos_ += processDataSize;
   if (consumePos_ >= queue_.size()) {
     queue_.clear();
     consumePos_ = 0;

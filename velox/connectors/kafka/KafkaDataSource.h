@@ -91,11 +91,12 @@ class KafkaDataSource : public DataSource {
   /// The output row to be returned.
   VectorPtr outRow_;
   /// The batch size of data are consumed/processed at once .
+  /// If batchSize_ = 1, it means to process the consumed messages one by one, which likes valina flink does.
+  /// If batchSize_ > 1, it means to process the consumed messages by a entrie batch.
   uint64_t batchSize_;
   /// The cache queue for storing consumed data.
   std::vector<std::string> queue_;
-  /// The consumed position of the cache queue when handle the consumed data one
-  /// by one.
+  /// The consumed position of the cache queue.
   size_t consumePos_ = 0;
 
   /// Whether consumer can be created.
