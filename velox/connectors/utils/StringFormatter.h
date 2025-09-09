@@ -147,7 +147,18 @@ struct DefaultFormatter : public StringFormatter {
     } else if constexpr (std::is_same_v<T, StringView>) {
       ss << t.str();
     } else if constexpr (std::is_same_v<T, Timestamp>) {
-      ss << t.toString();
+      TimestampToStringOptions options;
+      uint64_t nanos = t.getNanos();
+      if (nanos % 1000 != 0) {
+        options.precision = TimestampPrecision::kNanoseconds;
+      } else if ((nanos / 1000) % 1000 != 0) {
+        options.precision = TimestampPrecision::kMicroseconds;
+      } else if ((nanos / 1000000) % 1000 != 0) {
+        options.precision = TimestampPrecision::kMilliseconds;
+      } else {
+        options.skipTrailingZeros = true;
+      }
+      ss << t.toString(options);
     } else {
       VELOX_FAIL("Not supported type: {}", typeid(T).name());
     }

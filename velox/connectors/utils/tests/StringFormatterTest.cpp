@@ -19,6 +19,7 @@
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
+#include <iostream>
 
 namespace facebook::velox::connector::test {
 
@@ -74,6 +75,56 @@ TEST_F(StringFormatterTest, testSplit) {
   ASSERT_TRUE(ss3[1] == "[+I[1,2],+I[3,4]]");
   std::vector<std::string> ss4 = StringFormatter::split(s4, ",");
   ASSERT_TRUE(ss4.size() == 2);
+}
+
+TEST_F(StringFormatterTest, testTimestampToString) {
+  auto toTimestamp = [&](const std::string& s) -> Timestamp {
+    return util::fromTimestampString(
+      s.data(), s.size(), util::TimestampParseMode::kSparkCast)
+      .thenOrThrow(folly::identity, [&](const Status& status) {
+        VELOX_FAIL("error while parse timestamp: {}", status.message());
+      });
+  };
+  std::string s0 = "2025-09-08 19:14:12";
+  std::string s1 = "2025-09-08 19:14:12.001";
+  std::string s2 = "2025-09-08 19:14:12.300";
+  std::string s3 = "2025-09-08 19:14:12.300100";
+  std::string s4 = "2025-09-08 19:14:12.300100200";
+  std::string s5 = "2025-09-08 19:14:12.000";
+  std::string s6 = "2025-09-08 19:14:12.3";
+  std::string s7 = "2025-09-08 19:14:12.31";
+  TypePtr timestampType = std::make_shared<TimestampType>();
+  VectorPtr vec = FlatVector<Timestamp>::create(timestampType, 8, memoryPool.get());
+  vec->asFlatVector<Timestamp>()->set(0, toTimestamp(s0));
+  vec->asFlatVector<Timestamp>()->set(1, toTimestamp(s1));
+  vec->asFlatVector<Timestamp>()->set(2, toTimestamp(s2));
+  vec->asFlatVector<Timestamp>()->set(3, toTimestamp(s3));
+  vec->asFlatVector<Timestamp>()->set(4, Timestamp::fromNanos(toTimestamp(s4).toMicros() * 1000 + 200));
+  vec->asFlatVector<Timestamp>()->set(5, toTimestamp(s5));
+  vec->asFlatVector<Timestamp>()->set(6, toTimestamp(s6));
+  vec->asFlatVector<Timestamp>()->set(7, toTimestamp(s7));
+  DefaultFormatter<Timestamp> formatter;
+  for (int i = 0; i < 5; ++i) {
+    std::stringstream ss;
+    formatter.toString(vec, timestampType, i, ss);
+    if (i == 0) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12");
+    } else if (i == 1) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12.001");
+    } else if (i == 2) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12.300");
+    } else if (i == 3) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12.300100");
+    } else if (i == 4) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12.300100200");
+    } else if (i == 5) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12");
+    } else if (i == 6) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12.300");
+    } else if (i == 7) {
+      ASSERT_TRUE(ss.str() == "2025-09-08T19:14:12.310");
+    }
+  }
 }
 
 } // namespace facebook::velox::stateful::test
