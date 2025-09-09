@@ -103,7 +103,7 @@ TEST_F(StringFormatterTest, testTimestampToString) {
   vec->asFlatVector<Timestamp>()->set(6, toTimestamp(s6));
   vec->asFlatVector<Timestamp>()->set(7, toTimestamp(s7));
   DefaultFormatter<Timestamp> formatter;
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 8; ++i) {
     std::stringstream ss;
     formatter.toString(vec, timestampType, i, ss);
     if (i == 0) {
