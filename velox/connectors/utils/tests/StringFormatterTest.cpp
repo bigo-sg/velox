@@ -19,7 +19,6 @@
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
-#include <iostream>
 
 namespace facebook::velox::connector::test {
 
