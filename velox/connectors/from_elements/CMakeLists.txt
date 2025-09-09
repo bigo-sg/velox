@@ -11,24 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-velox_add_library(velox_connector Connector.cpp)
 
-velox_link_libraries(velox_connector velox_common_config velox_vector)
+# velox_add_library(velox_kafka_config OBJECT KafkaConfig.cpp)
+# velox_link_libraries(velox_kafka_config velox_core velox_exception)
 
-add_subdirectory(fuzzer)
-add_subdirectory(nexmark)
-add_subdirectory(print)
-add_subdirectory(from_elements)
-add_subdirectory(utils)
+velox_add_library(
+  velox_from_elements_connector
+  OBJECT
+  FromElementsSource.cpp
+  FromElementsTableHandle.cpp
+  FromElementsConnector.cpp
+  FromElementsConnectorSplit.cpp)
 
-if(${VELOX_ENABLE_HIVE_CONNECTOR})
-  add_subdirectory(hive)
-endif()
-
-if(${VELOX_ENABLE_TPCH_CONNECTOR})
-  add_subdirectory(tpch)
-endif()
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+velox_link_libraries(velox_from_elements_connector velox_common_io velox_connector)
