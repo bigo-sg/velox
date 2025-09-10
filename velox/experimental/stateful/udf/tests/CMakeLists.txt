@@ -11,12 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+add_executable(velox_stateful_udf_test UDFTest.cpp)
 
-velox_add_library(
-  velox_stateful_udf
-  OBJECT
-  Register.cpp)
+add_test(velox_stateful_udf_test velox_stateful_udf_test)
 
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+target_link_libraries(
+  velox_stateful_udf_test
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
