@@ -16,6 +16,7 @@
 #include "velox/experimental/stateful/udf/Register.h"
 #include "velox/experimental/stateful/udf/BigoUDF.h"
 #include "velox/experimental/stateful/udf/ExtractDateTime.h"
+#include "velox/experimental/stateful/udf/SplitIndex.h"
 #include "velox/functions/Registerer.h"
 
 namespace facebook::velox::stateful::udf {
@@ -25,6 +26,8 @@ void registerFunctions(const std::string& prefix) {
       {prefix + "count_char"});
   registerFunction<ExtractFunction, int64_t, Varchar, Timestamp>(
       {prefix + "extract"});
+  registerFunction<SplitIndexFunction, Varchar, Varchar, Varchar, int64_t>(
+      {prefix + "split_index"});
 }
 
 } // namespace facebook::velox::stateful::udf

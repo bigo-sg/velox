@@ -144,17 +144,6 @@ struct UnixTimestampFunction {
 };
 
 template <typename T>
-struct CurrentTimestampFunction {
-  VELOX_DEFINE_FUNCTION_TYPES(T);
-
-  FOLLY_ALWAYS_INLINE bool call(
-      out_type<Timestamp>& result) {
-    result = Timestamp::now();
-    return true;
-  }
-};
-
-template <typename T>
 struct UnixTimestampParseFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
 

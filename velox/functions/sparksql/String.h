@@ -1556,37 +1556,4 @@ struct Empty2NullFunction {
   }
 };
 
-template<typename T>
-struct SplitIndex {
-  VELOX_DEFINE_FUNCTION_TYPES(T);
-
-  // Results refer to strings in the first argument.
-  static constexpr int32_t reuse_strings_from_arg = 0;
-
-  // ASCII input always produces ASCII result.
-  static constexpr bool is_default_ascii_behavior = true;
-
-  FOLLY_ALWAYS_INLINE bool call(
-      out_type<Varchar>& result,
-      const arg_type<Varchar>& input,
-      const arg_type<Varchar>& delimiter,
-      const int64_t& index) {
-    if (index <= 0) {
-      return false;
-    }
-    return stringImpl::splitPart<false>(result, input, delimiter, index);
-  }
-
-  FOLLY_ALWAYS_INLINE bool callAscii(
-      out_type<Varchar>& result,
-      const arg_type<Varchar>& input,
-      const arg_type<Varchar>& delimiter,
-      const int64_t& index) {
-    if (index <= 0) {
-      return false;
-    }
-    return stringImpl::splitPart<true>(result, input, delimiter, index);
-  }
-};
-
 } // namespace facebook::velox::functions::sparksql

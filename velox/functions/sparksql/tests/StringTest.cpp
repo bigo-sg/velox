@@ -17,9 +17,7 @@
 #include "velox/functions/sparksql/tests/SparkFunctionBaseTest.h"
 #include "velox/type/Type.h"
 
-#include <gtest/gtest.h>
 #include <stdint.h>
-#include <optional>
 
 namespace facebook::velox::functions::sparksql::test {
 namespace {
@@ -1056,21 +1054,6 @@ TEST_F(StringTest, empty2Null) {
 
   EXPECT_EQ(empty2Null(""), std::nullopt);
   EXPECT_EQ(empty2Null("abc"), "abc");
-}
-
-TEST_F(StringTest, splitIndex) {
-  const auto splitIndex = [&](const std::optional<std::string>& a,
-      const std::optional<std::string>& d, const std::optional<int64_t>& i) {
-        return evaluateOnce<std::string>("split_index(c0, c1, c2)", a, d, i);
-  };
-  EXPECT_EQ(splitIndex("a/b/c", "/", 1), "a");
-  EXPECT_EQ(splitIndex("a/b/c",  "/", 2), "b");
-  const std::optional<std::string> res0 = splitIndex("a/b/c", "/", 0);
-  const std::optional<std::string> res1 = splitIndex("a/b/c", "/", -1);
-  const std::optional<std::string> res2 = splitIndex("a/b/c", "/", 4);
-  EXPECT_EQ(res0.has_value(), false);
-  EXPECT_EQ(res1.has_value(), false);
-  EXPECT_EQ(res2.has_value(), false);
 }
 
 } // namespace
