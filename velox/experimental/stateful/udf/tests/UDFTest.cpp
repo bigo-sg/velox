@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "velox/experimental/stateful/udf/Register.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 #include "velox/parse/TypeResolver.h"
-#include "velox/experimental/stateful/udf/Register.h"
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
@@ -23,7 +23,7 @@
 namespace facebook::velox::udf::test {
 
 class UDFTest : public functions::test::FunctionBaseTest {
-protected:
+ protected:
   static void SetUpTestCase() {
     parse::registerTypeResolver();
     stateful::udf::registerFunctions("");
@@ -33,11 +33,12 @@ protected:
 
 TEST_F(UDFTest, splitIndex) {
   const auto splitIndex = [&](const std::optional<std::string>& a,
-      const std::optional<std::string>& d, const std::optional<int64_t>& i) {
-        return evaluateOnce<std::string>("split_index(c0, c1, c2)", a, d, i);
+                              const std::optional<std::string>& d,
+                              const std::optional<int64_t>& i) {
+    return evaluateOnce<std::string>("split_index(c0, c1, c2)", a, d, i);
   };
   EXPECT_EQ(splitIndex("a/b/c", "/", 1), "a");
-  EXPECT_EQ(splitIndex("a/b/c",  "/", 2), "b");
+  EXPECT_EQ(splitIndex("a/b/c", "/", 2), "b");
   const std::optional<std::string> res0 = splitIndex("a/b/c", "/", 0);
   const std::optional<std::string> res1 = splitIndex("a/b/c", "/", -1);
   const std::optional<std::string> res2 = splitIndex("a/b/c", "/", 4);
@@ -46,7 +47,7 @@ TEST_F(UDFTest, splitIndex) {
   EXPECT_EQ(res2.has_value(), false);
 }
 
-}
+} // namespace facebook::velox::udf::test
 
 int main(int argc, char* argv[]) {
   testing::InitGoogleTest(&argc, argv);

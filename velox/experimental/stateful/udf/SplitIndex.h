@@ -15,12 +15,12 @@
  */
 #pragma once
 
-#include "velox/functions/lib/string/StringImpl.h"
 #include "velox/functions/Macros.h"
+#include "velox/functions/lib/string/StringImpl.h"
 
 namespace facebook::velox::stateful::udf {
 
-template<typename T>
+template <typename T>
 struct SplitIndexFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
 
@@ -38,7 +38,8 @@ struct SplitIndexFunction {
     if (index <= 0) {
       return false;
     }
-    return functions::stringImpl::splitPart<false>(result, input, delimiter, index);
+    return functions::stringImpl::splitPart<false>(
+        result, input, delimiter, index);
   }
 
   FOLLY_ALWAYS_INLINE bool callAscii(
@@ -49,8 +50,9 @@ struct SplitIndexFunction {
     if (index <= 0) {
       return false;
     }
-    return functions::stringImpl::splitPart<true>(result, input, delimiter, index);
+    return functions::stringImpl::splitPart<true>(
+        result, input, delimiter, index);
   }
 };
 
-}
+} // namespace facebook::velox::stateful::udf
