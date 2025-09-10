@@ -17,6 +17,7 @@ add_subdirectory(join)
 add_subdirectory(rank)
 add_subdirectory(state)
 add_subdirectory(window)
+add_subdirectory(udf)
 
 velox_add_library(
   velox_stateful_exec
@@ -44,5 +45,6 @@ velox_link_libraries(
   velox_stateful_rank
   velox_stateful_state
   velox_stateful_window
+  velox_stateful_udf
   velox_common_base
   velox_exec)
