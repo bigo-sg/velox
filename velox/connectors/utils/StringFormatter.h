@@ -19,6 +19,7 @@
 #include "velox/type/StringView.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/TimestampConversion.h"
+#include "velox/type/tz/TimeZoneMap.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include <boost/algorithm/string.hpp>
@@ -26,13 +27,21 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <folly/Try.h>
+#include <ctime>
 #include <memory>
+#include <string>
 #include <type_traits>
+#include <iostream>
 
 namespace facebook::velox::connector {
 
 struct StringFormatter {
  public:
+  StringFormatter(const tz::TimeZone* timeZone) : timeZone_(timeZone) {
+    VELOX_CHECK(timeZone_ != nullptr);
+  }
+  StringFormatter() : timeZone_(tz::locateZone("UTC")) {}
+
   virtual const void toString(
       const VectorPtr& input,
       const TypePtr&,
@@ -52,6 +61,9 @@ struct StringFormatter {
       const std::string& delimiter);
   /// Normalize the input string of flink-style to make it easy to be splitted. e.g. +I[1,2,3] -> 1,2,3.
   static const void normalize(std::string& s, const TypeKind kind);
+
+  protected:
+    const tz::TimeZone* timeZone_;
 };
 
 using FormatterPtr = std::shared_ptr<StringFormatter>;
@@ -59,6 +71,9 @@ using FormatterPtr = std::shared_ptr<StringFormatter>;
 template <typename T>
 struct DefaultFormatter : public StringFormatter {
  public:
+  DefaultFormatter(const tz::TimeZone* timeZone) : StringFormatter(timeZone) {}
+  DefaultFormatter() : StringFormatter() {}
+
   const void toString(
       const VectorPtr& input,
       const TypePtr& type,
@@ -192,12 +207,15 @@ struct DefaultFormatter : public StringFormatter {
       StringView sv(s.data(), s.size());
       return sv;
     } else if constexpr (std::is_same_v<T, Timestamp>) {
-      const auto timestamp =
-          util::fromTimestampString(
-              s.data(), s.size(), util::TimestampParseMode::kLegacyCast)
-              .thenOrThrow(folly::identity, [&](const Status& status) {
-                VELOX_FAIL("error while parse timestamp: {}", status.message());
-              });
+      const auto parsed =
+        util::fromTimestampWithTimezoneString(s.data(), s.size(), util::TimestampParseMode::kLegacyCast)
+        .thenOrThrow(folly::identity, [&](const Status& status) {
+              VELOX_FAIL("error while parse timestamp: {}", status.message());
+        });
+      auto timestamp =  util::fromParsedTimestampWithTimeZone(parsed, timeZone_);
+      if (timeZone_) {
+        timestamp.toTimezone(*timeZone_);
+      }
       return timestamp;
     } else {
       VELOX_FAIL("Not supported type: {}", typeid(T).name());
@@ -405,6 +423,6 @@ struct MapFormatter : public StringFormatter {
   FormatterPtr valueFormatter_;
 };
 
-const FormatterPtr createFormatter(const TypePtr& type);
+const FormatterPtr createFormatter(const TypePtr& type, const tz::TimeZone* timeZone);
 
 } // namespace facebook::velox::stateful

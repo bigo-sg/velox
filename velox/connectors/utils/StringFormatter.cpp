@@ -17,37 +17,38 @@
 #include "velox/connectors/utils/StringFormatter.h"
 #include <boost/algorithm/string/erase.hpp>
 #include <boost/algorithm/string/replace.hpp>
+#include <type/tz/TimeZoneMap.h>
 #include <stack>
 
 namespace facebook::velox::connector {
-const FormatterPtr createFormatter(const TypePtr& type) {
+const FormatterPtr createFormatter(const TypePtr& type, const tz::TimeZone* timeZone) {
   TypeKind typeKind = type->kind();
   switch (typeKind) {
     case TypeKind::INTEGER:
-      return std::make_shared<DefaultFormatter<int32_t>>();
+      return std::make_shared<DefaultFormatter<int32_t>>(timeZone);
     case TypeKind::BIGINT:
-      return std::make_shared<DefaultFormatter<int64_t>>();
+      return std::make_shared<DefaultFormatter<int64_t>>(timeZone);
     case TypeKind::HUGEINT:
-      return std::make_shared<DefaultFormatter<int128_t>>();
+      return std::make_shared<DefaultFormatter<int128_t>>(timeZone);
     case TypeKind::SMALLINT:
-      return std::make_shared<DefaultFormatter<int16_t>>();
+      return std::make_shared<DefaultFormatter<int16_t>>(timeZone);
     case TypeKind::TINYINT:
-      return std::make_shared<DefaultFormatter<int8_t>>();
+      return std::make_shared<DefaultFormatter<int8_t>>(timeZone);
     case TypeKind::DOUBLE:
-      return std::make_shared<DefaultFormatter<double>>();
+      return std::make_shared<DefaultFormatter<double>>(timeZone);
     case TypeKind::REAL:
-      return std::make_shared<DefaultFormatter<float>>();
+      return std::make_shared<DefaultFormatter<float>>(timeZone);
     case TypeKind::BOOLEAN:
-      return std::make_shared<DefaultFormatter<bool>>();
+      return std::make_shared<DefaultFormatter<bool>>(timeZone);
     case TypeKind::VARCHAR:
-      return std::make_shared<DefaultFormatter<StringView>>();
+      return std::make_shared<DefaultFormatter<StringView>>(timeZone);
     case TypeKind::TIMESTAMP:
-      return std::make_shared<DefaultFormatter<Timestamp>>();
+      return std::make_shared<DefaultFormatter<Timestamp>>(timeZone);
     case TypeKind::ROW: {
       const RowTypePtr rowType = std::dynamic_pointer_cast<const RowType>(type);
       std::vector<FormatterPtr> formatters;
       for (size_t i = 0; i < rowType->children().size(); ++i) {
-        const auto formatter = createFormatter(rowType->childAt(i));
+        const auto formatter = createFormatter(rowType->childAt(i), timeZone);
         formatters.emplace_back(formatter);
       }
       return std::make_shared<RowFormatter>(formatters);
@@ -56,7 +57,7 @@ const FormatterPtr createFormatter(const TypePtr& type) {
       const std::shared_ptr<const ArrayType> arrayType =
           std::dynamic_pointer_cast<const ArrayType>(type);
       const TypePtr& elementType = arrayType->elementType();
-      auto elemmentFormatter = createFormatter(elementType);
+      auto elemmentFormatter = createFormatter(elementType, timeZone);
       return std::make_shared<ArrayFormatter>(elemmentFormatter);
     }
     case TypeKind::MAP: {
@@ -64,8 +65,8 @@ const FormatterPtr createFormatter(const TypePtr& type) {
           std::dynamic_pointer_cast<const MapType>(type);
       const TypePtr& keyType = mapType->keyType();
       const TypePtr& valueType = mapType->valueType();
-      auto keyFormatter = createFormatter(keyType);
-      auto valueFormatter = createFormatter(valueType);
+      auto keyFormatter = createFormatter(keyType, timeZone);
+      auto valueFormatter = createFormatter(valueType, timeZone);
       return std::make_shared<MapFormatter>(
           keyFormatter, valueFormatter);
     }
