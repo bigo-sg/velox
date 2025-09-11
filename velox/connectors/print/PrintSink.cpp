@@ -16,8 +16,8 @@
 #include "velox/connectors/print/PrintSink.h"
 #include "velox/dwio/common/WriterFactory.h"
 #include "velox/type/Type.h"
+#include "velox/type/tz/TimeZoneMap.h"
 #include <fmt/format.h>
-#include <type/tz/TimeZoneMap.h>
 #include <memory>
 
 namespace facebook::velox::connector::print {

@@ -31,7 +31,6 @@
 #include <memory>
 #include <string>
 #include <type_traits>
-#include <iostream>
 
 namespace facebook::velox::connector {
 

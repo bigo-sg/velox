@@ -15,7 +15,7 @@
  */
 
 #include "velox/connectors/from_elements/FromElementsSource.h"
-#include <type/tz/TimeZoneMap.h>
+#include "velox/type/tz/TimeZoneMap.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::connector::from_elements {

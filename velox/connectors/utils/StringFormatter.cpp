@@ -17,7 +17,6 @@
 #include "velox/connectors/utils/StringFormatter.h"
 #include <boost/algorithm/string/erase.hpp>
 #include <boost/algorithm/string/replace.hpp>
-#include <type/tz/TimeZoneMap.h>
 #include <stack>
 
 namespace facebook::velox::connector {
