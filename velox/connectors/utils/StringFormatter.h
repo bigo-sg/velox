@@ -211,11 +211,7 @@ struct DefaultFormatter : public StringFormatter {
         .thenOrThrow(folly::identity, [&](const Status& status) {
               VELOX_FAIL("error while parse timestamp: {}", status.message());
         });
-      auto timestamp =  util::fromParsedTimestampWithTimeZone(parsed, timeZone_);
-      if (timeZone_) {
-        timestamp.toTimezone(*timeZone_);
-      }
-      return timestamp;
+      return util::fromParsedTimestampWithTimeZone(parsed, timeZone_);
     } else {
       VELOX_FAIL("Not supported type: {}", typeid(T).name());
     }

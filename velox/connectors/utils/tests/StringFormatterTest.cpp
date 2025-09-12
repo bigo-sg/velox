@@ -142,12 +142,12 @@ TEST_F(StringFormatterTest, testStringToTimestamp) {
   ASSERT_TRUE(s2 == "2025-09-08T19:14:12");
   DefaultFormatter<Timestamp> formatter0(tz::locateZone("America/Los_Angeles"));
   VectorPtr vec0 = FlatVector<Timestamp>::create(timestampType, 2, memoryPool.get());
-  formatter0.fromString("2025-09-08T19:14:12Z", timestampType, 0, vec0);
-  formatter0.fromString("2025-09-08T19:14:12.100Z", timestampType, 1, vec0);
+  formatter0.fromString("2025-09-08T19:14:12", timestampType, 0, vec0);
+  formatter0.fromString("2025-09-08T19:14:12.100", timestampType, 1, vec0);
   std::string s3 = vec0->asFlatVector<Timestamp>()->valueAt(0).toString(options);
   std::string s4 = vec0->asFlatVector<Timestamp>()->valueAt(1).toString(options);
-  ASSERT_TRUE(s3 == "2025-09-08T12:14:12");
-  ASSERT_TRUE(s4 == "2025-09-08T12:14:12.1");
+  ASSERT_TRUE(s3 == "2025-09-09T02:14:12");
+  ASSERT_TRUE(s4 == "2025-09-09T02:14:12.1");
   DefaultFormatter<Timestamp> formatter1(tz::locateZone("Asia/Shanghai"));
   VectorPtr vec1 = FlatVector<Timestamp>::create(timestampType, 6, memoryPool.get());;
   formatter1.fromString("2025-09-08T19:14:12America/Los_Angeles", timestampType, 0, vec1);
@@ -162,12 +162,12 @@ TEST_F(StringFormatterTest, testStringToTimestamp) {
   std::string s8 = vec1->asFlatVector<Timestamp>()->valueAt(3).toString(options);
   std::string s9 = vec1->asFlatVector<Timestamp>()->valueAt(4).toString(options);
   std::string s10 = vec1->asFlatVector<Timestamp>()->valueAt(5).toString(options);
-  ASSERT_TRUE(s5 == "2025-09-09T10:14:12");
-  ASSERT_TRUE(s6 == "2025-09-09T03:14:12.1");
-  ASSERT_TRUE(s7 == "2025-09-09T00:14:12");
-  ASSERT_TRUE(s8 == "2025-09-09T06:14:12");
-  ASSERT_TRUE(s9 == "2025-09-08T23:59:12");
-  ASSERT_TRUE(s10 == "2025-09-09T06:29:12");
+  ASSERT_TRUE(s5 == "2025-09-09T02:14:12");
+  ASSERT_TRUE(s6 == "2025-09-08T19:14:12.1");
+  ASSERT_TRUE(s7 == "2025-09-08T16:14:12");
+  ASSERT_TRUE(s8 == "2025-09-08T22:14:12");
+  ASSERT_TRUE(s9 == "2025-09-08T15:59:12");
+  ASSERT_TRUE(s10 == "2025-09-08T22:29:12");
 }
 
 } // namespace facebook::velox::stateful::test
