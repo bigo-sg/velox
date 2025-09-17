@@ -21,6 +21,7 @@
 #include "velox/type/TimestampConversion.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
+#include "velox/vector/DictionaryVector.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/erase.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -64,18 +65,37 @@ struct DefaultFormatter : public StringFormatter {
       const TypePtr& type,
       const size_t index,
       std::stringstream& ss) override {
-    auto flat = std::dynamic_pointer_cast<FlatVector<T>>(input);
-    if (flat->isNullAt(index)) {
+    if (input->isNullAt(index)) {
       ss << "null";
     } else {
+      T val;
+      switch(input->encoding()) {
+        case VectorEncoding::Simple::FLAT: {
+          auto flat = std::dynamic_pointer_cast<FlatVector<T>>(input);
+          val = flat->valueAt(index);
+          break;
+        }
+        case VectorEncoding::Simple::DICTIONARY: {
+          auto dict = std::dynamic_pointer_cast<DictionaryVector<T>>(input);
+          val = dict->valueAt(index);
+          break;
+        }
+        case VectorEncoding::Simple::CONSTANT: {
+          auto constant = std::dynamic_pointer_cast<ConstantVector<T>>(input);
+          val = constant->valueAt(index);
+          break;
+        }
+        default:
+          VELOX_FAIL("Encoding {} currently not supported", input->encoding());
+      }
       if constexpr (std::is_same_v<T, int64_t> || std::is_same_v<T, int128_t>) {
         if (type->isDecimal()) {
-          ss << DecimalUtil::toString(flat->valueAt(index), type);
+          ss << DecimalUtil::toString(val, type);
         } else if (std::is_same_v<T, int64_t>) {
-          ss << static_cast<int64_t>(flat->valueAt(index));
+          ss << static_cast<int64_t>(val);
         }
       } else {
-        toString(flat->valueAt(index), ss);
+        toString(val, ss);
       }
     }
   }
