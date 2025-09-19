@@ -28,6 +28,7 @@
 #include "velox/vector/VectorEncoding.h"
 #include "velox/vector/VectorPool.h"
 #include "velox/vector/VectorTypeUtils.h"
+#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox {
 
@@ -683,8 +684,13 @@ VectorPtr BaseVector::createConstant(
     vector_size_t size,
     velox::memory::MemoryPool* pool) {
   VELOX_CHECK_EQ(type->kind(), value.kind());
-  return VELOX_DYNAMIC_SCALAR_TYPE_DISPATCH_ALL(
+  if (type->isArray()) {
+    auto arrayVector = core::variantArrayToVector(type, value.array(), pool);
+    return std::make_shared<ConstantVector<ComplexType>>(pool, arrayVector->size(), 0, arrayVector);
+  } else {
+    return VELOX_DYNAMIC_SCALAR_TYPE_DISPATCH_ALL(
       newConstant, value.kind(), type, value, size, pool);
+  }
 }
 
 // static
