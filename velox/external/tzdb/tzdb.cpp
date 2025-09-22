@@ -724,8 +724,7 @@ static void __parse_link(tzdb& __tzdb, std::istream& __input) {
   __tzdb.links.emplace_back(std::move(__name), std::move(__target));
 }
 
-template <int recordType>
-static void __parse_tzdata_record_type(
+static void __parse_tzdata(
     tzdb& __db,
     __rules_storage_type& __rules,
     std::istream& __input) {
@@ -746,55 +745,24 @@ static void __parse_tzdata_record_type(
         break;
 
       case 'r':
-        if constexpr (recordType == 'r') {
-          __skip(__input, "ule");
-          __parse_rule(__db, __rules, __input);
-        } else {
-          __skip_line(__input);
-        }
+        __skip(__input, "ule");
+        __parse_rule(__db, __rules, __input);
         break;
 
-      case 'l':
-        if constexpr (recordType == 'l') {
-          __skip(__input, "ink");
-          __parse_link(__db, __input);
-        } else {
-          __skip_line(__input);
-        }
+      case 'z':
+        __skip(__input, "one");
+        __parse_zone(__db, __rules, __input);
         break;
       
-      case 'z':
-        if constexpr (recordType == 'z') {
-          __skip(__input, "one");
-          __parse_zone(__db, __rules, __input);
-        } else {
-          __skip_line(__input);
-        }
+      case 'l':
+        __skip(__input, "ink");
+        __parse_link(__db, __input);
         break;
 
       default:
-        if constexpr (recordType == 'z') {
-          // Only z (Zones) have continuation lines.
-          // When parsing z, any token not matched by the earlier cases is invalid.
-          // (continuations are consumed inside __parse_zone)
-          std::__throw_runtime_error("corrupt tzdb: unexpected input");
-        } else {
-          __skip_line(__input);
-        }
+        std::__throw_runtime_error("corrupt tzdb: unexpected input");
     }
   }
-}
-
-static void __parse_tzdata(
-    tzdb& __db,
-    __rules_storage_type& __rules,
-    std::istream& __input) {
-  // Parse tzdata.zi in order: Rules → Zones → Links.
-  // Zones may reference Rules; Links alias Zones.
-  const std::string buf{std::istreambuf_iterator<char>(__input), {}};
-  { std::istringstream iss(buf); __parse_tzdata_record_type<'r'>(__db, __rules, iss); }
-  { std::istringstream iss(buf); __parse_tzdata_record_type<'z'>(__db, __rules, iss); }
-  { std::istringstream iss(buf); __parse_tzdata_record_type<'l'>(__db, __rules, iss); }
 }
 
 static void __parse_leap_seconds(
