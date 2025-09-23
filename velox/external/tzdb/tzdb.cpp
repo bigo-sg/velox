@@ -753,7 +753,7 @@ static void __parse_tzdata(
         __skip(__input, "one");
         __parse_zone(__db, __rules, __input);
         break;
-      
+
       case 'l':
         __skip(__input, "ink");
         __parse_link(__db, __input);
