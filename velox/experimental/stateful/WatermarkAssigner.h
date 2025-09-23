@@ -15,53 +15,40 @@
  */
 #pragma once
 
-#include "velox/exec/Operator.h"
 #include "velox/exec/FilterProject.h"
+#include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 
 namespace facebook::velox::stateful {
 
 /// It is related to org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
 /// in Flink. It extracts timestamp from each row and generate periodic watermark.
-class WatermarkAssigner : public exec::Operator {
+class WatermarkAssigner : public StatefulOperator {
  public:
   WatermarkAssigner(
-      int32_t operatorId,
-      exec::DriverCtx* driverCtx,
-      const std::shared_ptr<const WatermarkAssignerNode>& watermarkAssigner);
-
-  bool isFilter() const override {
-    return false;
-  }
-
-  bool preservesOrder() const override {
-    return true;
-  }
-
-  bool needsInput() const override {
-    return !input_;
-  }
+    std::unique_ptr<exec::Operator> op,
+    std::vector<std::unique_ptr<StatefulOperator>> targets,
+    const long idleTimeout,
+    const int rowtimeFieldIndex,
+    const long watermarkInterval);
 
   void addInput(RowVectorPtr input) override;
 
-  RowVectorPtr getOutput() override;
+  void getOutput() override;
 
-  exec::BlockingReason isBlocked(ContinueFuture* /* unused */) override {
-    return exec::BlockingReason::kNotBlocked;
+  std::string name() const override {
+    return "WatermarkAssigner";
   }
 
-  bool isFinished() override;
-
-  void close() override;
-
-  void initialize() override;
-
  private:
-  // Use a project to generator timestamp.
-  std::shared_ptr<exec::FilterProject> project_;
-  const long idleTimeout;
-  const int rowtimeFieldIndex;
+  void advanceWatermark();
+
+  RowVectorPtr input_;
+  const long idleTimeout_;
+  const int rowtimeFieldIndex_;
+  const long watermarkInterval_;
 
   long currentWatermark = 0;
+  long lastWatermark = 0;
 };
 } // namespace facebook::velox::stateful

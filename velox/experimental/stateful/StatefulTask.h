@@ -18,6 +18,9 @@
 #include "velox/exec/Operator.h"
 #include "velox/exec/Task.h"
 #include "velox/exec/TaskStats.h"
+#include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StreamElement.h"
+#include "velox/experimental/stateful/state/StateBackend.h"
 
 namespace facebook::velox::stateful {
 
@@ -53,15 +56,27 @@ class StatefulTask : public exec::Task {
   ///
   /// The caller is required to add all the necessary splits, and signal
   /// no-more-splits before calling 'next' for the first time.
-  RowVectorPtr next(int32_t& retCode);
+  StreamElementPtr next(int32_t& retCode);
 
-  void initOperators();
+  void notifyWatermark(long watermark, int index);
+
+  void initializeState();
+
+  void snapshotState();
+
+  void notifyCheckpointComplete(long checkpointId);
+
+  void notifyCheckpointAborted(long checkpointId);
+
+  void init();
 
   // The task is finished, close all operators and reset driver
   void finish();
 
   // get stats for stateful task.
   exec::TaskStats statefulTaskStats();
+
+  void addOutput(StreamElementPtr element);
 
  private:
  
@@ -70,10 +85,23 @@ class StatefulTask : public exec::Task {
       core::PlanFragment planFragment,
       std::shared_ptr<core::QueryCtx> queryCtx);
 
-  std::vector<std::unique_ptr<exec::Operator>> operators_;
+  void initOperators();
+
+  void initStateBackend();
+
+  StreamElementPtr popOutput();
+
+  std::unique_ptr<StatefulOperator> operatorChain_;
+
+  // A task may have multi outputs once run,
+  // store them and return one by one.
+  std::list<StreamElementPtr> pendings_;
 
   // hold the driver only to avoid it be released.
   std::shared_ptr<exec::Driver> driver;
+
+  // The state backend used by this task.
+  std::unique_ptr<StateBackend> statebackend_;
 };
 
 } // namespace facebook::velox::stateful
