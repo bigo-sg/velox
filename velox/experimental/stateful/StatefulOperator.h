@@ -71,6 +71,14 @@ class StatefulOperator {
     return operator_->operatorType();
   }
 
+  std::unique_ptr<exec::Operator>& op() {
+    return operator_;
+  }
+
+  std::vector<std::unique_ptr<StatefulOperator>>& targets() {
+    return targets_;
+  }
+
  protected:
   void pushOutput(RowVectorPtr output);
   void pushWatermark(long timestamp, int index);
@@ -78,10 +86,6 @@ class StatefulOperator {
 
   virtual int numInputs() const {
     return 1;
-  }
-
-  std::unique_ptr<exec::Operator>& op() {
-    return operator_;
   }
 
  private:

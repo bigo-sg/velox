@@ -15,9 +15,9 @@
  */
 #include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StatefulTask.h"
+#include "velox/exec/OperatorUtils.h"
+#include "velox/exec/OperatorStats.h"
 #include "velox/experimental/stateful/state/HashMapStateBackend.h"
-
-#include <iostream>
 
 namespace facebook::velox::stateful {
 
@@ -73,6 +73,24 @@ void StatefulTask::initOperators() {
   driver = exec::Driver::testingCreate(std::move(driverCtx));
   operatorChain_ =
       std::move(StatefulPlanner::plan(planFragment(), driver->driverCtx(), statebackend_.get()));
+}
+
+void statefulTaskStatus(exec::TaskStats& taskStats, const std::unique_ptr<StatefulOperator>& statefulOp) {
+  auto statsCopy = statefulOp->op()->stats(false);
+  exec::aggregateOperatorRuntimeStats(statsCopy.runtimeStats);
+  exec::PipelineStats pipelineStats(false, false);
+  pipelineStats.operatorStats.emplace_back(statsCopy);
+  taskStats.pipelineStats.emplace_back(pipelineStats);
+  std::vector<std::unique_ptr<StatefulOperator>>& targets = statefulOp->targets();
+  for (const auto& target : targets) {
+    statefulTaskStatus(taskStats, target);
+  }
+}
+
+exec::TaskStats StatefulTask::statefulTaskStats() {
+  exec::TaskStats taskStats;
+  statefulTaskStatus(taskStats, operatorChain_);
+  return taskStats;
 }
 
 StreamElementPtr StatefulTask::next(int32_t& retCode) {

@@ -15,8 +15,8 @@
  */
 #pragma once
 
-#include "velox/exec/Operator.h"
 #include "velox/exec/Task.h"
+#include "velox/exec/TaskStats.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
@@ -71,6 +71,9 @@ class StatefulTask : public exec::Task {
 
   // The task is finished, close all operators and reset driver
   void finish();
+
+  // get stats for stateful task.
+  exec::TaskStats statefulTaskStats();
 
   void addOutput(StreamElementPtr element);
 
