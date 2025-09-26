@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/from_elements/FromElementsSource.h"
+#include "velox/type/tz/TimeZoneMap.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::connector::from_elements {
@@ -25,7 +26,7 @@ FromElementsSource::FromElementsSource(
   const std::vector<std::string>& s)
     : outputType_(outputType),
     queryCtx_(queryCtx),
-    formatter_(createFormatter(outputType)) {
+    formatter_(createFormatter(outputType, tz::locateZone(queryCtx->sessionTimezone()))) {
       VELOX_CHECK(formatter_ != nullptr);
       auto row = RowVector::createEmpty(outputType_, queryCtx->memoryPool());
       row->resize(s.size());

@@ -21,8 +21,15 @@ namespace facebook::velox::connector::test {
 
 class StringFormatterTestBase : public exec::test::OperatorTestBase {
  public:
-  void SetUp() override {}
-  void TearDown() override {}
+  const std::shared_ptr<memory::MemoryPool> memoryPool = memory::memoryManager()->addLeafPool();
+
+  void SetUp() override {
+    OperatorTestBase::SetUp();
+  }
+
+  void TearDown() override {
+    OperatorTestBase::TearDown();
+  }
 };
 
 } // namespace facebook::velox::stateful::test
