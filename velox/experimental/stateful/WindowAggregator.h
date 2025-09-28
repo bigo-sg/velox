@@ -36,7 +36,8 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const long windowInterval,
-    const bool useDayLightSaving);
+    const bool useDayLightSaving,
+    const bool isEventTime);
 
   void initialize() override;
 
@@ -52,10 +53,14 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
 
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
 
+  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
+
  private:
   void processWatermarkInternal(long timestamp) override;
 
   long sliceStateMergeTarget(long sliceToMerge);
+
+  void onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer);
 
   std::unique_ptr<exec::Operator> localAggerator_;
   std::unique_ptr<KeySelector> keySelector_;
@@ -64,11 +69,12 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   const long windowInterval_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
-  const bool isEventTime = true; // TODO: support processing time
+  const bool isEventTime_ = true; // TODO: support processing time
 
   RowVectorPtr input_;
   long currentProgress_ = 0;
   long nextTriggerWatermark_ = 0;
+  long lastTriggeredProcessingTime_ = 0;
   std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> windowState_;
   std::shared_ptr<InternalTimerService<uint32_t, long>> windowTimerService_;
 };

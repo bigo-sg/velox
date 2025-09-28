@@ -28,6 +28,9 @@ class Triggerable {
  public:
   virtual void onEventTime(
       std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) = 0;
+  
+  virtual void onProcessingTime(
+      std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) {}
 };
 
 } // namespace facebook::velox::stateful

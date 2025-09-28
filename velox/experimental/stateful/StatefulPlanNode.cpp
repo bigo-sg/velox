@@ -248,6 +248,7 @@ folly::dynamic StreamWindowAggregationNode::serialize() const {
   obj["offset"] = offset_;
   obj["windowType"] = windowType_;
   obj["outputType"] = outputType_->serialize();
+  obj["isEventTime"] = isEventTime_;
   obj["rowtimeIndex"] = rowtimeIndex_;
   return obj;
 }
@@ -290,6 +291,7 @@ core::PlanNodePtr StreamWindowAggregationNode::create(const folly::dynamic& obj,
       obj["offset"].asInt(),
       obj["windowType"].asInt(),
       outputType,
+      obj["isEventTime"].asBool(),
       obj["rowtimeIndex"].asInt());
 }
 

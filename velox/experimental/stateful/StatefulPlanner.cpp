@@ -172,7 +172,7 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
           windowAggNode->useDayLightSaving(),
           windowAggNode->outputType());
     } else {
-      auto localAggregator = nodeToOperator(windowAggNode->localAgg(), ctx);
+      auto localAggregator = windowAggNode->isEventTime() ? nodeToOperator(windowAggNode->localAgg(), ctx) : nullptr;
       std::unique_ptr<SliceAssigner> globalSliceAssigner =
           std::make_unique<SliceAssigner>(
               std::move(sliceAssigner),
@@ -182,13 +182,14 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
               windowAggNode->windowType(),
               windowAggNode->rowtimeIndex());
       return std::make_unique<WindowAggregator>(
-          std::move(localAggregator),
+          windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
           std::move(op),
           std::move(targets),
           std::move(keySelector),
           std::move(globalSliceAssigner),
           windowAggNode->windowInterval(),
-          windowAggNode->useDayLightSaving());
+          windowAggNode->useDayLightSaving(),
+          windowAggNode->isEventTime());
     }
   } else if (
       auto windowAggNode =

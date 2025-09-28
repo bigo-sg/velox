@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WindowAggregator.h"
+#include <experimental/stateful/TimerHeapInternalTimer.h>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 #include <list>
@@ -27,13 +28,15 @@ WindowAggregator::WindowAggregator(
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const long windowInterval,
-    const bool useDayLightSaving)
+    const bool useDayLightSaving,
+    const bool isEventTime)
     : StatefulOperator(std::move(globalAggerator), std::move(targets)),
       localAggerator_(std::move(localAggerator)),
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
       windowInterval_(windowInterval),
-      useDayLightSaving_(useDayLightSaving) {
+      useDayLightSaving_(useDayLightSaving),
+      isEventTime_(isEventTime) {
   windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
 }
 
@@ -62,12 +65,11 @@ void WindowAggregator::getOutput() {
         sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       auto windowData = data;
-      if (!isEventTime) {
-        // TODO: support processing time
-        //windowTimerService_->registerProcessingTimeWindowTimer(sliceEnd, sliceEnd - 1);
+      if (!isEventTime_) {
+        windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd - 1);
       }
 
-      if (isEventTime && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
+      if (isEventTime_ && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
         // the assigned slice has been triggered, which means current element is late,
         // but maybe not need to drop
         long lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
@@ -97,7 +99,7 @@ void WindowAggregator::getOutput() {
 }
 
 void WindowAggregator::processWatermarkInternal(long timestamp) {
-  if (isEventTime && timestamp > currentProgress_) {
+  if (isEventTime_ && timestamp > currentProgress_) {
     currentProgress_ = timestamp;
     if (currentProgress_ >= nextTriggerWatermark_) {
       // we only need to call advanceProgress() when current watermark may trigger window
@@ -135,10 +137,40 @@ void WindowAggregator::processWatermarkInternal(long timestamp) {
   }
 }
 
-void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
   pushOutput(output);
+}
+
+void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+  onTimer(timer);
+}
+
+void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+  if (timer->timestamp() > lastTriggeredProcessingTime_) {
+    lastTriggeredProcessingTime_ = timer->timestamp();
+    auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());
+    for (const auto&[windowKey, datas] : windowKeyToData) {
+      if (datas.empty()) {
+        continue;
+      }
+      std::list<RowVectorPtr> allDatas;
+      for (const auto& data: datas) {
+        allDatas.push_back(data);
+      }
+      auto stateAcc = windowState_->value(windowKey.key(), windowKey.window());
+      if (stateAcc) {
+        allDatas.push_back(stateAcc);
+      }
+      op()->addInput(TimeWindowUtil::mergeVectors(allDatas, op()->pool()));
+      auto newAcc = op()->getOutput();
+      if (newAcc) {
+        windowState_->update(windowKey.key(), windowKey.window(), newAcc);
+      }
+    }
+    onTimer(timer);
+  }
 }
 
 long WindowAggregator::sliceStateMergeTarget(long sliceToMerge) {
