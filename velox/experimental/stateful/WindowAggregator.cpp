@@ -15,9 +15,13 @@
  */
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include <experimental/stateful/TimerHeapInternalTimer.h>
+#include <type/Type.h>
+#include <vector/ComplexVector.h>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 #include <list>
+#include <iostream>
+#include <memory>
 
 namespace facebook::velox::stateful {
 
@@ -29,20 +33,26 @@ WindowAggregator::WindowAggregator(
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const long windowInterval,
     const bool useDayLightSaving,
-    const bool isEventTime)
+    const bool isEventTime,
+    const int windowStartIndex,
+    const int windowEndIndex)
     : StatefulOperator(std::move(globalAggerator), std::move(targets)),
       localAggerator_(std::move(localAggerator)),
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
       windowInterval_(windowInterval),
       useDayLightSaving_(useDayLightSaving),
-      isEventTime_(isEventTime) {
+      isEventTime_(isEventTime),
+      windowStartIndex_(windowStartIndex),
+      windowEndIndex_(windowEndIndex) {
   windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
 }
 
 void WindowAggregator::initialize() {
   StatefulOperator::initialize();
-  localAggerator_->initialize();
+  if (localAggerator_) {
+    localAggerator_->initialize();
+  }
 
   StateDescriptor stateDesc("window-aggs");
   windowState_ = stateHandler()->getValueState(stateDesc);
@@ -51,22 +61,25 @@ void WindowAggregator::initialize() {
 
 void WindowAggregator::addInput(RowVectorPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
+  LOG(INFO) << "add input here";
   input_ = input;
 }
 
 void WindowAggregator::getOutput() {
+  std::cout << "getOutput 111:" << op()->needsInput() << std::endl;
   if (!input_) {
     return;
   }
 
-  std::map<uint32_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
+  std::map<uint64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<uint32_t, RowVectorPtr> sliceEndToData = 
+    std::map<uint64_t, RowVectorPtr> sliceEndToData =
         sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       auto windowData = data;
       if (!isEventTime_) {
-        windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd - 1);
+        std::cout << "register process time:" << sliceEnd << std::endl;
+        windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd);
       }
 
       if (isEventTime_ && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
@@ -90,6 +103,7 @@ void WindowAggregator::getOutput() {
         }
       } else {
           // the assigned slice hasn't been triggered, accumulate into the assigned slice
+          LOG(INFO) << "windowData.size:" << windowData->size() << " sliceEnd:" << sliceEnd;
           windowBuffer_->addElement(key, sliceEnd, windowData);
       }
     }
@@ -137,10 +151,91 @@ void WindowAggregator::processWatermarkInternal(long timestamp) {
   }
 }
 
+/// Add window_start / window_end timestamp to output
+RowVectorPtr addWindowTimestampToOutput(
+  const RowVectorPtr& output,
+  const std::string& fieldName,
+  const TypePtr& fieldType,
+  const long fieldValue,
+  const int fieldIndex) {
+  auto createTimestampVector = [&](
+    const Timestamp& val,
+    const size_t size,
+    velox::memory::MemoryPool* pool) -> VectorPtr {
+      const TypePtr windowStartType = std::make_shared<const TimestampType>();
+      VectorPtr windowStartVec = BaseVector::create(windowStartType, output->size(), output->pool());
+      FlatVector<Timestamp>* timestampVector = windowStartVec->asFlatVector<Timestamp>();
+      for (size_t i = 0; i < size; ++i) {
+        timestampVector->set(i, val);
+      }
+      return windowStartVec;
+  };
+  const TypePtr& outputType = output->type();
+  const RowTypePtr& outputRowType = std::dynamic_pointer_cast<const RowType>(outputType);
+  const std::vector<std::string>& outputFieldNames = outputRowType->names();
+  const std::vector<TypePtr>& outputFieldTypes = outputRowType->children();
+  const std::vector<VectorPtr>& outputFields = output->children();
+  std::vector<std::string> newOutputFieldNames;
+  std::vector<TypePtr> newOutputFieldTypes;
+  std::vector<VectorPtr> newOutputFields;
+  VectorPtr windowStartVec = createTimestampVector(Timestamp::fromMillis(fieldValue), output->size(), output->pool());
+  for (int i = 0; i < fieldIndex; ++i) {
+    newOutputFieldTypes.emplace_back(outputFieldTypes[i]);
+    newOutputFieldNames.emplace_back(outputFieldNames[i]);
+    newOutputFields.emplace_back(outputFields[i]);
+  }
+  newOutputFieldTypes.emplace_back(fieldType);
+  newOutputFieldNames.emplace_back(fieldName);
+  newOutputFields.emplace_back(windowStartVec);
+  for (int i = fieldIndex + 1; i < output->childrenSize() + 1; ++i) {
+    newOutputFieldTypes.emplace_back(outputFieldTypes[i-1]);
+    newOutputFieldNames.emplace_back(outputFieldNames[i-1]);
+    newOutputFields.emplace_back(outputFields[i-1]);
+  }
+  auto newOutputRowType = std::make_shared<const RowType>(std::move(newOutputFieldNames), std::move(newOutputFieldTypes));
+  return std::make_shared<RowVector>(output->pool(),
+    newOutputRowType,
+    output->nulls(),
+    output->size(),
+    newOutputFields,
+    output->getNullCount()
+  );
+}
+
 void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
-  auto output = windowState_->value(timer->key(), timer->ns());
-  windowState_->remove(timer->key(), timer->ns());
-  pushOutput(output);
+  fireWindow(timer->key(), timer->timestamp(), timer->ns());
+  clearWindow(timer->key(), timer->timestamp(), timer->ns());
+}
+
+template<typename K>
+void WindowAggregator::fireWindow(K key, long timerTimestamp, long windowEnd) {
+  RowVectorPtr output = windowState_->value(key, windowEnd);
+  if (output) {
+    if (windowStartIndex_ >= 0) {
+      output = addWindowTimestampToOutput(
+        output,
+        "window_start",
+        std::make_shared<const TimestampType>(),
+        windowEnd - windowInterval_,
+        windowStartIndex_);
+    }
+    if (windowEndIndex_ >= 0) {
+      output = addWindowTimestampToOutput(
+        output,
+      "window_end",
+      std::make_shared<const TimestampType>(),
+      windowEnd,
+      windowEndIndex_);
+    }
+  }
+  if (output) {
+    pushOutput(output);
+  }
+}
+
+template<typename K>
+void WindowAggregator::clearWindow(K key, long timerTimestamp, long windowEnd) {
+  windowState_->remove(key, windowEnd);
 }
 
 void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
@@ -148,6 +243,7 @@ void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32
 }
 
 void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+  LOG(INFO) << "window agg on processing Time:" << lastTriggeredProcessingTime_ << " timer->timestamp():" << timer->timestamp();
   if (timer->timestamp() > lastTriggeredProcessingTime_) {
     lastTriggeredProcessingTime_ = timer->timestamp();
     auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());
@@ -163,12 +259,16 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<u
       if (stateAcc) {
         allDatas.push_back(stateAcc);
       }
-      op()->addInput(TimeWindowUtil::mergeVectors(allDatas, op()->pool()));
+      RowVectorPtr opInput = TimeWindowUtil::mergeVectors(allDatas, op()->pool());
+      LOG(INFO) << "opInput:" << opInput->size() << "data:" << opInput->toString(0);
+      op()->addInput(opInput);
       auto newAcc = op()->getOutput();
       if (newAcc) {
+        LOG(INFO) << "newAcc:" << newAcc->size() << " newAcc.data:" << newAcc->toString(0);
         windowState_->update(windowKey.key(), windowKey.window(), newAcc);
       }
     }
+    windowBuffer_->clear();
     onTimer(timer);
   }
 }
@@ -181,7 +281,9 @@ long WindowAggregator::sliceStateMergeTarget(long sliceToMerge) {
 void WindowAggregator::close() {
   processWatermarkInternal(INT_MAX);
   StatefulOperator::close();
-  localAggerator_->close();
+  if (localAggerator_) {
+    localAggerator_->close();
+  }
   input_.reset();
   windowBuffer_->clear();
   windowState_->clear();

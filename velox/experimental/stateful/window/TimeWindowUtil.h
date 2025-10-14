@@ -43,6 +43,8 @@ class TimeWindowUtil {
   static long toEpochMillsForTimer(long timestamp, int shiftTimeZone);
 
   static long cleanupTime(long maxTimestamp, long allowedLateness_, bool isEventTime);
+
+  static long getCurrentProcessingTime();
 };
 
 

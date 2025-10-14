@@ -15,46 +15,93 @@
  */
 #pragma once
 
-#include "velox/type/Timestamp.h"
-#include <folly/futures/Future.h>
-#include <folly/executors/CPUThreadPoolExecutor.h>
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
+#include <folly/executors/FunctionScheduler.h>
 #include <chrono>
+#include <optional>
 
 namespace facebook::velox::stateful {
 
 using ProcessingTimeCallback = std::function<void(long)>;
 
+class ProcessingTimerTask {
+public:
+    ProcessingTimerTask(
+        long time,
+        ProcessingTimeCallback callback)
+        : time_(time), callback_(callback) {}
+
+    void operator()() const {
+        callback_(time_);
+    }
+private:
+    long time_;
+    ProcessingTimeCallback callback_;
+};
+
 class ProcessingTimeSerivice {
 public:
     long getCurrentProcessingTime() {
-        return Timestamp::now().toMillis();
+        return TimeWindowUtil::getCurrentProcessingTime();
+    }
+    virtual std::optional<std::string> registerTimer(long timestamp, ProcessingTimerTask target) {
+        std::optional<std::string> task;
+        return task;
+    }
+    virtual void cancel(const std::string& task) {}
+    virtual void close() {}
+
+    void finish(const std::string& task) {
+        auto it = std::find(registry.begin(), registry.end(), task);
+        if (it != registry.end()) {
+            registry.erase(it);
+        }
     }
 
-    virtual folly::Future<folly::Unit> registerTimer(long timestamp, ProcessingTimeCallback target) {
-        return folly::Future<folly::Unit>::makeEmpty();
+    std::string generateTimerTaskName(long timestamp) {
+        return "task_" + std::to_string(timestamp);
     }
+protected:
+    std::vector<std::string> registry;
 };
 
 class SystemProcessingTimeService : public ProcessingTimeSerivice {
 public:
     SystemProcessingTimeService() : ProcessingTimeSerivice() {
-        executor_ = std::make_shared<folly::CPUThreadPoolExecutor>(1);
+        executor_ = std::make_shared<folly::FunctionScheduler>();
+        executor_->start();
     }
 
-    folly::Future<folly::Unit> registerTimer(long timestamp, ProcessingTimeCallback callback) override {
+    std::optional<std::string> registerTimer(long timestamp, ProcessingTimerTask task) override {
         long currentTimestamp = getCurrentProcessingTime();
         long delay = 0;
         if (timestamp >= currentTimestamp) {
-            delay = timestamp - currentTimestamp + 1;
+            delay = timestamp - currentTimestamp;
         }
-        return folly::futures::sleep(std::chrono::microseconds(delay * 1000))
-            .via(executor_.get())
-            .thenValue([&](auto) {
-                callback(timestamp);
-            });
+        std::string taskName = generateTimerTaskName(timestamp);
+        if (delay > 0) {
+            executor_->addFunctionOnce(task, taskName, std::chrono::microseconds(delay * 1000));
+            registry.emplace_back(taskName);
+        } else {
+            task();
+        }
+        return std::make_optional<std::string>(taskName);
+    }
+
+    void cancel(const std::string& task) override {
+        auto it = std::find(registry.begin(), registry.end(), task);
+        if (it != registry.end()) {
+            executor_->cancelFunction(task);
+            registry.erase(it);
+        }
+    }
+
+    void close() override {
+        if (executor_) {
+            executor_->shutdown();
+        }
     }
 private:
-    std::shared_ptr<folly::CPUThreadPoolExecutor> executor_;
-
+    std::shared_ptr<folly::FunctionScheduler> executor_;
 };
 }

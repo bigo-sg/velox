@@ -31,6 +31,8 @@ class InternalPriorityQueue {
   virtual T peek() = 0;
 
   virtual void clear() = 0;
+
+  virtual bool empty() = 0;
 };
 
 // This class is relevent to flink HeapPriorityQueue.
@@ -71,6 +73,10 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
   void clear() override {
     queue_.clear();
     size_ = 0;
+  }
+
+  bool empty() override {
+    return size_ == 0;
   }
 
   void remove(T toRemove) {

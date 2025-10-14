@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 #include <chrono>
 #include <numeric>
@@ -38,13 +39,19 @@ SliceAssigner::SliceAssigner(
   sliceSize_ = std::gcd(size, step);
 }
 
-std::map<uint32_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
+std::map<uint64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
     // TODO: using Processing Time Service
-    auto now = std::chrono::system_clock::now();
-    long timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()).count();
-    return {{timestamp_ms, input}};
+    // TODO: using TimeWindow.getWindowStartWithOffset to get window start, start + size as end
+    long timestamp_ms = TimeWindowUtil::getCurrentProcessingTime();
+    if (windowType_ == 1) { // tumble window
+      // TODO:: support get utcTimestamp by timezone.
+      long utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestamp_ms, 0);
+      long windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
+      return {{windowStart + size_, input}};
+    } else {
+      return {{timestamp_ms, input}};
+    }
   }
   return keySelector_->partition(input);
 }

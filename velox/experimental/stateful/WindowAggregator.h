@@ -15,6 +15,12 @@
  */
 #pragma once
 
+#include <core/PlanNode.h>
+#include <exec/Driver.h>
+#include <exec/HashAggregation.h>
+#include <exec/Operator.h>
+#include <exec/StreamingAggregation.h>
+#include <memory>
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
@@ -37,7 +43,9 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const long windowInterval,
     const bool useDayLightSaving,
-    const bool isEventTime);
+    const bool isEventTime,
+    const int windowStartIndex,
+    const int windowEndIndex);
 
   void initialize() override;
 
@@ -62,6 +70,12 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
 
   void onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer);
 
+  template<typename K>
+  void fireWindow(K key, long timerTImestamp, long windowEnd);
+
+  template<typename K>
+  void clearWindow(K k, long timerTimestamp, long windowEnd);
+
   std::unique_ptr<exec::Operator> localAggerator_;
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<SliceAssigner> sliceAssigner_;
@@ -70,6 +84,8 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   const bool isEventTime_ = true; // TODO: support processing time
+  const int windowStartIndex_ = -1;
+  const int windowEndIndex_ = -1;
 
   RowVectorPtr input_;
   long currentProgress_ = 0;
@@ -78,4 +94,5 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> windowState_;
   std::shared_ptr<InternalTimerService<uint32_t, long>> windowTimerService_;
 };
+
 } // namespace facebook::velox::stateful

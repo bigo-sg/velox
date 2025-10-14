@@ -250,6 +250,8 @@ folly::dynamic StreamWindowAggregationNode::serialize() const {
   obj["outputType"] = outputType_->serialize();
   obj["isEventTime"] = isEventTime_;
   obj["rowtimeIndex"] = rowtimeIndex_;
+  obj["windowStartIndex"] = windowStartIndex_;
+  obj["windowEndIndex"] = windowEndIndex_;
   return obj;
 }
 
@@ -292,7 +294,9 @@ core::PlanNodePtr StreamWindowAggregationNode::create(const folly::dynamic& obj,
       obj["windowType"].asInt(),
       outputType,
       obj["isEventTime"].asBool(),
-      obj["rowtimeIndex"].asInt());
+      obj["rowtimeIndex"].asInt(),
+      obj["windowStartIndex"].asInt(),
+      obj["windowEndIndex"].asInt());
 }
 
 const std::vector<core::PlanNodePtr>& GroupWindowAggsHandlerNode::sources() const {

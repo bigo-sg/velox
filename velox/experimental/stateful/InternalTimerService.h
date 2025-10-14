@@ -15,12 +15,15 @@
  */
 #pragma once
 
+#include <velox/experimental/stateful/window/TimeWindowUtil.h>
 #include <velox/experimental/stateful/ProcessingTimeService.h>
 #include <velox/experimental/stateful/InternalPriorityQueue.h>
 #include <velox/experimental/stateful/TimerHeapInternalTimer.h>
 #include <velox/experimental/stateful/Triggerable.h>
 #include <folly/futures/Future.h>
 #include <limits>
+#include <iostream>
+#include <optional>
 
 namespace facebook::velox::stateful {
 
@@ -43,13 +46,14 @@ class InternalTimerService {
     std::shared_ptr<TimerHeapInternalTimer<K, N>> oldHead = processingTimeTimersQueue_.peek();
     processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
     long nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<long>::max() ;
+    std::cout << "time:" << time << " nextTriggerTime:" << nextTriggerTime << std::endl;
     if (time < nextTriggerTime) {
-      if (nextTimer_.hasValue() && !nextTimer_.isReady()) {
-        nextTimer_.cancel();
+      if (nextTimer_.has_value()) {
+        processingTimeService_->cancel(nextTimer_.value());
       }
-      nextTimer_ = processingTimeService_->registerTimer(time, [&](long time) {
-        onProcessingTime(time);
-      });
+      nextTimer_ = processingTimeService_->registerTimer(time, ProcessingTimerTask(time, [&](long processingTime) {
+        onProcessingTime(processingTime);
+      }));
     }
   }
 
@@ -80,27 +84,43 @@ class InternalTimerService {
 
   void close() {
     eventTimeTimersQueue_.clear();
+    processingTimeTimersQueue_.clear();
+    processingTimeService_->close();
   }
 
  private:
   void onProcessingTime(long time) {
-    nextTimer_ = folly::Future<folly::Unit>::makeEmpty();
+    std::string taskName = "";
+    if (nextTimer_.has_value()) {
+      taskName = nextTimer_.value();
+    }
+    nextTimer_ = std::nullopt;
     std::shared_ptr<TimerHeapInternalTimer<K, N>> timer = nullptr;
-    while ((timer = processingTimeTimersQueue_.peek()) != nullptr 
-            && timer->timestamp() <= time) {
+    bool triggerOnProcessingTime = true;
+    while (triggerOnProcessingTime && !processingTimeTimersQueue_.empty()) {
+      timer = processingTimeTimersQueue_.peek();
+      if (!timer || timer->timestamp() > time) {
+        triggerOnProcessingTime = false;
+        continue;
+      }
       processingTimeTimersQueue_.poll();
       triggerable_->onProcessingTime(timer);
+      timer = nullptr;
     }
 
-    if (timer != nullptr && !nextTimer_.hasValue()) {
-      nextTimer_ = processingTimeService_->registerTimer(timer->timestamp(), [&](long time) {
-        onProcessingTime(time);
-      });
+    if (!taskName.empty()) {
+      processingTimeService_->finish(taskName);
+    }
+
+    if (timer != nullptr && !nextTimer_.has_value()) {
+      nextTimer_ = processingTimeService_->registerTimer(timer->timestamp(), ProcessingTimerTask(timer->timestamp(), [&](long processingTime) {
+        onProcessingTime(processingTime);
+      }));
     }
   }
 
   Triggerable<K, N>* triggerable_;
-  folly::Future<folly::Unit> nextTimer_;
+  std::optional<std::string> nextTimer_;
   std::shared_ptr<ProcessingTimeSerivice> processingTimeService_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> eventTimeTimersQueue_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> processingTimeTimersQueue_;

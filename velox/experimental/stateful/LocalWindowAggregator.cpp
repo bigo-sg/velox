@@ -45,9 +45,9 @@ void LocalWindowAggregator::getOutput() {
     return;
   }
 
-  std::map<uint32_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
+  std::map<uint64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<uint32_t, RowVectorPtr> sliceEndToData = 
+    std::map<uint64_t, RowVectorPtr> sliceEndToData =
         sliceAssigner_->partition(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       // TODO: addElement may have data output.

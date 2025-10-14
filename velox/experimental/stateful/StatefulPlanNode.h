@@ -334,7 +334,9 @@ class StreamWindowAggregationNode : public core::PlanNode {
       int windowType,
       const RowTypePtr& outputType,
       bool isEventTime,
-      int rowtimeIndex) :
+      int rowtimeIndex,
+      int windowStartIndex,
+      int windowEndIndex) :
         PlanNode(id),
         aggregation_(std::move(aggregationNode)),
         localAgg_(std::move(localAgg)),
@@ -349,7 +351,9 @@ class StreamWindowAggregationNode : public core::PlanNode {
         windowType_(windowType),
         outputType_(std::move(outputType)),
         isEventTime_(isEventTime),
-        rowtimeIndex_(rowtimeIndex) {}
+        rowtimeIndex_(rowtimeIndex),
+        windowStartIndex_(windowStartIndex),
+        windowEndIndex_(windowEndIndex) {}
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -407,6 +411,14 @@ class StreamWindowAggregationNode : public core::PlanNode {
     return rowtimeIndex_;
   }
 
+  int windowStartIndex() const {
+    return windowStartIndex_;
+  }
+
+  int windowEndIndex() const {
+    return windowEndIndex_;
+  }
+
   const std::vector<core::PlanNodePtr>& sources() const override;
 
   std::string_view name() const override {
@@ -434,6 +446,8 @@ class StreamWindowAggregationNode : public core::PlanNode {
   const RowTypePtr outputType_;
   bool isEventTime_;
   int rowtimeIndex_;
+  int windowStartIndex_;
+  int windowEndIndex_;
 };
 
 class GroupWindowAggsHandlerNode : public core::PlanNode {

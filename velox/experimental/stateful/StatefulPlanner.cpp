@@ -189,7 +189,9 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
           std::move(globalSliceAssigner),
           windowAggNode->windowInterval(),
           windowAggNode->useDayLightSaving(),
-          windowAggNode->isEventTime());
+          windowAggNode->isEventTime(),
+          windowAggNode->windowStartIndex(),
+          windowAggNode->windowEndIndex());
     }
   } else if (
       auto windowAggNode =
@@ -312,7 +314,7 @@ std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
     if (aggregationNode->isPreGrouped()) {
       return std::make_unique<exec::StreamingAggregation>(opId.fetch_add(1), ctx, aggregationNode);
     } else {
-      return std::make_unique<exec::HashAggregation>(opId.fetch_add(1), ctx, aggregationNode);
+      return std::make_unique<exec::StreamingAggregation>(opId.fetch_add(1), ctx, aggregationNode);
     }
   } else if (
       auto expandNode =

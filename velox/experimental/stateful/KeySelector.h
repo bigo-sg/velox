@@ -31,7 +31,7 @@ class KeySelector {
       memory::MemoryPool* pool,
       int numPartitions = INT_MAX);
 
-  std::map<uint32_t, RowVectorPtr> partition(const RowVectorPtr& input);
+  std::map<uint64_t, RowVectorPtr> partition(const RowVectorPtr& input);
 
  private:
   void prepareForInput(const RowVectorPtr& input);

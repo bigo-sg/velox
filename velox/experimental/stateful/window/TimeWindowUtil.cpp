@@ -60,6 +60,11 @@ long TimeWindowUtil::getWindowStartWithOffset(long timestamp, long offset, long 
   }
 }
 
+long TimeWindowUtil::getCurrentProcessingTime() {
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
+
 // static
 bool TimeWindowUtil::isWindowFired(
     long windowEnd, long currentProgress, int shiftTimeZone) {

@@ -26,9 +26,9 @@ KeySelector::KeySelector(
       numPartitions_(numPartitions) {
 }
 
-std::map<uint32_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input) {
+std::map<uint64_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input) {
   if (numPartitions_ == 1) {
-    return std::map<uint32_t, RowVectorPtr>{{0, input}};
+    return std::map<uint64_t, RowVectorPtr>{{0, input}};
   }
   prepareForInput(input);
 
@@ -39,7 +39,7 @@ std::map<uint32_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& inpu
     // TODO: this is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
     // to verify whether the judge condition is enough.
-    return std::map<uint32_t, RowVectorPtr>{{*part, input}};
+    return std::map<uint64_t, RowVectorPtr>{{*part, input}};
   }
   const auto numInput = input->size();
   std::map<uint32_t, vector_size_t> numOfKeys;
@@ -66,7 +66,7 @@ std::map<uint32_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& inpu
     numOfKeys[partition] = index + 1;
   }
 
-  std::map<uint32_t, RowVectorPtr> results;
+  std::map<uint64_t, RowVectorPtr> results;
   for (auto & [key, partitionSize] : numOfKeys) {
     auto partitionData = wrapChildren(input, partitionSize, keyToIndexBuffers[key]);
     results[key] = partitionData;
