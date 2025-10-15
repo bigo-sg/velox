@@ -20,7 +20,6 @@ add_subdirectory(nexmark)
 add_subdirectory(print)
 add_subdirectory(from_elements)
 add_subdirectory(utils)
-add_subdirectory(kafka)
 
 if(${VELOX_ENABLE_HIVE_CONNECTOR})
   add_subdirectory(hive)

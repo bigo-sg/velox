@@ -32,7 +32,6 @@ void DiscardDataSink::appendData(RowVectorPtr input) {
   if (lastTime == 0) {
     lastTime = getCurrentTime();
   }
-  LOG(INFO) << "input:" << input->toString(0);
   auto preNum = rowNums;
   rowNums += input->size();
   if (rowNums / 100000 != preNum / 100000) {
