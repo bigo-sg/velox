@@ -59,7 +59,7 @@ public:
     }
 
     std::string generateTimerTaskName(long timestamp) {
-        return "task_" + std::to_string(timestamp);
+        return "proc_time_task_" + std::to_string(timestamp);
     }
 protected:
     std::vector<std::string> registry;

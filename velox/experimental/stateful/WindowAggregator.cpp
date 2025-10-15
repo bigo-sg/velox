@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WindowAggregator.h"
-#include <experimental/stateful/TimerHeapInternalTimer.h>
-#include <type/Type.h>
-#include <vector/ComplexVector.h>
+#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
+#include "velox/type/Type.h"
+#include "velox/vector/ComplexVector.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 #include <list>
@@ -45,8 +45,8 @@ WindowAggregator::WindowAggregator(
       isEventTime_(isEventTime),
       windowStartIndex_(windowStartIndex),
       windowEndIndex_(windowEndIndex) {
-  windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
-}
+        windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
+    }
 
 void WindowAggregator::initialize() {
   StatefulOperator::initialize();
@@ -61,12 +61,10 @@ void WindowAggregator::initialize() {
 
 void WindowAggregator::addInput(RowVectorPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
-  LOG(INFO) << "add input here";
   input_ = input;
 }
 
 void WindowAggregator::getOutput() {
-  std::cout << "getOutput 111:" << op()->needsInput() << std::endl;
   if (!input_) {
     return;
   }
@@ -78,7 +76,7 @@ void WindowAggregator::getOutput() {
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       auto windowData = data;
       if (!isEventTime_) {
-        std::cout << "register process time:" << sliceEnd << std::endl;
+        std::cout << "register process time:" << sliceEnd << " key:" << key << std::endl;
         windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd);
       }
 
@@ -103,7 +101,6 @@ void WindowAggregator::getOutput() {
         }
       } else {
           // the assigned slice hasn't been triggered, accumulate into the assigned slice
-          LOG(INFO) << "windowData.size:" << windowData->size() << " sliceEnd:" << sliceEnd;
           windowBuffer_->addElement(key, sliceEnd, windowData);
       }
     }
@@ -244,10 +241,10 @@ void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32
 
 void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
   LOG(INFO) << "window agg on processing Time:" << lastTriggeredProcessingTime_ << " timer->timestamp():" << timer->timestamp();
-  if (timer->timestamp() > lastTriggeredProcessingTime_) {
+  if (timer->timestamp() >= lastTriggeredProcessingTime_) {
     lastTriggeredProcessingTime_ = timer->timestamp();
     auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());
-    for (const auto&[windowKey, datas] : windowKeyToData) {
+    for (const auto& [windowKey, datas] : windowKeyToData) {
       if (datas.empty()) {
         continue;
       }
@@ -260,11 +257,9 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<u
         allDatas.push_back(stateAcc);
       }
       RowVectorPtr opInput = TimeWindowUtil::mergeVectors(allDatas, op()->pool());
-      LOG(INFO) << "opInput:" << opInput->size() << "data:" << opInput->toString(0);
       op()->addInput(opInput);
       auto newAcc = op()->getOutput();
       if (newAcc) {
-        LOG(INFO) << "newAcc:" << newAcc->size() << " newAcc.data:" << newAcc->toString(0);
         windowState_->update(windowKey.key(), windowKey.window(), newAcc);
       }
     }

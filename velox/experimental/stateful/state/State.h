@@ -57,7 +57,7 @@ class ListState : public State {
 //  virtual void update(std::list<T>& values) = 0;
 };
 
-// This class is relevent to flink org.apache.flink.api.common.ListState.
+// This class is relevent to flink org.apache.flink.api.common.ValueState.
 template <typename K, typename N, typename V>
 class ValueState : public State {
  public:

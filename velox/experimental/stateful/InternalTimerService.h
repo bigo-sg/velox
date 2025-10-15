@@ -46,7 +46,6 @@ class InternalTimerService {
     std::shared_ptr<TimerHeapInternalTimer<K, N>> oldHead = processingTimeTimersQueue_.peek();
     processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
     long nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<long>::max() ;
-    std::cout << "time:" << time << " nextTriggerTime:" << nextTriggerTime << std::endl;
     if (time < nextTriggerTime) {
       if (nextTimer_.has_value()) {
         processingTimeService_->cancel(nextTimer_.value());
@@ -58,7 +57,7 @@ class InternalTimerService {
   }
 
   void deleteProcessingTimeTimer(K key, N ns, long time) {
-    eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+    processingTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
   long currentWatermark() {
