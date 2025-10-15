@@ -18,6 +18,7 @@
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
 #include <climits>
+#include <map>
 
 namespace facebook::velox::stateful {
 
@@ -52,7 +53,6 @@ class RecordsWindowBuffer : public WindowBuffer {
   std::unordered_map<WindowKey, std::list<RowVectorPtr>> buffer_;
   // This is used to return empty map when no window is fired.
   std::unordered_map<WindowKey, std::list<RowVectorPtr>> empty_;
-
   long minSliceEnd_ = LONG_MAX;
   int shiftTimeZone_ = 0; // TODO: support time zone shift
 };

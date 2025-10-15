@@ -13,14 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/experimental/stateful/WindowAggregator.h"
-#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
+#include "velox/experimental/stateful/WindowAggregator.h"
+#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
-
 #include <list>
-#include <iostream>
 #include <memory>
 
 namespace facebook::velox::stateful {

@@ -15,12 +15,8 @@
  */
 #pragma once
 
-#include <core/PlanNode.h>
-#include <exec/Driver.h>
-#include <exec/HashAggregation.h>
-#include <exec/Operator.h>
-#include <exec/StreamingAggregation.h>
-#include <memory>
+#include "velox/exec/Driver.h"
+#include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
@@ -28,6 +24,7 @@
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 #include "velox/experimental/stateful/window/WindowBuffer.h"
+#include <memory>
 
 namespace facebook::velox::stateful {
 
