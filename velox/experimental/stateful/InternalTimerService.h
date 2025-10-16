@@ -20,9 +20,7 @@
 #include <velox/experimental/stateful/InternalPriorityQueue.h>
 #include <velox/experimental/stateful/TimerHeapInternalTimer.h>
 #include <velox/experimental/stateful/Triggerable.h>
-#include <folly/futures/Future.h>
 #include <limits>
-#include <iostream>
 #include <optional>
 
 namespace facebook::velox::stateful {

@@ -42,7 +42,6 @@ SliceAssigner::SliceAssigner(
 std::map<uint64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
     // TODO: using Processing Time Service
-    // TODO: using TimeWindow.getWindowStartWithOffset to get window start, start + size as end
     long timestamp_ms = TimeWindowUtil::getCurrentProcessingTime();
     if (windowType_ == 1) { // tumble window
       // TODO:: support get utcTimestamp by timezone.

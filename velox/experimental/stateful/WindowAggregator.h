@@ -71,7 +71,7 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   void fireWindow(K key, long timerTImestamp, long windowEnd);
 
   template<typename K>
-  void clearWindow(K k, long timerTimestamp, long windowEnd);
+  void clearWindow(K key, long timerTimestamp, long windowEnd);
 
   std::unique_ptr<exec::Operator> localAggerator_;
   std::unique_ptr<KeySelector> keySelector_;
@@ -80,7 +80,7 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   const long windowInterval_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
-  const bool isEventTime_ = true; // TODO: support processing time
+  const bool isEventTime_ = true;
   const int windowStartIndex_ = -1;
   const int windowEndIndex_ = -1;
 
