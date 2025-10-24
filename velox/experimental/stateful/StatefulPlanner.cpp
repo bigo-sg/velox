@@ -268,7 +268,12 @@ std::unique_ptr<exec::Operator> StatefulPlanner::nodeToOperator(
   } else if (
       auto projectNode =
           std::dynamic_pointer_cast<const core::ProjectNode>(planNode)) {
-    return std::make_unique<exec::FilterProject>(opId.fetch_add(1), ctx, nullptr, projectNode);
+    std::shared_ptr<const core::FilterNode> filterNode = nullptr;
+    const std::vector<core::PlanNodePtr>& sources = projectNode->sources();
+    if (sources.size() == 1) {
+        filterNode = std::dynamic_pointer_cast<const core::FilterNode>(sources[0]);
+    }
+    return std::make_unique<exec::FilterProject>(opId.fetch_add(1), ctx, filterNode, projectNode);
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const StreamJoinNode>(planNode)) {

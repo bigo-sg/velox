@@ -16,6 +16,7 @@
 #include "velox/connectors/print/PrintSink.h"
 #include "velox/dwio/common/WriterFactory.h"
 #include "velox/type/Type.h"
+#include "velox/type/tz/TimeZoneMap.h"
 #include <fmt/format.h>
 #include <memory>
 
@@ -29,7 +30,7 @@ PrintSink::PrintSink(
       outputType_(createOutputType()),
       queryCtx_(queryCtx),
       writer_(createWriter(path)),
-      formatter_(createFormatter(inputType_)) {}
+      formatter_(createFormatter(inputType_, tz::locateZone(queryCtx->sessionTimezone()))) {}
 
 std::unique_ptr<dwio::common::Writer> PrintSink::createWriter(
     const std::string& path) {

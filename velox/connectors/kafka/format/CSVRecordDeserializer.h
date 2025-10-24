@@ -15,21 +15,23 @@
  */
 #pragma once
 
-#include "velox/exec/tests/utils/OperatorTestBase.h"
+#include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
 
-namespace facebook::velox::connector::test {
-
-class StringFormatterTestBase : public exec::test::OperatorTestBase {
+namespace facebook::velox::connector::kafka {
+/// Class for kafka record deserialization of csv format.
+class KafkaCSVRecordDeserializer : public KafkaRecordDeserializer {
  public:
-  const std::shared_ptr<memory::MemoryPool> memoryPool = memory::memoryManager()->addLeafPool();
+  KafkaCSVRecordDeserializer(
+      const RowTypePtr& outputType,
+      memory::MemoryPool* memoryPool)
+      : KafkaRecordDeserializer(outputType, memoryPool) {}
 
-  void SetUp() override {
-    OperatorTestBase::SetUp();
-  }
-
-  void TearDown() override {
-    OperatorTestBase::TearDown();
-  }
+  const void deserialize(
+      const std::string & message,
+      const size_t index,
+      VectorPtr& vec) override {
+        VELOX_NYI("Not implemented.");
+    }
 };
 
-} // namespace facebook::velox::stateful::test
+} // namespace facebook::velox::connector::kafka
