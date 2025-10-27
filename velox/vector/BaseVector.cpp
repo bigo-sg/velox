@@ -28,7 +28,6 @@
 #include "velox/vector/VectorEncoding.h"
 #include "velox/vector/VectorPool.h"
 #include "velox/vector/VectorTypeUtils.h"
-#include "velox/vector/VariantToVector.h"
 
 namespace facebook::velox {
 
