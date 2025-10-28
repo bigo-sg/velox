@@ -40,8 +40,6 @@ std::unique_ptr<dwio::common::Writer> PrintSink::createWriter(
   if (fs->exists(path)) {
     fs->remove(path);
   }
-  std::shared_ptr<io::IoStatistics> ioStats =
-      std::make_shared<io::IoStatistics>();
   std::unique_ptr<dwio::common::FileSink> writeFileSink =
       dwio::common::FileSink::create(
           path,
@@ -49,7 +47,7 @@ std::unique_ptr<dwio::common::Writer> PrintSink::createWriter(
               .bufferWrite = false,
               .pool = queryCtx_->memoryPool(),
               .metricLogger = dwio::common::MetricsLog::voidLog(),
-              .stats = ioStats.get(),
+              .stats = &ioStats_,
           });
   auto writerFactory =
       dwio::common::getWriterFactory(dwio::common::FileFormat::TEXT);
