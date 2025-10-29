@@ -42,6 +42,8 @@ class PrintSink : public DataSink {
 
   connector::DataSink::Stats stats() const override;
 
+  io::IoStatistics ioStats_;
+
  private:
   const RowTypePtr inputType_;
   const RowTypePtr outputType_;
