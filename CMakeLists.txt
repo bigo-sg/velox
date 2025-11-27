@@ -540,8 +540,8 @@ velox_set_source(folly)
 velox_resolve_dependency(folly)
 
 if(${VELOX_ENABLE_KAFKA_CONNECTOR})
-  velox_set_source(cppkafka)
-  velox_resolve_dependency(cppkafka)
+  velox_set_source(CppKafka)
+  velox_resolve_dependency(CppKafka)
 endif()
 
 if(${VELOX_BUILD_TESTING})
