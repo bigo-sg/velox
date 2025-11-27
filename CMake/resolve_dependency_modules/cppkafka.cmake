@@ -28,4 +28,4 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(cppkafka)
 
-add_library(CppKafka::cppkafka)
+add_library(CppKafka::cppkafka ALIAS cppkafka)
