@@ -13,12 +13,22 @@
 # limitations under the License.
 include_guard(GLOBAL)
 
+set(VELOX_LZ4_VERSION v1.9.4)
+set(VELOX_LZ4_BUILD_SHA256 6d51712015cdce2cc4274de57430d083a6c9f4b734bf6fe8c3ac6f0c86acf106)
+set(VELOX_LZ4_SOURCE_URL "https://github.com/lz4/lz4/releases/tag/v1.9.4/lz4-1.9.4.tar.gz")
+velox_resolve_dependency_url(LZ4)
+
 set(VELOX_LIBRDKAFKA_VERSION v2.10.0)
 # release artifacts are tough (except the auto generated ones)
 set(VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM 004b1cc2685d1d6d416b90b426a0a9d27327a214c6b807df6f9ea5887346ba3a)
 set(VELOX_LIBRDKAFKA_SOURCE_URL "https://github.com/confluentinc/librdkafka/archive/refs/tags/v2.10.0.tar.gz")
-
 velox_resolve_dependency_url(LIBRDKAFKA)
+
+message(STATUS "Building LZ4 from source")
+FetchContent_Declare(
+  lz4
+  URL ${VELOX_LZ4_SOURCE_URL}
+  URL_HASH ${VELOX_LZ4_BUILD_SHA256})
 
 message(STATUS "Building LIBRDKAFKA from source")
 FetchContent_Declare(
