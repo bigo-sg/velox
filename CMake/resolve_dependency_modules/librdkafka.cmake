@@ -24,6 +24,7 @@ set(VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM 004b1cc2685d1d6d416b90b426a0a9d27327a
 set(VELOX_LIBRDKAFKA_SOURCE_URL "https://github.com/confluentinc/librdkafka/archive/refs/tags/v2.10.0.tar.gz")
 velox_resolve_dependency_url(LIBRDKAFKA)
 
+set(BUILD_SHARED_LIBS ON)
 message(STATUS "Building LZ4 from source")
 FetchContent_Declare(
   lz4
@@ -37,3 +38,4 @@ FetchContent_Declare(
   URL_HASH ${VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM})
 
 FetchContent_MakeAvailable(librdkafka)
+list(PREPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/librdkafka)

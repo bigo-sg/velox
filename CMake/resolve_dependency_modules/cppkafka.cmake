@@ -19,7 +19,7 @@ set(VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM 45770ae0404cb9ba73d659618c51cd55b574c66
 set(VELOX_CPPKAFKA_SOURCE_URL "https://github.com/mfontanini/cppkafka/archive/refs/tags/v0.4.1.tar.gz")
 
 velox_resolve_dependency_url(CPPKAFKA)
-
+set(BUILD_SHARED_LIBS ON)
 message(STATUS "Building CPPKAFKA from source")
 FetchContent_Declare(
   cppkafka
