@@ -28,6 +28,4 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(cppkafka)
 
-set(cppkafka_FOUND TRUE)
-set(cppkafka_LIBRARY CppKafka::cppkafka)
-set(cppkafka_INCLUDE_DIR)
+add_library(CppKafka::cppkafka)
