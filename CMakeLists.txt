@@ -541,7 +541,7 @@ velox_resolve_dependency(folly)
 
 if(${VELOX_ENABLE_KAFKA_CONNECTOR})
   velox_set_source(librdkafka)
-  velox_reslove_dependency(librdkafka)
+  velox_resolve_dependency(librdkafka)
   velox_set_source(CppKafka)
   velox_resolve_dependency(CppKafka)
 endif()
