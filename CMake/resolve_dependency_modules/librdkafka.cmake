@@ -24,5 +24,3 @@ FetchContent_Declare(
   librdkafka
   URL ${VELOX_LIBRDKAFKA_SOURCE_URL}
   URL_HASH ${VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM})
-
-FetchContent_MakeAvailable(librdkafka)

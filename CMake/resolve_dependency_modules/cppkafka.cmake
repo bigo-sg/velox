@@ -13,6 +13,7 @@
 # limitations under the License.
 include_guard(GLOBAL)
 
+
 set(VELOX_CPPKAFKA_VERSION v0.4.1)
 # release artifacts are tough (except the auto generated ones)
 set(VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM 45770ae0404cb9ba73d659618c51cd55b574c66ed3c7b148360222fb524b0ff7)
