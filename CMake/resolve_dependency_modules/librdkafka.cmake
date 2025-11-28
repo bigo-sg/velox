@@ -26,4 +26,3 @@ FetchContent_Declare(
   URL_HASH ${VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM})
 
 FetchContent_MakeAvailable(librdkafka)
-add_library(RdKafka::rdkafka ALIAS rdkafka)
