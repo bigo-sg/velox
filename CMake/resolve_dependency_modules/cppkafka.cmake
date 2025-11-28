@@ -28,5 +28,3 @@ FetchContent_Declare(
   URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM})
 
 FetchContent_MakeAvailable(cppkafka)
-
-add_library(CppKafka::cppkafka ALIAS cppkafka)

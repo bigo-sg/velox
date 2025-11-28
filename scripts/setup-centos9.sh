@@ -50,6 +50,8 @@ ARROW_VERSION="15.0.0"
 STEMMER_VERSION="2.2.0"
 DUCKDB_VERSION="v0.8.1"
 GEOS_VERSION="3.10.2"
+LIBRDKAFKA_VERSION="v2.10.0"
+CPPKAFKA_VERSION="v0.4.1"
 
 function dnf_install {
   dnf install -y -q --setopt=install_weak_deps=False "$@"
@@ -248,6 +250,16 @@ function install_geos {
   fi
 }
 
+function install_librdkafka {
+  wget_and_untar https://github.com/confluentinc/librdkafka/archive/refs/tags/${LIBRDKAFKA_VERSION}.tar.gz librdkafka
+  cmake_install_dir librdkafka -DBUILD_TESTS=OFF
+}
+
+function install_cppkafka {
+  wget_and_untar "https://github.com/mfontanini/cppkafka/archive/refs/tags/${CPPKAFKA_VERSION}.tar.gz" cppkafka
+  cmake_install_dir cppkafka -DBUILD_TESTS=OFF
+}
+
 function install_velox_deps {
   run_and_time install_velox_deps_from_dnf
   run_and_time install_conda
@@ -268,6 +280,8 @@ function install_velox_deps {
   run_and_time install_thrift
   run_and_time install_arrow
   run_and_time install_geos
+  run_and_time install_librdkafka
+  run_and_time install_cppkafka
 }
 
 (return 2> /dev/null) && return # If script was sourced, don't run commands.
