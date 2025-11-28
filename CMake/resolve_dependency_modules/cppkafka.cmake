@@ -20,6 +20,7 @@ set(VELOX_CPPKAFKA_SOURCE_URL "https://github.com/mfontanini/cppkafka/archive/re
 
 velox_resolve_dependency_url(CPPKAFKA)
 set(BUILD_SHARED_LIBS ON)
+set(RdKafka_LIBRARY_PATH ../librdkafka-src/)
 message(STATUS "Building CPPKAFKA from source")
 FetchContent_Declare(
   cppkafka
