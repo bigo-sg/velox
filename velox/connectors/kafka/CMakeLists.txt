@@ -33,7 +33,7 @@ velox_link_libraries(
   velox_common_io
   velox_connector
   Folly::folly
-  CppKafka::cppkafka)
+  PRIVATE CppKafka::cppkafka)
 
 if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)
