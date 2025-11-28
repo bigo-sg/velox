@@ -23,6 +23,6 @@ message(STATUS "Building LIBRDKAFKA from source")
 FetchContent_Declare(
   librdkafka
   URL ${VELOX_LIBRDKAFKA_SOURCE_URL}
-  URL_HASH ${VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM})
-
-FetchContent_MakeAvailable(librdkafka)
+  URL_HASH ${VELOX_LIBRDKAFKA_BUILD_SHA256_CHECKSUM}
+  SOURCE_SUBDIR src
+  UPDATE_DISCONNECTED 1)
