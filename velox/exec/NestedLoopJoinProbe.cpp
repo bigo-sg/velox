@@ -196,6 +196,10 @@ void NestedLoopJoinProbe::noMoreInput() {
   beginBuildMismatch();
 }
 
+void NestedLoopJoinProbe::setBuildData(const std::vector<RowVectorPtr>& buildData) {
+  buildVectors_ = std::move(buildData);
+}
+
 bool NestedLoopJoinProbe::getBuildData(ContinueFuture* future) {
   VELOX_CHECK(!buildVectors_.has_value());
 
@@ -249,6 +253,10 @@ RowVectorPtr NestedLoopJoinProbe::getOutput() {
     // Generate actual join output by processing probe and build matches, and
     // probe mismaches (for left joins).
     output = generateOutput();
+    if (input_ != nullptr) {
+      finishProbeInput();
+    }
+    return output;
   }
   return output;
 }

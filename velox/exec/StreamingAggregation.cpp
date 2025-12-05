@@ -106,6 +106,12 @@ void StreamingAggregation::close() {
   if (rows_ != nullptr) {
     rows_->clear();
   }
+  if (input_) {
+    input_.reset();
+  }
+  if (prevInput_) {
+    prevInput_.reset();
+  }
   Operator::close();
 }
 

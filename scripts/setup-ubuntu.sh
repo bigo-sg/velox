@@ -82,6 +82,8 @@ ARROW_VERSION="15.0.0"
 STEMMER_VERSION="2.2.0"
 DUCKDB_VERSION="v0.8.1"
 GEOS_VERSION="3.10.2"
+LIBRDKAFKA_VERSION="v2.10.0"
+CPPKAFKA_VERSION="v0.4.1"
 
 # Install packages required for build.
 function install_build_prerequisites {
@@ -184,6 +186,16 @@ function install_protobuf {
 function install_folly {
   wget_and_untar https://github.com/facebook/folly/archive/refs/tags/${FB_OS_VERSION}.tar.gz folly
   cmake_install_dir folly -DBUILD_TESTS=OFF -DBUILD_SHARED_LIBS="$VELOX_BUILD_SHARED" -DFOLLY_HAVE_INT128_T=ON
+}
+
+function install_librdkafka {
+  wget_and_untar https://github.com/confluentinc/librdkafka/archive/refs/tags/${LIBRDKAFKA_VERSION}.tar.gz librdkafka
+  cmake_install_dir librdkafka -DBUILD_TESTS=OFF
+}
+
+function install_cppkafka {
+  wget_and_untar "https://github.com/mfontanini/cppkafka/archive/refs/tags/${CPPKAFKA_VERSION}.tar.gz" cppkafka
+  cmake_install_dir cppkafka -DBUILD_TESTS=OFF
 }
 
 function install_fizz {
@@ -329,6 +341,8 @@ function install_velox_deps {
   run_and_time install_thrift
   run_and_time install_arrow
   run_and_time install_geos
+  run_and_time install_librdkafka
+  run_and_time install_cppkafka
 }
 
 function install_apt_deps {

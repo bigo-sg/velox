@@ -12,17 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_subdirectory(agg)
+add_subdirectory(join)
+add_subdirectory(rank)
+add_subdirectory(state)
+add_subdirectory(window)
+add_subdirectory(udf)
+
 velox_add_library(
   velox_stateful_exec
   OBJECT
   StatefulTask.cpp
   StatefulPlanner.cpp
   StatefulPlanNode.cpp
+  StatefulOperator.cpp
+  StreamPartition.cpp
+  StreamJoin.cpp
+  StreamKeyedOperator.cpp
+  WindowJoin.cpp
+  KeySelector.cpp
+  CombinedWatermarkStatus.cpp
+  LocalWindowAggregator.cpp
+  WindowAggregator.cpp
+  GroupWindowAggregator.cpp
   WatermarkAssigner.cpp)
 
 velox_link_libraries(
   velox_stateful_exec
   PRIVATE
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_common_base
   velox_exec)
-

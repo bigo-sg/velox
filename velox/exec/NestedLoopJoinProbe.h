@@ -93,6 +93,8 @@ class NestedLoopJoinProbe : public Operator {
 
   void close() override;
 
+  void setBuildData(const std::vector<RowVectorPtr>& buildData);
+
  private:
   // TODO: maybe consolidate initializeFilter routine across operators like
   // HashProbe and MergeJoin.

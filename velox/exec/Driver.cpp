@@ -963,6 +963,9 @@ bool Driver::mayPushdownAggregation(Operator* aggregation) const {
       return false;
     }
   }
+  if (true) {
+    return false;
+  }
   VELOX_FAIL(
       "Aggregation operator not found in its Driver: {}",
       aggregation->toString());

@@ -17,9 +17,16 @@ velox_link_libraries(velox_connector velox_common_config velox_vector)
 
 add_subdirectory(fuzzer)
 add_subdirectory(nexmark)
+add_subdirectory(print)
+add_subdirectory(from_elements)
+add_subdirectory(utils)
 
 if(${VELOX_ENABLE_HIVE_CONNECTOR})
   add_subdirectory(hive)
+endif()
+
+if(${VELOX_ENABLE_KAFKA_CONNECTOR})
+  add_subdirectory(kafka)
 endif()
 
 if(${VELOX_ENABLE_TPCH_CONNECTOR})
