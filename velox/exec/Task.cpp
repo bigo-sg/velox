@@ -33,6 +33,7 @@
 #include "velox/exec/PlanNodeStats.h"
 #include "velox/exec/Task.h"
 #include "velox/exec/TraceUtil.h"
+#include <iostream>
 
 using facebook::velox::common::testutil::TestValue;
 
@@ -645,30 +646,38 @@ bool Task::supportSerialExecutionMode() const {
 }
 
 RowVectorPtr Task::next(ContinueFuture* future) {
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
   recordBatchStartTime();
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
   checkExecutionMode(ExecutionMode::kSerial);
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
   // NOTE: Task::next() is serial execution so locking is not required
   // to access Task object.
   VELOX_CHECK_EQ(
       core::ExecutionStrategy::kUngrouped,
       planFragment_.executionStrategy,
       "Serial execution mode supports only ungrouped execution");
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
   VELOX_CHECK_EQ(
       state_, TaskState::kRunning, "Task has already finished processing.");
 
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
   const auto hasBarrier = underBarrier();
   if (!splitsStates_.empty()) {
+    std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
     for (const auto& it : splitsStates_) {
       VELOX_CHECK(
           it.second.noMoreSplits || hasBarrier,
           "Serial execution mode requires all splits to be added or a barrier is requested before calling Task::next().");
     }
   }
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
   // On first call, create the drivers.
   if (driverFactories_.empty()) {
+    std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
     VELOX_CHECK_NULL(
         consumerSupplier_,
         "Serial execution mode doesn't support delivering results to a "
@@ -709,6 +718,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
       startDriverBarriersLocked();
     }
   }
+  std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
   // Run drivers one at a time. If a driver blocks, continue running the other
   // drivers. Running other drivers is expected to unblock some or all blocked
@@ -719,13 +729,16 @@ RowVectorPtr Task::next(ContinueFuture* future) {
   futures.resize(numDrivers);
 
   for (;;) {
+    std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
     int runnableDrivers = 0;
     int blockedDrivers = 0;
     for (auto i = 0; i < numDrivers; ++i) {
+      std::cerr << "xxx Task::next @ " << __LINE__ << ", numDrivers:" << numDrivers  << ", i:" << i << std::endl;
       // Holds a reference to driver for access as async task terminate might
       // remove drivers from 'drivers_' slot.
       auto driver = getDriver(i);
       if (driver == nullptr) {
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         // This driver has finished processing.
         continue;
       }
@@ -733,6 +746,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
       if (!futures[i].isReady()) {
         // This driver is still blocked.
         ++blockedDrivers;
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         continue;
       }
 
@@ -742,6 +756,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
         futures[i] = std::move(blockFuture);
         // This driver is still blocked.
         ++blockedDrivers;
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         continue;
       }
       ++runnableDrivers;
@@ -755,6 +770,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
         VELOX_CHECK_NULL(driverOp);
         VELOX_CHECK_EQ(blockReason, BlockingReason::kNotBlocked);
         recordBatchEndTime();
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         return result;
       }
 
@@ -767,6 +783,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
         std::rethrow_exception(error());
       }
     }
+    std::cerr << "xxx Task::next @ " << __LINE__ << ", runnableDrivers:" << runnableDrivers  << ", blockedDrivers:" << blockedDrivers << std::endl;
 
     if (runnableDrivers == 0) {
       if (blockedDrivers > 0) {
@@ -774,6 +791,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
           VELOX_FAIL(
               "Cannot make progress as all remaining drivers are blocked and user are not expected to wait.");
         } else if (!hasBarrier || underBarrier()) {
+          std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
           // NOTE: we returns null without a future if this next() call finishes
           // a barrier processing. We expect that the caller either resume the
           // processing by sending new splits with a new barrier request or
@@ -787,6 +805,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
           *future = folly::collectAny(std::move(notReadyFutures)).unit();
         }
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       return nullptr;
     }
   }
