@@ -770,6 +770,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
       BlockingReason blockReason{BlockingReason::kNotBlocked};
       auto result = driver->next(&driverFuture, driverOp, blockReason);
       if (result != nullptr) {
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         VELOX_CHECK(!driverFuture.valid());
         VELOX_CHECK_NULL(driverOp);
         VELOX_CHECK_EQ(blockReason, BlockingReason::kNotBlocked);
@@ -795,6 +796,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
     std::cerr << "xxx Task::next @ " << __LINE__ << ", runnableDrivers:" << runnableDrivers  << ", blockedDrivers:" << blockedDrivers << std::endl;
 
     if (runnableDrivers == 0) {
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       if (blockedDrivers > 0) {
         if (future == nullptr) {
           VELOX_FAIL(
