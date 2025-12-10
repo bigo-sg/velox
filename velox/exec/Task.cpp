@@ -792,6 +792,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
               "Cannot make progress as all remaining drivers are blocked and user are not expected to wait.");
         } else if (!hasBarrier || underBarrier()) {
           std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
+
           // NOTE: we returns null without a future if this next() call finishes
           // a barrier processing. We expect that the caller either resume the
           // processing by sending new splits with a new barrier request or
