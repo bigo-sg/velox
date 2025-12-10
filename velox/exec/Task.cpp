@@ -737,11 +737,13 @@ RowVectorPtr Task::next(ContinueFuture* future) {
       // Holds a reference to driver for access as async task terminate might
       // remove drivers from 'drivers_' slot.
       auto driver = getDriver(i);
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       if (driver == nullptr) {
         std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         // This driver has finished processing.
         continue;
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
       if (!futures[i].isReady()) {
         // This driver is still blocked.
@@ -749,6 +751,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
         std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         continue;
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
       ContinueFuture blockFuture = ContinueFuture::makeEmpty();
       if (driverBlockingStates_[i]->blocked(&blockFuture)) {
@@ -759,6 +762,7 @@ RowVectorPtr Task::next(ContinueFuture* future) {
         std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         continue;
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       ++runnableDrivers;
 
       ContinueFuture driverFuture = ContinueFuture::makeEmpty();
@@ -773,15 +777,20 @@ RowVectorPtr Task::next(ContinueFuture* future) {
         std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         return result;
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
       if (driverFuture.valid()) {
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         driverBlockingStates_[i]->setDriverFuture(
             driverFuture, driverOp, blockReason);
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
       if (error()) {
+        std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
         std::rethrow_exception(error());
       }
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
     }
     std::cerr << "xxx Task::next @ " << __LINE__ << ", runnableDrivers:" << runnableDrivers  << ", blockedDrivers:" << blockedDrivers << std::endl;
 
