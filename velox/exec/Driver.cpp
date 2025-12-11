@@ -673,6 +673,7 @@ StopReason Driver::runInternal(
                 guard.notThrown();
                 return stop;
               }
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               // The op is at end. If this is finishing, propagate the
               // finish to the next op. The op could have run out
               // because it is blocked. If the op is the source and it
@@ -685,11 +686,15 @@ StopReason Driver::runInternal(
                     op,
                     curOperatorId_,
                     kOpMethodIsBlocked);
+                 std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               });
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               if (blockingReason_ != BlockingReason::kNotBlocked) {
+                std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
                 return blockDriver(
                     self, i, std::move(future), blockingState, guard);
               }
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
               bool finished{false};
               withDeltaCpuWallTimer(op, &OperatorStats::finishTiming, [&]() {
@@ -698,8 +703,11 @@ StopReason Driver::runInternal(
                     op,
                     curOperatorId_,
                     kOpMethodIsFinished);
+                std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               });
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               if (finished) {
+                std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
                 withDeltaCpuWallTimer(
                     nextOp, &OperatorStats::finishTiming, [this, &nextOp]() {
                       TestValue::adjust(
@@ -716,6 +724,7 @@ StopReason Driver::runInternal(
             }
           }
         } else {
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           // A sink (last) operator, after getting unblocked, gets
           // control here, so it can advance. If it is again blocked,
           // this will be detected when trying to add input, and we
@@ -723,7 +732,9 @@ StopReason Driver::runInternal(
           withDeltaCpuWallTimer(op, &OperatorStats::getOutputTiming, [&]() {
             CALL_OPERATOR(
                 getOutput(op, result), op, curOperatorId_, kOpMethodGetOutput);
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
             if (result) {
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               validateOperatorOutputResult(result, *op);
 
               {
@@ -732,14 +743,18 @@ StopReason Driver::runInternal(
                     result->estimateFlatSize(), result->size());
               }
             }
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           });
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
           if (result) {
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
             // This code path is used only in serial execution mode.
             blockingReason_ = BlockingReason::kWaitForConsumer;
             guard.notThrown();
             return StopReason::kBlock;
           }
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
           bool finished{false};
           withDeltaCpuWallTimer(op, &OperatorStats::finishTiming, [&]() {
@@ -748,12 +763,16 @@ StopReason Driver::runInternal(
                 op,
                 curOperatorId_,
                 kOpMethodIsFinished);
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           });
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           if (finished) {
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
             guard.notThrown();
             close();
             return StopReason::kAtEnd;
           }
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           pushdownFilters(i);
           continue;
         }
