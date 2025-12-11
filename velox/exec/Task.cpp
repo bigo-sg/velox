@@ -764,10 +764,14 @@ RowVectorPtr Task::next(ContinueFuture* future) {
       }
       std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       ++runnableDrivers;
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
 
       ContinueFuture driverFuture = ContinueFuture::makeEmpty();
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       Operator* driverOp{nullptr};
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       BlockingReason blockReason{BlockingReason::kNotBlocked};
+      std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
       auto result = driver->next(&driverFuture, driverOp, blockReason);
       if (result != nullptr) {
         std::cerr << "xxx Task::next @ " << __LINE__ << std::endl;
