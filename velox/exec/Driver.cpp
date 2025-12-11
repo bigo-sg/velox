@@ -18,6 +18,7 @@
 
 #include "velox/common/process/TraceContext.h"
 #include "velox/exec/Task.h"
+#include <iostream>
 
 using facebook::velox::common::testutil::TestValue;
 
@@ -540,6 +541,7 @@ StopReason Driver::runInternal(
 
     for (;;) {
       for (int32_t i = numOperators - 1; i >= 0; --i) {
+        std::cerr << "xxx Driver::runInternal @" << __LINE__ << ", i:" << i << ", num:" << numOperators << std::endl; 
         stop = task()->shouldStop();
         if (stop != StopReason::kNone) {
           guard.notThrown();
@@ -553,12 +555,15 @@ StopReason Driver::runInternal(
         }
 
         auto* op = operators_[i].get();
+        std::cerr << "xxx Driver::runInternal, op: " << op->toString() << std::endl;
+        std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
         // In case we are blocked, this index will point to the operator, whose
         // queuedTime we should update.
         curOperatorId_ = i;
 
         if (FOLLY_UNLIKELY(checkUnderArbitration(&future))) {
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           // Blocks the driver if the associated query is under memory
           // arbitration as it is very likely the driver run will trigger memory
           // arbitration when it needs to allocate memory, and the memory
@@ -570,6 +575,7 @@ StopReason Driver::runInternal(
           blockingReason_ = BlockingReason::kWaitForArbitration;
           return blockDriver(self, i, std::move(future), blockingState, guard);
         }
+        std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
         withDeltaCpuWallTimer(op, &OperatorStats::isBlockedTiming, [&]() {
           TestValue::adjust(
@@ -580,11 +586,14 @@ StopReason Driver::runInternal(
               curOperatorId_,
               kOpMethodIsBlocked);
         });
+        std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
         if (blockingReason_ != BlockingReason::kNotBlocked) {
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           return blockDriver(self, i, std::move(future), blockingState, guard);
         }
 
         if (i < numOperators - 1) {
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           Operator* nextOp = operators_[i + 1].get();
 
           withDeltaCpuWallTimer(nextOp, &OperatorStats::isBlockedTiming, [&]() {
@@ -594,10 +603,13 @@ StopReason Driver::runInternal(
                 curOperatorId_ + 1,
                 kOpMethodIsBlocked);
           });
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           if (blockingReason_ != BlockingReason::kNotBlocked) {
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
             return blockDriver(
                 self, i + 1, std::move(future), blockingState, guard);
           }
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
           bool needsInput;
           CALL_OPERATOR(
@@ -605,7 +617,9 @@ StopReason Driver::runInternal(
               nextOp,
               curOperatorId_ + 1,
               kOpMethodNeedsInput);
+          std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           if (needsInput) {
+            std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
             uint64_t resultBytes = 0;
             RowVectorPtr intermediateResult;
             withDeltaCpuWallTimer(op, &OperatorStats::getOutputTiming, [&]() {
@@ -651,6 +665,7 @@ StopReason Driver::runInternal(
               i += 2;
               continue;
             } else {
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               stop = task()->shouldStop();
               if (stop != StopReason::kNone) {
                 guard.notThrown();
