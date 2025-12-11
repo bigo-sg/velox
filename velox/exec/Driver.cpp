@@ -688,6 +688,7 @@ StopReason Driver::runInternal(
                     kOpMethodIsBlocked);
                  std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               });
+              std::cerr << "xxx Driver::runInternal. @" << __LINE__ << ". future is valid:" << future.valid() << ". blocked reason:" << static_cast<int>(blockingReason_) << std::endl;
               std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
               if (blockingReason_ != BlockingReason::kNotBlocked) {
                 std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
