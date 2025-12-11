@@ -19,6 +19,7 @@
 #include "velox/exec/Task.h"
 #include "velox/exec/TraceUtil.h"
 #include "velox/expression/Expr.h"
+#include <iostream>
 
 using facebook::velox::common::testutil::TestValue;
 
@@ -162,9 +163,11 @@ RowVectorPtr TableScan::getOutput() {
           RuntimeCounter(ioTimeUs * 1'000, RuntimeCounter::Unit::kNanos));
 
       if (!dataOptional.has_value()) {
+        std::cerr << "xxx TableScan::getOutput. @" << __LINE__ << ". dataOptional has no value" << std::endl;
         blockingReason_ = BlockingReason::kWaitForConnector;
         return nullptr;
       }
+      std::cerr << "xxx TableScan::getOutput. @" << __LINE__ << ". dataOptional has value" << std::endl;
 
       lockedStats->rawInputPositions = dataSource_->getCompletedRows();
       lockedStats->rawInputBytes = dataSource_->getCompletedBytes();
