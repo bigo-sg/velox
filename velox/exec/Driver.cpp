@@ -540,6 +540,7 @@ StopReason Driver::runInternal(
     ContinueFuture future = ContinueFuture::makeEmpty();
 
     for (;;) {
+      std::cerr << "xxx Driver::runInternal @" << __LINE__ << std::endl;
       for (int32_t i = numOperators - 1; i >= 0; --i) {
         std::cerr << "xxx Driver::runInternal @" << __LINE__ << ", i:" << i << ", num:" << numOperators << std::endl; 
         stop = task()->shouldStop();
@@ -591,6 +592,7 @@ StopReason Driver::runInternal(
           std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
           return blockDriver(self, i, std::move(future), blockingState, guard);
         }
+        std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
 
         if (i < numOperators - 1) {
           std::cerr << "xxx Driver::runInternal. @" << __LINE__ << std::endl;
