@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <memory>
 #include "velox/exec/Driver.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
@@ -24,7 +25,6 @@
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 #include "velox/experimental/stateful/window/WindowBuffer.h"
-#include <memory>
 
 namespace facebook::velox::stateful {
 

@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <list>
+#include <memory>
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
-#include <list>
-#include <memory>
 
 namespace facebook::velox::stateful {
 
@@ -149,7 +149,7 @@ void WindowAggregator::processWatermarkInternal(long timestamp) {
 RowVectorPtr addWindowTimestampToOutput(
   const RowVectorPtr& output,
   const std::string& fieldName,
-  const long fieldValue,
+  const int64_t fieldValue,
   const int fieldIndex) {
   auto createTimestampVector = [&](
     const Timestamp& val,
@@ -267,7 +267,7 @@ long WindowAggregator::sliceStateMergeTarget(long sliceToMerge) {
 }
 
 void WindowAggregator::close() {
-  processWatermarkInternal(INT_MAX);
+  processWatermarkInternal(std::numeric_limits<int64_t>::max());
   StatefulOperator::close();
   if (localAggregator_) {
     localAggregator_->close();
