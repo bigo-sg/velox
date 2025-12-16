@@ -24,10 +24,10 @@ namespace facebook::velox::stateful {
 // This class is relevent to flink WindowBuffer.
 class WindowKey {
  public:
-  WindowKey(uint32_t key, long window)
+  WindowKey(uint32_t key, int64_t window)
       : key_(key), window_(window) {}
 
-  long window() const {
+  int64_t window() const {
     return window_;
   }
 
@@ -41,7 +41,7 @@ class WindowKey {
 
  private:
   uint32_t key_;
-  long window_;
+  int64_t window_;
 };
 
 } // namespace facebook::velox::stateful
@@ -51,7 +51,7 @@ template<>
 struct hash<facebook::velox::stateful::WindowKey> {
   size_t operator()(const facebook::velox::stateful::WindowKey& key) const {
     // TODO: RowVector should have a hash function.
-    return std::hash<long>()(key.window()) ^ std::hash<uint32_t>()(key.key());
+    return std::hash<int64_t>()(key.window()) ^ std::hash<uint32_t>()(key.key());
   }
 };
 }

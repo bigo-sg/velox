@@ -32,17 +32,17 @@ class RuntimeContext {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);
   }
 
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> getListState(
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>> getListState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateListState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> getValueState(
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> getValueState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
   }
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
       Triggerable* triggerable) {
     return keyedStateBackend_->createTimerService(triggerable);
   }

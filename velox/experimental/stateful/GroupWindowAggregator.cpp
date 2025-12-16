@@ -24,7 +24,7 @@ GroupWindowAggregator::GroupWindowAggregator(
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
-    long allowedLateness,
+    int64_t allowedLateness,
     bool produceUpdates,
     int rowtimeIndex,
     bool isEventTime,
@@ -143,11 +143,11 @@ void GroupWindowAggregator::close() {
 }
 
 void GroupWindowAggregator::registerCleanupTimer(uint32_t key, TimeWindow window) {
-  long cleanupTime =
+  int64_t cleanupTime =
       TimeWindowUtil::toEpochMillsForTimer(
           TimeWindowUtil::cleanupTime(window.maxTimestamp(), allowedLateness_, isEventTime_),
           shiftTimeZone_);
-  if (cleanupTime == LONG_MAX) {
+  if (cleanupTime == INT64_MAX) {
     // don't set a GC timer for "end of time"
     return;
   }
@@ -190,17 +190,17 @@ void GroupWindowAggregator::WindowTriggerContext::open() {
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onElement(
-    uint32_t key, RowVectorPtr row, long timestamp, TimeWindow window) {
+    uint32_t key, RowVectorPtr row, int64_t timestamp, TimeWindow window) {
   return trigger_->onElement(key, row, timestamp, window);
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onProcessingTime(
-    TimeWindow window, long time) {
+    TimeWindow window, int64_t time) {
   return trigger_->onProcessingTime(window, time);
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onEventTime(
-    TimeWindow window, long time) {
+    TimeWindow window, int64_t time) {
   return trigger_->onEventTime(window, time);
 }
 
@@ -209,31 +209,31 @@ void GroupWindowAggregator::WindowTriggerContext::onMerge(
   trigger_->onMerge(key, window, nullptr);
 }
 
-long GroupWindowAggregator::WindowTriggerContext::getCurrentProcessingTime() {
+int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentProcessingTime() {
   return internalTimerService_->currentProcessingTime();
 }
 
-long GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
+int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
   return internalTimerService_->currentWatermark();
 }
 
 void GroupWindowAggregator::WindowTriggerContext::registerProcessingTimeTimer(
-    uint32_t key, TimeWindow window, long time) {
+    uint32_t key, TimeWindow window, int64_t time) {
   internalTimerService_->registerProcessingTimeTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::registerEventTimeTimer(
-    uint32_t key, TimeWindow window, long time) {
+    uint32_t key, TimeWindow window, int64_t time) {
   internalTimerService_->registerEventTimeTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteProcessingTimeTimer(
-    uint32_t key, TimeWindow window, long time) {
+    uint32_t key, TimeWindow window, int64_t time) {
   internalTimerService_->deleteProcessingTimeTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteEventTimeTimer(
-    uint32_t key, TimeWindow window, long time) {
+    uint32_t key, TimeWindow window, int64_t time) {
   internalTimerService_->deleteEventTimeTimer(key, window, time);
 }
 
@@ -265,7 +265,7 @@ WindowContext::WindowContext(
     std::shared_ptr<StreamOperatorStateHandler> stateHandler,
     int shiftTimeZone,
     bool isEventTime,
-    long allowedLateness)
+    int64_t allowedLateness)
     : windowAggregator_(windowAggregator),
       windowState_(std::move(windowState)),
       timerService_(std::move(timerService)),
@@ -280,11 +280,11 @@ StatePtr WindowContext::getPartitionedState(StateDescriptor& stateDescriptor) {
   return stateHandler_->getGroupMapState(stateDescriptor);
 }
 
-long WindowContext::currentProcessingTime() {
+int64_t WindowContext::currentProcessingTime() {
   return timerService_->currentProcessingTime();
 }
 
-long WindowContext::currentWatermark() {
+int64_t WindowContext::currentWatermark() {
   return timerService_->currentWatermark();
 }
 
@@ -316,11 +316,11 @@ void WindowContext::clearTrigger(TimeWindow window) {
 }
 
 void WindowContext::deleteCleanupTimer(TimeWindow window) {
-  long cleanupTime =
+  int64_t cleanupTime =
       TimeWindowUtil::toEpochMillsForTimer(
           TimeWindowUtil::cleanupTime(window.maxTimestamp(), allowedLateness_, isEventTime_),
           shiftTimeZone_);
-  if (cleanupTime == LONG_MAX) {
+  if (cleanupTime == INT64_MAX) {
       // no need to clean up because we didn't set one
       return;
   }

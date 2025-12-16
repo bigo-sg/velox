@@ -18,12 +18,12 @@
 namespace facebook::velox::stateful {
 
  SessionWindowAssigner::SessionWindowAssigner(
-    long gap,
+    int64_t gap,
     bool isEventTime)
     : gap_(gap), isEventTime_(isEventTime) {
 }
 
-std::vector<TimeWindow> SessionWindowAssigner::assignWindows(RowVectorPtr element, long timestamp) {
+std::vector<TimeWindow> SessionWindowAssigner::assignWindows(RowVectorPtr element, int64_t timestamp) {
   return {TimeWindow(timestamp, timestamp + gap_)};
 }
 

@@ -18,7 +18,7 @@
 
 namespace facebook::velox::stateful {
 
-long WindowTrigger::triggerTime(TimeWindow window) {
+int64_t WindowTrigger::triggerTime(TimeWindow window) {
   return TimeWindowUtil::toEpochMillsForTimer(window.maxTimestamp(), ctx_->getShiftTimeZone());
 }
 
@@ -26,7 +26,7 @@ void AfterEndOfWindow::open(std::shared_ptr<TriggerContext> ctx) {
   ctx_ = ctx;
 }
 
-bool AfterEndOfWindow::onElement(uint32_t key, RowVectorPtr element, long timestamp, TimeWindow window) {
+bool AfterEndOfWindow::onElement(uint32_t key, RowVectorPtr element, int64_t timestamp, TimeWindow window) {
   if (triggerTime(window) <= ctx_->getCurrentWatermark()) {
     // if the watermark is already past the window fire immediately
     return true;
@@ -36,11 +36,11 @@ bool AfterEndOfWindow::onElement(uint32_t key, RowVectorPtr element, long timest
   }
 }
 
-bool AfterEndOfWindow::onProcessingTime(TimeWindow window, long time) {
+bool AfterEndOfWindow::onProcessingTime(TimeWindow window, int64_t time) {
   return false;
 }
 
-bool AfterEndOfWindow::onEventTime(TimeWindow window, long time) {
+bool AfterEndOfWindow::onEventTime(TimeWindow window, int64_t time) {
   return time == triggerTime(window);
 }
 

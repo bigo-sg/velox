@@ -21,7 +21,7 @@ namespace facebook::velox::stateful {
 MergingWindowProcessFunction::MergingWindowProcessFunction(
     std::shared_ptr<MergingWindowAssigner> windowAssigner,
     exec::Operator* windowAggregator,
-    long allowedLateness)
+    int64_t allowedLateness)
     : WindowProcessFunction<TimeWindow>(windowAssigner, windowAggregator, allowedLateness) {
 }
 
@@ -43,7 +43,7 @@ void MergingWindowProcessFunction::open(std::shared_ptr<FunctionContext<TimeWind
 }
 
 std::vector<TimeWindow> MergingWindowProcessFunction::assignStateNamespace(
-    uint32_t key, RowVectorPtr inputRow, long timestamp) {
+    uint32_t key, RowVectorPtr inputRow, int64_t timestamp) {
   std::vector<TimeWindow> elementWindows = windowAssigner_->assignWindows(inputRow, timestamp);
   mergingWindows_->initializeCache(key);
   reuseActualWindows_.clear();
@@ -68,11 +68,11 @@ std::vector<TimeWindow> MergingWindowProcessFunction::assignStateNamespace(
 }
 
 std::vector<TimeWindow> MergingWindowProcessFunction::assignActualWindows(
-    RowVectorPtr inputRow, long timestamp) {
+    RowVectorPtr inputRow, int64_t timestamp) {
   return reuseActualWindows_;
 }
 
-void MergingWindowProcessFunction::cleanWindowIfNeeded(TimeWindow window, long currentTime) {
+void MergingWindowProcessFunction::cleanWindowIfNeeded(TimeWindow window, int64_t currentTime) {
   if (isCleanupTime(window, currentTime)) {
     ctx_->clearTrigger(window);
     TimeWindow stateWindow = mergingWindows_->getStateWindow(ctx_->currentKey(), window);

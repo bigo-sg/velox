@@ -29,7 +29,7 @@ class KeySelector {
   KeySelector(
       std::unique_ptr<core::PartitionFunction> partitionFunction,
       memory::MemoryPool* pool,
-      int numPartitions = INT_MAX);
+      int numPartitions = 1024);
 
   std::map<uint64_t, RowVectorPtr> partition(const RowVectorPtr& input);
 

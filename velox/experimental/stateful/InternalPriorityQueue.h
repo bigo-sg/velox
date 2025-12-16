@@ -32,7 +32,7 @@ class InternalPriorityQueue {
 
   virtual void clear() = 0;
 
-  virtual bool empty() = 0;
+  virtual bool empty() const = 0;
 };
 
 // This class is relevent to flink HeapPriorityQueue.
@@ -75,7 +75,7 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
     size_ = 0;
   }
 
-  bool empty() override {
+  bool empty() const override {
     return size_ == 0;
   }
 

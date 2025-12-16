@@ -15,19 +15,35 @@
  */
 #pragma once
 
+#include <common/base/Exceptions.h>
 #include <algorithm>
 #include <string>
 
 namespace facebook::velox::stateful {
 
+enum class WindowType : int {
+  HOP = 0,
+  TUMBLE,
+  SESSION,
+  CUMULATIVE
+};
+
 // This class is relevent to flink WindowBuffer.
 class Window {
  public:
-  virtual long maxTimestamp() = 0;
+  virtual int64_t maxTimestamp() = 0;
 
   virtual bool operator<(const Window& other) const = 0;
 
   virtual std::string toString() const = 0;
+  
+  static WindowType getType(const int32_t t) {
+    if (t >= 0 && t <= 3) {
+      return static_cast<WindowType>(t);
+    } else {
+      VELOX_FAIL("Window type value {} is illegal, it is not between 0 and 3", t);
+    }
+  }
 };
 
 class TimeWindow : public Window {
@@ -35,18 +51,18 @@ class TimeWindow : public Window {
   TimeWindow()
       : start_(-1), end_(-1) {}
 
-  TimeWindow(long start, long end)
+  TimeWindow(int64_t start, int64_t end)
       : start_(start), end_(end) {}
 
-  long maxTimestamp() override {
+  int64_t maxTimestamp() override {
     return end_ - 1;
   }
 
-  long start() const {
+  int64_t start() const {
     return start_;
   }
 
-  long end() const {
+  int64_t end() const {
     return end_;
   }
 
@@ -79,8 +95,8 @@ class TimeWindow : public Window {
   }
 
   private:
-  long start_;
-  long end_;
+  int64_t start_;
+  int64_t end_;
 }; 
 
 } // namespace facebook::velox::stateful
@@ -90,7 +106,7 @@ template<>
 struct hash<facebook::velox::stateful::TimeWindow> {
   size_t operator()(const facebook::velox::stateful::TimeWindow& w) const {
     // TODO: verify it.
-    return hash<long>()(w.start()) ^ (hash<long>()(w.end()) << 1);
+    return hash<int64_t>()(w.start()) ^ (hash<int64_t>()(w.end()) << 1);
   }
 };
 }

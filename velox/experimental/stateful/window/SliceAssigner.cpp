@@ -15,19 +15,16 @@
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
-
-#include <chrono>
 #include <numeric>
-#include <iostream>
 
 namespace facebook::velox::stateful {
 
 SliceAssigner::SliceAssigner(
     std::unique_ptr<KeySelector> keySelector,
-    long size,
-    long step,
-    long offset,
-    int windowType,
+    int64_t size,
+    int64_t step,
+    int64_t offset,
+    WindowType windowType,
     int rowtimeIndex)
     : keySelector_(std::move(keySelector)),
       size_(size),
@@ -42,11 +39,11 @@ SliceAssigner::SliceAssigner(
 std::map<uint64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
     // TODO: using Processing Time Service
-    long timestamp_ms = TimeWindowUtil::getCurrentProcessingTime();
-    if (windowType_ == 1) { // tumble window
+    int64_t timestamp_ms = TimeWindowUtil::getCurrentProcessingTime();
+    if (windowType_ == WindowType::TUMBLE) { // tumble window
       // TODO:: support get utcTimestamp by timezone.
-      long utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestamp_ms, 0);
-      long windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
+      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestamp_ms, 0);
+      int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
       return {{windowStart + size_, input}};
     } else {
       return {{timestamp_ms, input}};
@@ -55,18 +52,18 @@ std::map<uint64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPt
   return keySelector_->partition(input);
 }
 
-long SliceAssigner::getLastWindowEnd(long sliceEnd) {
-  if (windowType_ == 0) { // Hopping window
+int64_t SliceAssigner::getLastWindowEnd(int64_t sliceEnd) {
+  if (windowType_ == WindowType::HOP) { // Hopping window
     return sliceEnd - sliceSize_ + size_;
   }
   return sliceEnd;
 }
 
-long SliceAssigner::getWindowStart(long windowEnd) {
+int64_t SliceAssigner::getWindowStart(int64_t windowEnd) {
   return windowEnd - size_;
 }
 
-long SliceAssigner::getSliceEndInterval() {
+int64_t SliceAssigner::getSliceEndInterval() {
   return sliceSize_;
 }
 

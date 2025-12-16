@@ -17,34 +17,32 @@
 
 #include "velox/vector/ComplexVector.h"
 #include <list>
-#include <memory>
-#include <map>
 
 namespace facebook::velox::stateful {
 
 // This class is relevent to flink TimeWindowUitl.
 class TimeWindowUtil {
  public:
-  static long getNextTriggerWatermark(
-    long currentWatermark,
-    long interval,
+  static int64_t getNextTriggerWatermark(
+    int64_t currentWatermark,
+    int64_t interval,
     int shiftTimezone,
     bool useDayLightSaving);
 
-  static long getWindowStartWithOffset(long timestamp, long offset, long windowSize);
+  static int64_t getWindowStartWithOffset(int64_t timestamp, int64_t offset, int64_t windowSize);
 
   static bool isWindowFired(
-    long windowEnd, long currentProgress, int shiftTimeZone);
+    int64_t windowEnd, int64_t currentProgress, int shiftTimeZone);
 
   static RowVectorPtr mergeVectors(
       const std::list<RowVectorPtr>& vectors,
       memory::MemoryPool* pool);
 
-  static long toEpochMillsForTimer(long timestamp, int shiftTimeZone);
+  static int64_t toEpochMillsForTimer(int64_t timestamp, int shiftTimeZone);
 
-  static long cleanupTime(long maxTimestamp, long allowedLateness_, bool isEventTime);
+  static int64_t cleanupTime(int64_t maxTimestamp, int64_t allowedLateness_, bool isEventTime);
 
-  static long getCurrentProcessingTime();
+  static int64_t getCurrentProcessingTime();
 };
 
 

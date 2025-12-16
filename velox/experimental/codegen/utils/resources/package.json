@@ -1,0 +1,35 @@
+
+    {"optimizationLevel": "-O3",
+    "extraLinkOptions" : ["-Wl,-undefined,dynamic_lookup", "-Wl,-rpath", "." ],
+    "extraCompileOption": [
+        "-g",
+        "-v",
+        "-std=c++17",
+        "-mavx2",
+        "-mfma",
+        "-mavx",
+        "-mf16c",
+        "-march=native",
+        "-DUSE_VELOX_COMMON_BASE",
+        "-mllvm",
+        "-inline-threshold=5000",
+        "-DBOOST_ALL_NO_LIB",
+        "-DBOOST_CONTEXT_DYN_LINK",
+        "-DBOOST_REGEX_DYN_LINK",
+        "-fPIC",
+        ,
+    ],
+    "extraLinkOptions" : [],
+    "defaultLibraries": [
+    {
+        "includePath" : ["/home/zouyunhe/velox4j/src/main/cpp"],
+        "additionalLinkerObject": []
+    }
+    , {
+        "includePath" : ["/usr/local/include" ,"/usr/include/zlib.h" ,"/usr/local/include/folly" ,"/usr/include"]
+    }],
+    "compilerPath": "/usr/bin/c++",
+    "linker": "/usr/bin/ld",
+    "tempDirectory": "/tmp"
+    }
+    

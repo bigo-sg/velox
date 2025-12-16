@@ -27,9 +27,9 @@ class WindowBuffer {
  public:
   // TODO: we use hash key of RowVector as key, but flink use RowVector as key.
   // This is not equal to flink, should check it.
-  virtual void addElement(uint32_t key, long window, RowVectorPtr& element) = 0;
+  virtual void addElement(uint32_t key, int64_t window, RowVectorPtr& element) = 0;
 
-  virtual std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(long progress) = 0;
+  virtual std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(int64_t progress) = 0;
 
   virtual void clear() = 0;
 };
@@ -39,13 +39,13 @@ using WindowBufferPtr = std::shared_ptr<WindowBuffer>;
 // This class is relevent to flink RecordsWindowBuffer.
 class RecordsWindowBuffer : public WindowBuffer {
  public:
-  void addElement(uint32_t key, long sliceEnd, RowVectorPtr& element) override;
+  void addElement(uint32_t key, int64_t sliceEnd, RowVectorPtr& element) override;
 
-  std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(long progress) override;
+  std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(int64_t progress) override;
 
   void clear() override {
     buffer_.clear();
-    minSliceEnd_ = LONG_MAX;
+    minSliceEnd_ = INT64_MAX;
   }
 
  private:
@@ -53,7 +53,7 @@ class RecordsWindowBuffer : public WindowBuffer {
   std::unordered_map<WindowKey, std::list<RowVectorPtr>> buffer_;
   // This is used to return empty map when no window is fired.
   std::unordered_map<WindowKey, std::list<RowVectorPtr>> empty_;
-  long minSliceEnd_ = LONG_MAX;
+  int64_t minSliceEnd_ = INT64_MAX;
   int shiftTimeZone_ = 0; // TODO: support time zone shift
 };
 

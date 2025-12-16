@@ -123,7 +123,7 @@ void MergingWindowSet::close() {
 MergingFunction::MergingFunction(
     std::shared_ptr<DefaultAccMergingConsumer> accMergingConsumer,
     std::shared_ptr<FunctionContext<TimeWindow>> ctx,
-    long allowedLateness,
+    int64_t allowedLateness,
     bool isEventTime)
     : accMergingConsumer_(std::move(accMergingConsumer)),
       ctx_(ctx),
@@ -137,7 +137,7 @@ void MergingFunction::merge(
     TimeWindow stateWindowResult,
     std::vector<TimeWindow>& stateWindowsToBeMerged) {
 
-  long mergeResultMaxTs =
+  int64_t mergeResultMaxTs =
       TimeWindowUtil::toEpochMillsForTimer(mergeResult.maxTimestamp(), ctx_->getShiftTimeZone());
   VELOX_CHECK(!(isEventTime_
       && mergeResultMaxTs + allowedLateness_ <= ctx_->currentWatermark()),

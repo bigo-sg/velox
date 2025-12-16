@@ -179,7 +179,7 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
               windowAggNode->size(),
               windowAggNode->step(),
               windowAggNode->offset(),
-              windowAggNode->windowType(),
+              Window::getType(windowAggNode->windowType()),
               windowAggNode->rowtimeIndex());
       return std::make_unique<WindowAggregator>(
           windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
@@ -210,7 +210,7 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
             0,
             0,
             0,
-            windowAggNode->windowType(),
+            Window::getType(windowAggNode->windowType()),
             windowAggNode->rowtimeIndex());
     return std::make_unique<GroupWindowAggregator>(
         std::unique_ptr<GroupWindowAggsHandler>(dynamic_cast<GroupWindowAggsHandler*>(op.release())),

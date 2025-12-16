@@ -32,33 +32,33 @@ class InternalTimerService {
   InternalTimerService(Triggerable<K, N>* triggerable)
       : triggerable_(triggerable), processingTimeService_(std::make_shared<SystemProcessingTimeService>()) {}
 
-  void registerEventTimeTimer(K key, N ns, long time) {
+  void registerEventTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void deleteEventTimeTimer(K key, N ns, long time) {
+  void deleteEventTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void registerProcessingTimeTimer(K key, N ns, long time) {
+  void registerProcessingTimeTimer(K key, N ns, int64_t time) {
     std::shared_ptr<TimerHeapInternalTimer<K, N>> oldHead = processingTimeTimersQueue_.peek();
     processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
-    long nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<long>::max() ;
+    int64_t nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<int64_t>::max() ;
     if (time < nextTriggerTime) {
       if (nextTimer_.has_value()) {
         processingTimeService_->cancel(nextTimer_.value());
       }
-      nextTimer_ = processingTimeService_->registerTimer(time, ProcessingTimerTask(time, [&](long processingTime) {
+      nextTimer_ = processingTimeService_->registerTimer(time, ProcessingTimerTask(time, [&](int64_t processingTime) {
         onProcessingTime(processingTime);
       }));
     }
   }
 
-  void deleteProcessingTimeTimer(K key, N ns, long time) {
+  void deleteProcessingTimeTimer(K key, N ns, int64_t time) {
     processingTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  long currentWatermark() {
+  int64_t currentWatermark() {
     // TODO: Implement watermark logic if needed.
     if (eventTimeTimersQueue_.peek() != nullptr) {
       return eventTimeTimersQueue_.peek()->timestamp();
@@ -66,12 +66,12 @@ class InternalTimerService {
     return 0; // or some other default value
   }
 
-  long currentProcessingTime() {
+  int64_t currentProcessingTime() {
     // TODO: Implement processing time logic if needed.
     return 0; // or some other default value
   }
 
-  void advanceWatermark(long time) {
+  void advanceWatermark(int64_t time) {
     while (eventTimeTimersQueue_.peek() != nullptr &&
            eventTimeTimersQueue_.peek()->timestamp() <= time) {
       auto timer = eventTimeTimersQueue_.poll();
@@ -86,7 +86,7 @@ class InternalTimerService {
   }
 
  private:
-  void onProcessingTime(long time) {
+  void onProcessingTime(int64_t time) {
     std::string taskName = "";
     if (nextTimer_.has_value()) {
       taskName = nextTimer_.value();
@@ -106,11 +106,11 @@ class InternalTimerService {
     }
 
     if (!taskName.empty()) {
-      processingTimeService_->finish(taskName);
+      processingTimeService_->unregister(taskName);
     }
 
     if (timer != nullptr && !nextTimer_.has_value()) {
-      nextTimer_ = processingTimeService_->registerTimer(timer->timestamp(), ProcessingTimerTask(timer->timestamp(), [&](long processingTime) {
+      nextTimer_ = processingTimeService_->registerTimer(timer->timestamp(), ProcessingTimerTask(timer->timestamp(), [&](int64_t processingTime) {
         onProcessingTime(processingTime);
       }));
     }
@@ -118,7 +118,7 @@ class InternalTimerService {
 
   Triggerable<K, N>* triggerable_;
   std::optional<std::string> nextTimer_;
-  std::shared_ptr<ProcessingTimeSerivice> processingTimeService_;
+  std::shared_ptr<ProcessingTimeService> processingTimeService_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> eventTimeTimersQueue_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> processingTimeTimersQueue_;
 };

@@ -20,7 +20,7 @@
 
 namespace facebook::velox::stateful {
 
-void RecordsWindowBuffer::addElement(uint32_t key, long sliceEnd, RowVectorPtr& element) {
+void RecordsWindowBuffer::addElement(uint32_t key, int64_t sliceEnd, RowVectorPtr& element) {
   minSliceEnd_ = std::min(sliceEnd, minSliceEnd_);
   WindowKey windowKey(key, sliceEnd);
   auto it = buffer_.find(windowKey);
@@ -35,7 +35,7 @@ void RecordsWindowBuffer::addElement(uint32_t key, long sliceEnd, RowVectorPtr& 
   }
 }
 
-std::unordered_map<WindowKey, std::list<RowVectorPtr>>& RecordsWindowBuffer::advanceProgress(long progress) {
+std::unordered_map<WindowKey, std::list<RowVectorPtr>>& RecordsWindowBuffer::advanceProgress(int64_t progress) {
   if (TimeWindowUtil::isWindowFired(minSliceEnd_, progress, shiftTimeZone_)) {
     // there should be some window to be fired, flush buffer to state first
     return buffer_;

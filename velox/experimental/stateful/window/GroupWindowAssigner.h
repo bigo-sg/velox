@@ -27,7 +27,7 @@ namespace facebook::velox::stateful {
 template<typename W, typename = std::enable_if_t<std::is_base_of_v<Window, W>>>
 class GroupWindowAssigner {
  public:
-  virtual std::vector<W> assignWindows(RowVectorPtr element, long timestamp) = 0;
+  virtual std::vector<W> assignWindows(RowVectorPtr element, int64_t timestamp) = 0;
   virtual bool isEventTime() = 0;
 };
 
@@ -42,9 +42,9 @@ using GroupWindowAssignerPtr = std::shared_ptr<GroupWindowAssigner<TimeWindow>>;
 
 class SessionWindowAssigner : public MergingWindowAssigner {
  public:
-  SessionWindowAssigner(long gap, bool isEventTime);
+  SessionWindowAssigner(int64_t gap, bool isEventTime);
 
-  std::vector<TimeWindow> assignWindows(RowVectorPtr element, long timestamp) override;
+  std::vector<TimeWindow> assignWindows(RowVectorPtr element, int64_t timestamp) override;
 
   void mergeWindows(
       TimeWindow newWindow, std::set<TimeWindow>& sortedWindows, MergeResultCollector& callback);
@@ -57,7 +57,7 @@ class SessionWindowAssigner : public MergingWindowAssigner {
   TimeWindow mergeWindow(
       const TimeWindow& curWindow, const TimeWindow& other, std::set<TimeWindow>& mergedWindow);
 
-  long gap_;
+  int64_t gap_;
   bool isEventTime_;
 };
 

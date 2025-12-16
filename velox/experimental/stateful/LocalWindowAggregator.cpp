@@ -23,7 +23,7 @@ LocalWindowAggregator::LocalWindowAggregator(
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<KeySelector> sliceAssigner,
-    const long windowInterval,
+    const int64_t windowInterval,
     const bool useDayLightSaving,
     RowTypePtr outputType)
     : StatefulOperator(std::move(op), std::move(targets)),
@@ -59,7 +59,7 @@ void LocalWindowAggregator::getOutput() {
   input_.reset();
 }
 
-void LocalWindowAggregator::processWatermarkInternal(long timestamp) {
+void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
   if (timestamp > currentWatermark_) {
     currentWatermark_ = timestamp;
     if (currentWatermark_ >= nextTriggerWatermark_) {

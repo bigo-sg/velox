@@ -33,8 +33,8 @@ namespace facebook::velox::stateful {
 class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, long> {
  public:
   WindowAggregator(
-    std::unique_ptr<exec::Operator> localAggerator,
-    std::unique_ptr<exec::Operator> globalAggerator,
+    std::unique_ptr<exec::Operator> localAggregator,
+    std::unique_ptr<exec::Operator> globalAggregator,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
@@ -73,7 +73,7 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   template<typename K>
   void clearWindow(K key, long timerTimestamp, long windowEnd);
 
-  std::unique_ptr<exec::Operator> localAggerator_;
+  std::unique_ptr<exec::Operator> localAggregator_;
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<SliceAssigner> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
