@@ -109,27 +109,30 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
   // If source operator has no output, check whether it is finished.
   // If source is finished, return null and 1 for rerCode, else return null and 0 for retCode.
   // TODO: only support operators in a sequence mode.
-  for (;;) {
-    VELOX_CHECK_EQ(
-        state(), exec::TaskState::kRunning, "Task has already finished processing.");
+  VELOX_CHECK_EQ(
+      state(), exec::TaskState::kRunning, "Task has already finished processing.");
 
-    operatorChain_->getOutput();
-    if (pendings_.empty()) {
-      if (operatorChain_->isFinished()) {
-        finish();
-        // finish may trigger window flush and generate output.
-        if (pendings_.empty()) {
-          retCode = 1;
-          return nullptr;
-        }
-      } else if (operatorChain_->sourceEmpty()) {
+  operatorChain_->getOutput();
+  if (pendings_.empty()) {
+    if (operatorChain_->isFinished()) {
+      finish();
+      // finish may trigger window flush and generate output.
+      if (pendings_.empty()) {
+        retCode = 1;
         return nullptr;
-      } else {
-        continue;
       }
+    } else if (operatorChain_->sourceEmpty()) {
+      return nullptr;
+    } else {
+      return nullptr;
     }
     return std::move(popOutput());
   }
+
+  if (error()) {
+    std::rethrow_exception(error());
+  }
+  return nullptr;
 }
 
 void StatefulTask::addOutput(StreamElementPtr output) {
