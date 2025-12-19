@@ -17,7 +17,10 @@ if(${VELOX_BUILD_TESTING})
 endif()
 
 add_subdirectory(writer)
+add_subdirectory(reader)
 
-velox_add_library(velox_dwio_text_writer_register RegisterTextWriter.cpp)
+velox_add_library(velox_dwio_text_reader_writer_register RegisterTextReader.cpp
+                  RegisterTextWriter.cpp)
 
-velox_link_libraries(velox_dwio_text_writer_register velox_dwio_text_writer)
+velox_link_libraries(velox_dwio_text_reader_writer_register
+                     velox_dwio_text_reader_writer)

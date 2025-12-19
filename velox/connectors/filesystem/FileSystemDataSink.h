@@ -261,7 +261,6 @@ class FileSystemDataSink : public DataSink {
   void write(size_t index, RowVectorPtr input);
   // Compute the partition id for each row in 'input'.
   void computePartitionIds(const RowVectorPtr& input);
-
   void splitInputRowsAndEnsureWriters();
 
   const std::unique_ptr<dwio::common::Writer> createWriter(

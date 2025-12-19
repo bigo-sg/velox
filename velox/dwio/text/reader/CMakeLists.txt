@@ -11,17 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+velox_add_library(velox_dwio_text_reader TextReader.cpp)
 
-set(TEST_LINK_LIBS
-    velox_dwio_common_test_utils
-    velox_vector_test_lib
-    velox_exec_test_lib
-    velox_temp_path
-    GTest::gtest
-    GTest::gtest_main
-    GTest::gmock
-    gflags::gflags
-    glog::glog)
-
-add_subdirectory(writer)
-add_subdirectory(reader)
+velox_link_libraries(velox_dwio_text_reader velox_dwio_common fmt::fmt)

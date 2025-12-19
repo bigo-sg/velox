@@ -53,6 +53,7 @@
 #include "velox/experimental/stateful/StreamJoin.h"
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
+#include "velox/experimental/stateful/StreamLookupJoin.h"
 #include "velox/experimental/stateful/WindowJoin.h"
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
@@ -103,6 +104,9 @@ StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(
         std::move(op),
         partitionNode->partition()->partitionFunctionSpec(),
         numPartitions);
+  } else if (auto indexLookupJoinNode = 
+    std::dynamic_pointer_cast<const core::IndexLookupJoinNode>(statefulNode->node())) {
+    return std::make_unique<StreamLookupJoin>(std::move(op), std::move(targets));
   } else if (
       auto joinNode =
           std::dynamic_pointer_cast<const StreamJoinNode>(statefulNode->node())) {

@@ -16,6 +16,7 @@
 #pragma once
 
 #include "velox/connectors/Connector.h"
+#include "velox/connectors/filesystem/FileSystemDataSink.h"
 
 namespace facebook::velox::connector::filesystem {
 
@@ -35,6 +36,18 @@ class FileSystemConnector : public Connector {
           columnHandles,
       ConnectorQueryCtx* connectorQueryCtx) override;
 
+  std::shared_ptr<IndexSource> createIndexSource(
+      const RowTypePtr& inputType,
+      size_t numJoinKeys,
+      const std::vector<std::shared_ptr<core::IndexLookupCondition>>&
+          joinConditions,
+      const RowTypePtr& outputType,
+      const std::shared_ptr<ConnectorTableHandle>& tableHandle,
+      const std::unordered_map<
+          std::string,
+          std::shared_ptr<connector::ColumnHandle>>& columnHandles,
+      ConnectorQueryCtx* connectorQueryCtx) override;
+
   std::unique_ptr<DataSink> createDataSink(
       RowTypePtr inputType,
       std::shared_ptr<ConnectorInsertTableHandle> connectorInsertTableHandle,
@@ -43,6 +56,10 @@ class FileSystemConnector : public Connector {
 
   bool canAddDynamicFilter() const override {
     return false;
+  }
+
+  bool supportsIndexLookup() const override {
+    return true;
   }
 
   const std::shared_ptr<const config::ConfigBase>& connectorConfig()

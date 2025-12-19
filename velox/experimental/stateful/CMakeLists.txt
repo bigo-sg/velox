@@ -28,6 +28,7 @@ velox_add_library(
   StatefulOperator.cpp
   StreamPartition.cpp
   StreamJoin.cpp
+  StreamLookupJoin.cpp
   StreamKeyedOperator.cpp
   WindowJoin.cpp
   KeySelector.cpp

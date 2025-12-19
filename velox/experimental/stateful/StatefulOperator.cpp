@@ -17,8 +17,6 @@
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 void StatefulOperator::initialize() {
