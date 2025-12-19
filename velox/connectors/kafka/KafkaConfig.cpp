@@ -21,7 +21,7 @@ namespace facebook::velox::connector::kafka {
 template <typename T, bool throwException>
 const T KafkaConfig::checkAndGetConfigValue(
     const std::string& configKey,
-    T defaultValue) const {
+    const T& defaultValue) const {
   std::optional<T> configValue =
       static_cast<std::optional<T>>(config_->get<T>(configKey));
   if constexpr (throwException) {

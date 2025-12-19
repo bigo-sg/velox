@@ -56,7 +56,7 @@ class KafkaConfig {
  protected:
   ConfigPtr config_;
   template <typename T, bool throwException>
-  const T checkAndGetConfigValue(const std::string& configKey, T defaultValue) const;
+  const T checkAndGetConfigValue(const std::string& configKey, const T& defaultValue) const;
 };
 
 /// Kafka connector config.

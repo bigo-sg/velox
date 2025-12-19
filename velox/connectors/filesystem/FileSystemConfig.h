@@ -97,7 +97,7 @@ class FileSystemWriteConfig {
   ConfigPtr config_;
 
   template <typename T, bool throwException>
-  const T checkAndGetConfigValue(const std::string& configKey, T defaultValue)
+  const T checkAndGetConfigValue(const std::string& configKey, const T& defaultValue)
       const;
 };
 } // namespace facebook::velox::connector::filesystem

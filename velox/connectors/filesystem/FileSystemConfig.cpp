@@ -22,7 +22,7 @@ namespace facebook::velox::connector::filesystem {
 template <typename T, bool throwException>
 const T FileSystemWriteConfig::checkAndGetConfigValue(
     const std::string& configKey,
-    T defaultValue) const {
+    const T& defaultValue) const {
   std::optional<T> configValue =
       static_cast<std::optional<T>>(config_->get<T>(configKey));
   if constexpr (throwException) {
