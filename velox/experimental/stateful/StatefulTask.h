@@ -63,7 +63,7 @@ class StatefulTask : public exec::Task {
 
   void snapshotState();
 
-  void notifyCheckpointComplete(long checkpointId);
+  std::vector<std::string> notifyCheckpointComplete(long checkpointId);
 
   void notifyCheckpointAborted(long checkpointId);
 
@@ -102,5 +102,4 @@ class StatefulTask : public exec::Task {
   // The state backend used by this task.
   std::unique_ptr<StateBackend> statebackend_;
 };
-
 } // namespace facebook::velox::stateful

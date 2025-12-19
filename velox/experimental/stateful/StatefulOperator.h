@@ -50,7 +50,7 @@ class StatefulOperator {
 
   void snapshotState();
 
-  void notifyCheckpointComplete(long checkpointId);
+  std::vector<std::string> notifyCheckpointComplete(long checkpointId);
 
   void notifyCheckpointAborted(long checkpointId);
 
