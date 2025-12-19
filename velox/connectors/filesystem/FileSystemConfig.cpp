@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/filesystem/FileSystemConfig.h"
+#include <dwio/common/Options.h>
 
 namespace facebook::velox::connector::filesystem {
 
@@ -28,7 +29,7 @@ const T FileSystemWriteConfig::checkAndGetConfigValue(
     VELOX_CHECK_EQ(
         configValue.has_value(),
         true,
-        "Kafka config {} has no specified value.",
+        "FileSystem config {} has no specified value.",
         configKey);
   }
   if (configValue.has_value()) {
@@ -38,8 +39,13 @@ const T FileSystemWriteConfig::checkAndGetConfigValue(
   }
 }
 
-const std::string FileSystemWriteConfig::getFormat() {
-  return checkAndGetConfigValue<std::string, false>(kFormat, "");
+const dwio::common::FileFormat FileSystemWriteConfig::getFormat() {
+  const std::string format = checkAndGetConfigValue<std::string, false>(kFormat, "");
+  if (supportedFileFormats.find(format) != supportedFileFormats.end()) {
+    return supportedFileFormats.at(format);
+  } else {
+    VELOX_FAIL("Format {} not supported for filesystem sink.", format);
+  }
 }
 
 const std::string FileSystemWriteConfig::getPath() {

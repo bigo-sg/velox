@@ -40,7 +40,7 @@ KafkaDataSource::KafkaDataSource(
   if (kafkaTableHandle) {
     const std::unordered_map<std::string, std::string>& tableParams =
         kafkaTableHandle->tableParameters();
-    config_ = config_->setConfigs<ConnectionConfig>(tableParams);
+    config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(tableParams);
   } else {
     VELOX_FAIL(
         "The table handle {} is not supported for kafka data source.",

@@ -223,6 +223,7 @@ class FileSystemDataSink : public DataSink {
   const std::shared_ptr<FileSystemInsertTableHandle> insertTableHandle_;
   const ConnectorQueryCtx* queryCtx_;
   const FileSystemWriteConfigPtr writeConfig_;
+  const std::unordered_map<std::string, dwio::common::FileFormat> fileFormats_;
 
   // Below are structures for partitions from all inputs. writerInfo_ and
   // writers_ are both indexed by partitionId.

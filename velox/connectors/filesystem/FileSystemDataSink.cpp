@@ -40,7 +40,7 @@ RowTypePtr getNonPartitionTypes(
   const auto& dataSize = dataCols.size();
   childNames.reserve(dataSize);
   childTypes.reserve(dataSize);
-  for (int dataCol : dataCols) {
+  for (const auto & dataCol : dataCols) {
     childNames.push_back(inputType->nameOf(dataCol));
     childTypes.push_back(inputType->childAt(dataCol));
   }
@@ -62,14 +62,6 @@ std::vector<column_index_t> getNonPartitionChannels(
     }
   }
   return dataChannels;
-}
-
-dwio::common::FileFormat getFileFormat(const std::string& format) {
-  if (format == "csv") {
-    return dwio::common::FileFormat::TEXT;
-  } else {
-    VELOX_UNSUPPORTED("File format {} not supported.", format);
-  }
 }
 
 FileSystemDataSink::FileSystemDataSink(
@@ -98,8 +90,7 @@ FileSystemDataSink::FileSystemDataSink(
               : nullptr),
       dataChannels_(
           getNonPartitionChannels(partitionChannels_, inputType_->size())),
-      writerFactory_(dwio::common::getWriterFactory(
-          getFileFormat(writeConfig_->getFormat()))),
+      writerFactory_(dwio::common::getWriterFactory(writeConfig_->getFormat())),
       fileNameGenerator_(std::make_shared<const FsFileNameGenerator>(
           queryCtx_->sessionProperties()->get<std::string>("query_uuid", ""),
           "",
