@@ -15,7 +15,7 @@
  */
 #pragma once
 
-#include <common/base/Exceptions.h>
+#include "velox/common/base/Exceptions.h"
 #include <algorithm>
 #include <string>
 
