@@ -126,13 +126,8 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
     } else {
       return nullptr;
     }
-    return std::move(popOutput());
   }
-
-  if (error()) {
-    std::rethrow_exception(error());
-  }
-  return nullptr;
+  return std::move(popOutput());
 }
 
 void StatefulTask::addOutput(StreamElementPtr output) {
@@ -153,8 +148,8 @@ void StatefulTask::snapshotState() {
   operatorChain_->snapshotState();
 }
 
-void StatefulTask::notifyCheckpointComplete(long checkpointId) {
-  operatorChain_->notifyCheckpointComplete(checkpointId);
+std::vector<std::string> StatefulTask::notifyCheckpointComplete(long checkpointId) {
+  return operatorChain_->notifyCheckpointComplete(checkpointId);
 }
 
 void StatefulTask::notifyCheckpointAborted(long checkpointId) {

@@ -230,6 +230,8 @@ class Operator : public BaseRuntimeStatWriter {
   /// @param input Non-empty input vector.
   virtual void addInput(RowVectorPtr input) = 0;
 
+  virtual std::vector<std::string> commit(int64_t id) { return {}; }
+
   /// Informs 'this' that addInput will no longer be called. This means
   /// that any partial state kept by 'this' should be returned by
   /// the next call(s) to getOutput. Not used if operator is a source operator,
