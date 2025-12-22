@@ -39,7 +39,7 @@ const T FileSystemConfig::checkAndGetConfigValue(
   }
 }
 
-const dwio::common::FileFormat FileSystemWriteConfig::getFormat() {
+const dwio::common::FileFormat FileSystemConfig::getFormat() {
   const std::string format = checkAndGetConfigValue<std::string, false>(kFormat, "");
   if (supportedFileFormats.find(format) != supportedFileFormats.end()) {
     return supportedFileFormats.at(format);
@@ -48,7 +48,7 @@ const dwio::common::FileFormat FileSystemWriteConfig::getFormat() {
   }
 }
 
-const std::string FileSystemWriteConfig::getPath() {
+const std::string FileSystemConfig::getPath() {
   return checkAndGetConfigValue<std::string, false>(kPath, "");
 }
 

@@ -30,6 +30,12 @@ class FileSystemConfig {
 
   static constexpr const char* kPath = "path";
   static constexpr const char* kFormat = "format";
+  /// The supported file format to write
+  const std::unordered_map<std::string, dwio::common::FileFormat> supportedFileFormats = {
+    {"csv", dwio::common::FileFormat::TEXT},
+    {"parquet", dwio::common::FileFormat::PARQUET},
+    {"orc", dwio::common::FileFormat::ORC}
+  };
 
   const std::string getPath();
   const dwio::common::FileFormat getFormat();
@@ -79,15 +85,7 @@ class FileSystemWriteConfig : public FileSystemConfig {
       "partition.time-extractor.timestamp-pattern";
   /// The default value of max partitions per writer.
   static constexpr const int32_t defaultMaxPartitionsPerWriter = 65535;
-  /// The supported file format to write
-  const std::unordered_map<std::string, dwio::common::FileFormat> supportedFileFormats = {
-    {"csv", dwio::common::FileFormat::TEXT},
-    {"parquet", dwio::common::FileFormat::PARQUET},
-    {"orc", dwio::common::FileFormat::ORC}
-  };
 
-  const std::string getPath();
-  const dwio::common::FileFormat getFormat();
   const bool allowNullPartitionKeys() {
     return false;
   }
