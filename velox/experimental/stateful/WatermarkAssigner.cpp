@@ -15,8 +15,6 @@
  */
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 WatermarkAssigner::WatermarkAssigner(

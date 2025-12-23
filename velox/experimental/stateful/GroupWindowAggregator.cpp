@@ -82,12 +82,12 @@ void GroupWindowAggregator::getOutput() {
   }
 
   // 1. Partition input by key
-  std::map<uint64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
+  std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, keyedData] : keyToData) {
     // 2. Set the current key in the context
     windowContext_->setCurrentKey(key);
     // 3. Partition the keyed data by rowtime or processing time
-    std::map<uint64_t, RowVectorPtr> timestampToData = sliceAssigner_->assignSliceEnd(keyedData);
+    std::map<int64_t, RowVectorPtr> timestampToData = sliceAssigner_->assignSliceEnd(keyedData);
     for (const auto& [timestamp, data] : timestampToData) {
       // 4. Assign data to window
       std::vector<TimeWindow> windows = 

@@ -67,16 +67,14 @@ void WindowAggregator::getOutput() {
     return;
   }
 
-  std::map<uint64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
+  std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<uint64_t, RowVectorPtr> sliceEndToData =
-        sliceAssigner_->assignSliceEnd(data);
+    std::map<int64_t, RowVectorPtr> sliceEndToData = sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       auto windowData = data;
       if (!isEventTime_) {
         windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd);
       }
-
       if (isEventTime_ && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
         // the assigned slice has been triggered, which means current element is late,
         // but maybe not need to drop
@@ -102,7 +100,6 @@ void WindowAggregator::getOutput() {
       }
     }
   }
-
   input_.reset();
 }
 

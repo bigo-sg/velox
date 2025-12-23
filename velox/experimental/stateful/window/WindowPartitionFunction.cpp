@@ -15,6 +15,7 @@
  */
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
+#include "velox/experimental/stateful/window/Window.h"
 #include "velox/vector/FlatVector.h"
 
 #include <numeric>
@@ -58,10 +59,10 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
     auto child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
     int64_t timestamp = ts.getSeconds() * 1'000 + ts.getNanos() / 1'000'000;
-    if (windowType_ == 0) { // Hopping window
+    if (Window::getType(windowType_) == WindowType::HOP) { // Hopping window
       int64_t start = TimeWindowUtil::getWindowStartWithOffset(timestamp, offset_, sliceSize_);
       partitions[i] = start + sliceSize_;
-    } else if (windowType_ == 1) { // Windowed Slice Assigner
+    } else if (Window::getType(windowType_) == WindowType::TUMBLE) { // Windowed Slice Assigner
       partitions[i] = timestamp;
     } else {
       VELOX_UNSUPPORTED("Unsupported window type: {}", windowType_);

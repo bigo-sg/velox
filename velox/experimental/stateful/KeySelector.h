@@ -22,7 +22,7 @@
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink KeySelector.
+/// This class is relevant to flink KeySelector.
 /// It can partition the RowVector according to the key fields.
 class KeySelector {
  public:
@@ -31,7 +31,7 @@ class KeySelector {
       memory::MemoryPool* pool,
       int numPartitions = 1024);
 
-  std::map<uint64_t, RowVectorPtr> partition(const RowVectorPtr& input);
+  std::map<int64_t, RowVectorPtr> partition(const RowVectorPtr& input);
 
  private:
   void prepareForInput(const RowVectorPtr& input);

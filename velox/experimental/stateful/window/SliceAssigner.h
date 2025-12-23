@@ -31,7 +31,7 @@ class SliceAssigner {
       WindowType windowType,
       int rowtimeIndex);
 
-  std::map<uint64_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
+  std::map<int64_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
 
   int64_t getLastWindowEnd(int64_t sliceEnd);
 

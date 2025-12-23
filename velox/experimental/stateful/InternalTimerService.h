@@ -42,15 +42,16 @@ class InternalTimerService {
 
   void registerProcessingTimeTimer(K key, N ns, int64_t time) {
     std::shared_ptr<TimerHeapInternalTimer<K, N>> oldHead = processingTimeTimersQueue_.peek();
-    processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
-    int64_t nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<int64_t>::max() ;
-    if (time < nextTriggerTime) {
-      if (nextTimer_.has_value()) {
-        processingTimeService_->cancel(nextTimer_.value());
+    if (processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns))) {
+      int64_t nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<int64_t>::max() ;
+      if (time < nextTriggerTime) {
+        if (nextTimer_.has_value()) {
+          processingTimeService_->cancel(nextTimer_.value());
+        }
+        nextTimer_ = processingTimeService_->registerTimer(time, ProcessingTimerTask(time, [&](int64_t processingTime) {
+          onProcessingTime(processingTime);
+        }));
       }
-      nextTimer_ = processingTimeService_->registerTimer(time, ProcessingTimerTask(time, [&](int64_t processingTime) {
-        onProcessingTime(processingTime);
-      }));
     }
   }
 
@@ -120,7 +121,7 @@ class InternalTimerService {
   std::optional<std::string> nextTimer_;
   std::shared_ptr<ProcessingTimeService> processingTimeService_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> eventTimeTimersQueue_;
-  HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> processingTimeTimersQueue_;
+  HeapPriorityQueueSet<std::shared_ptr<TimerHeapInternalTimer<K, N>>, HeapTimerHasher<K, N>, HeapTimerComparator<K, N>> processingTimeTimersQueue_;
 };
 
 } // namespace facebook::velox::stateful

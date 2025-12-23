@@ -15,19 +15,22 @@
  */
 #pragma once
 
+#include "velox/common/base/BitUtil.h"
+#include <memory>
+
 namespace facebook::velox::stateful {
 
 // This class is relevent to flink InternalTimerServiceImpl.
 template<typename K, typename N>
-class TimerHeapInternalTimer {
+class TimerHeapInternalTimer { 
  public:
-  TimerHeapInternalTimer(long timestamp, K key, N ns)
+  TimerHeapInternalTimer(int64_t timestamp, K key, N ns)
      : timestamp_(timestamp),
        key_(key),
        ns_(ns),
        keyGroupIndex_(0) {}
 
-  long timestamp() {
+  int64_t timestamp() {
     return timestamp_;
   }
 
@@ -49,10 +52,24 @@ class TimerHeapInternalTimer {
         ns_ == other.ns_;
   }
  private:
-  long timestamp_;
+  int64_t timestamp_;
   K key_;
   N ns_;
   int keyGroupIndex_;
+};
+
+template<typename K, typename N>
+struct HeapTimerHasher {
+  size_t operator() (const std::shared_ptr<TimerHeapInternalTimer<K, N>>& a) const {
+    return bits::hashMix(a->timestamp(), a->key());
+  }
+};
+
+template<typename K, typename N>
+struct HeapTimerComparator {
+  bool operator() (const std::shared_ptr<TimerHeapInternalTimer<K, N>>& a, const std::shared_ptr<TimerHeapInternalTimer<K, N>>& b) const {
+    return *a == *b;
+  }
 };
 
 } // namespace facebook::velox::stateful

@@ -36,7 +36,7 @@ SliceAssigner::SliceAssigner(
   sliceSize_ = std::gcd(size, step);
 }
 
-std::map<uint64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
+std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
     // TODO: using Processing Time Service
     int64_t timestamp_ms = TimeWindowUtil::getCurrentProcessingTime();
