@@ -18,7 +18,7 @@
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
 #include <climits>
-#include <map>
+#include <mutex>
 
 namespace facebook::velox::stateful {
 
@@ -44,6 +44,7 @@ class RecordsWindowBuffer : public WindowBuffer {
   std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(int64_t progress) override;
 
   void clear() override {
+    std::lock_guard<std::mutex> lock(mtx);
     buffer_.clear();
     minSliceEnd_ = INT64_MAX;
   }
@@ -55,6 +56,7 @@ class RecordsWindowBuffer : public WindowBuffer {
   std::unordered_map<WindowKey, std::list<RowVectorPtr>> empty_;
   int64_t minSliceEnd_ = INT64_MAX;
   int shiftTimeZone_ = 0; // TODO: support time zone shift
+  mutable std::mutex mtx;
 };
 
 } // namespace facebook::velox::stateful

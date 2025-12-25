@@ -142,6 +142,7 @@ public:
     for (auto& map : deduplicationMapsByKeyGroup) {
       map.clear();
     }
+    deduplicationMapsByKeyGroup.clear();
   }
 private:
   mutable std::vector<std::unordered_map<T, T, H, C>> deduplicationMapsByKeyGroup;

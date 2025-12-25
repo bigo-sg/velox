@@ -15,10 +15,7 @@
  */
 #pragma once
 
-#include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/state/StateMap.h"
-#include <iostream>
-#include <map>
 #include <vector>
 
 namespace facebook::velox::stateful {

@@ -17,6 +17,7 @@
 
 #include "velox/experimental/stateful/state/StateEntry.h"
 
+#include <memory>
 #include <vector>
 
 namespace facebook::velox::stateful {

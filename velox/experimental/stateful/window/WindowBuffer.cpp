@@ -23,6 +23,7 @@ namespace facebook::velox::stateful {
 void RecordsWindowBuffer::addElement(uint32_t key, int64_t sliceEnd, RowVectorPtr& element) {
   minSliceEnd_ = std::min(sliceEnd, minSliceEnd_);
   WindowKey windowKey(key, sliceEnd);
+  std::lock_guard<std::mutex> lock(mtx);
   auto it = buffer_.find(windowKey);
   if (it != buffer_.end()) {
     // If the key already exists, we can append the element to the existing list.

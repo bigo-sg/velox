@@ -270,6 +270,7 @@ void WindowAggregator::close() {
     localAggregator_->close();
   }
   input_.reset();
+  windowTimerService_->close();
   windowBuffer_->clear();
   windowState_->clear();
   currentProgress_ = 0;
