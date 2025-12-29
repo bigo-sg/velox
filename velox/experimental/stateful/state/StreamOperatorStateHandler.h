@@ -85,8 +85,12 @@ class StreamOperatorStateHandler {
   // TODO: should make it using template
   std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> createGroupWindowAggTimerService(
     Triggerable<uint32_t, TimeWindow>* triggerable) {
-  return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
-}
+    return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
+  }
+
+  void setCurrentKey(uint32_t key) {
+    keyedStateBackend_->setCurrentKey(key);
+  }
 
  private:
   int operatorId_;

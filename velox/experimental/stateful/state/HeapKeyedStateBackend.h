@@ -15,7 +15,6 @@
  */
 #pragma once
 
-#include "velox/common/serialization/Serializable.h"
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 
 namespace facebook::velox::stateful {

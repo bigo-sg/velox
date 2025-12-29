@@ -15,28 +15,21 @@
  */
 #pragma once
 
-#include <string>
-
 namespace facebook::velox::stateful {
 
-// This class is relevant to flink org.apache.flink.api.common.StateDescriptor.
-class StateDescriptor {
- public:
-  StateDescriptor(const std::string& name) : name_(name) {}
+template<typename K>
+class InternalKeyContext {
+public:
+    K getCurrentKey() {
+        return currentKey_;
+    }
 
-  const std::string name() const {
-    return name_;
-  }
+    void setCurrentKey(K key) {
+        currentKey_ = key;
+    }
 
-  int keyGroupNumber() const {
-    return keyGroupNumber_;
-  }
-
- protected:
-
- private:
-  const std::string name_;
-  int keyGroupNumber_ = 1024;
+private:
+    K currentKey_;
 };
 
 } // namespace facebook::velox::stateful

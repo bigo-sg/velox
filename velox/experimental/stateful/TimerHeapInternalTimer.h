@@ -66,9 +66,16 @@ struct HeapTimerHasher {
 };
 
 template<typename K, typename N>
-struct HeapTimerComparator {
+struct HeapTimerEquals {
   bool operator() (const std::shared_ptr<TimerHeapInternalTimer<K, N>>& a, const std::shared_ptr<TimerHeapInternalTimer<K, N>>& b) const {
     return *a == *b;
+  }
+};
+
+template<typename K, typename N>
+struct HeapTimerComparator {
+  bool operator() (const std::shared_ptr<TimerHeapInternalTimer<K, N>>& a, const std::shared_ptr<TimerHeapInternalTimer<K, N>> b) const {
+    return a->timestamp() < b->timestamp();
   }
 };
 

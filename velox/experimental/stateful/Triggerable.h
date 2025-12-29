@@ -16,7 +16,6 @@
 #pragma once
 
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
-#include "velox/vector/ComplexVector.h"
 
 #include <memory>
 

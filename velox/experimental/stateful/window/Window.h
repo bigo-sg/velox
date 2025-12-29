@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Exceptions.h"
 #include <algorithm>
 #include <string>
@@ -92,6 +93,10 @@ class TimeWindow : public Window {
   // Add for checking whether the window is in state.
   bool valid() const {
     return start_ >= 0 && end_ >= start_;
+  }
+
+  uint64_t hashCode() {
+    return bits::hashMix(end_, start_);
   }
 
   private:

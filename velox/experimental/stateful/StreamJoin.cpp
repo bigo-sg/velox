@@ -15,9 +15,6 @@
  */
 #include "velox/experimental/stateful/StreamJoin.h"
 #include "velox/experimental/stateful/join/JoinRecordStateViews.h"
-#include "velox/expression/Expr.h"
-
-#include <iostream>
 
 namespace facebook::velox::stateful {
 

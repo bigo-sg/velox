@@ -16,7 +16,6 @@
 #pragma once
 
 #include <algorithm>
-#include <vector>
 
 namespace facebook::velox::stateful {
 
@@ -24,134 +23,234 @@ namespace facebook::velox::stateful {
 template<typename T>
 class InternalPriorityQueue {
  public:
-  virtual bool add(T toAdd) = 0;
+  virtual bool add(const T& toAdd) = 0;
+
+  virtual bool add(T&& toAdd) = 0;
 
   virtual T poll() = 0;
 
-  virtual T peek() = 0;
+  virtual T& peek() = 0;
 
   virtual void clear() = 0;
 
   virtual bool empty() const = 0;
 
-  virtual void remove(T toRemove) = 0;
+  virtual bool remove(const T& toRemove) = 0;
+
+  virtual size_t size() const = 0;
+
+  virtual bool contains(const T& value) const = 0;
 };
 
-// This class is relevant to flink HeapPriorityQueue.
-// TODO: need to make it equal to flink
-template<typename T>
+template <
+    typename T,
+    typename Compare = std::less<T>,
+    typename Hash = std::hash<T>,
+    typename EqualTo = std::equal_to<T>>
 class HeapPriorityQueue : public InternalPriorityQueue<T> {
  public:
-  HeapPriorityQueue() {
-    queue_.resize(1024); // Initial capacity, can be adjusted
+  explicit HeapPriorityQueue(const Compare& comp = Compare())
+      : comparator_(comp) {}
+
+  /// Constructs a priority queue with elements from the range [first, last).
+  template <typename InputIt>
+  HeapPriorityQueue(InputIt first, InputIt last, const Compare& comp = Compare())
+      : comparator_(comp), heap_(first, last) {
+    buildHeap();
   }
 
-  bool add(T toAdd) override {
-    // Implementation for adding to the priority queue set
-    queue_[size_] = toAdd;
-    size_++;
-    if (size_ >= queue_.size()) {
-      size_ = 0;
-    }
+  /// Returns the top element without removing it.
+  /// Throws if the queue is empty.
+  T& peek() override {
+    VELOX_CHECK(!empty(), "Cannot peek from an empty priority queue");
+    return heap_[0];
+  }
+
+  /// Removes and returns the top element.
+  /// Throws if the queue is empty.
+  T poll() override {
+    VELOX_CHECK(!empty(), "Cannot poll from an empty priority queu");
+    T top = std::move(heap_[0]);
+    removeAt(0);
+    return top;
+  }
+
+  /// Adds an element to the queue.
+  bool add(const T& value) override {
+    addImpl(value);
     return true;
   }
 
-  T poll() override {
-    // Implementation for polling from the priority queue set
-    size_--;
-    if (size_ < 0) {
-      size_ = queue_.size() - 1;
-    }
-    return queue_[size_];
+  /// Adds an element to the queue (move version).
+  bool add(T&& value) override {
+    addImpl(std::move(value));
+    return true;
   }
 
-  T peek() override {
-    int index = size_ - 1;
-    if (index < 0) {
-      index = queue_.size() - 1;
-    }
-    return queue_[index];
-  }
-
-  void clear() override {
-    queue_.clear();
-    size_ = 0;
-  }
-
-  bool empty() const override {
-    return size_ == 0;
-  }
-
-  void remove(T toRemove) override {
-    // Implementation for removing an element from the priority queue set
-    auto it = std::find(queue_.begin(), queue_.end(), toRemove);
-    if (it != queue_.end()) {
-      *it = queue_[size_ - 1]; // Replace with the last element
-      size_--;
-      if (size_ < 0) {
-        size_ = queue_.size() - 1;
-      }
-    }
-  }
- private:
-  std::vector<T> queue_;
-  int size_ = 0;
-};
-
-// This class is relevant to flink HeapPriorityQueueSet.
-template<typename T, typename H, typename C>
-class HeapPriorityQueueSet : public HeapPriorityQueue<T> {
-
-public:
-  HeapPriorityQueueSet() : HeapPriorityQueue<T>() {
-    deduplicationMapsByKeyGroup.resize(1);
-  }
-
-  T poll() override {
-    T t = HeapPriorityQueue<T>::poll();
-    std::unordered_map<T, T, H, C>& deduplicateMap = getDedupMapForElement(t);
-    auto it = deduplicateMap.find(t);
-    if (it != deduplicateMap.end()) {
-      deduplicateMap.erase(it);
-    }
-    return t;
-  }
-
-  bool add(T t) override {
-    std::unordered_map<T, T, H, C>& deduplicateMap = getDedupMapForElement(t);
-    if (deduplicateMap.find(t) == deduplicateMap.end()) {
-      HeapPriorityQueue<T>::add(t);
-      deduplicateMap.insert({t, t});
-      return true;
-    } else {
+  /// Removes the first occurrence of the specified element from the queue.
+  /// Returns true if the element was found and removed, false otherwise.
+  bool remove(const T& value) override {
+    auto it = valueToIndex_.find(value);
+    if (it == valueToIndex_.end()) {
       return false;
     }
+    removeAt(it->second);
+    return true;
   }
 
-  void remove(T t) override {
-    std::unordered_map<T, T, H, C>& deduplicateMap = getDedupMapForElement(t);
-    auto it = deduplicateMap.find(t);
-    if (it != deduplicateMap.end()) {
-      deduplicateMap.erase(it);
-      HeapPriorityQueue<T>::remove(t);
+  /// Adds all elements from the range [first, last) to the queue.
+  template <typename InputIt>
+  void addAll(InputIt first, InputIt last) {
+    for (auto it = first; it != last; ++it) {
+      add(*it);
     }
   }
 
+  /// Adds all elements from the container to the queue.
+  template <typename Container>
+  void addAll(const Container& container) {
+    addAll(container.begin(), container.end());
+  }
+
+  /// Returns the number of elements in the queue.
+  size_t size() const override {
+    return heap_.size();
+  }
+
+  /// Returns true if the queue is empty.
+  bool empty() const override {
+    return heap_.empty();
+  }
+
+  /// Removes all elements from the queue.
   void clear() override {
-    HeapPriorityQueue<T>::clear();
-    for (auto& map : deduplicationMapsByKeyGroup) {
-      map.clear();
-    }
-    deduplicationMapsByKeyGroup.clear();
+    heap_.clear();
+    valueToIndex_.clear();
   }
-private:
-  mutable std::vector<std::unordered_map<T, T, H, C>> deduplicationMapsByKeyGroup;
-  // KeyExtractorFunction<T> keyExtrator;
-  // KeyGroupRange keyGroupRange
 
-  //TODO: get deDuplicationMap by keyGroupRange
-  std::unordered_map<T, T, H, C>& getDedupMapForElement(T element) {
-    return deduplicationMapsByKeyGroup[0];
+  /// Returns true if the queue contains the specified element.
+  bool contains(const T& value) const {
+    return valueToIndex_.find(value) != valueToIndex_.end();
+  }
+
+ private:
+  Compare comparator_;
+  std::vector<T> heap_;
+  std::unordered_map<T, size_t, Hash, EqualTo> valueToIndex_;
+
+  void addImpl(const T& value) {
+    // Check if value already exists
+    if (valueToIndex_.find(value) != valueToIndex_.end()) {
+      // Update existing element
+      size_t index = valueToIndex_[value];
+      heap_[index] = value;
+      // Re-heapify from this position
+      percolateUp(index);
+      percolateDown(index);
+    } else {
+      // Add new element
+      size_t index = heap_.size();
+      heap_.push_back(value);
+      valueToIndex_[value] = index;
+      percolateUp(index);
+    }
+  }
+
+  void addImpl(T&& value) {
+    // Check if value already exists
+    auto it = valueToIndex_.find(value);
+    if (it != valueToIndex_.end()) {
+      // Update existing element
+      size_t index = it->second;
+      heap_[index] = std::move(value);
+      // Re-heapify from this position
+      percolateUp(index);
+      percolateDown(index);
+    } else {
+      // Add new element
+      size_t index = heap_.size();
+      heap_.push_back(std::move(value));
+      valueToIndex_[heap_.back()] = index;
+      percolateUp(index);
+    }
+  }
+
+  void removeAt(size_t index) {
+    if (index >= heap_.size()) {
+      return;
+    }
+
+    // Remove from valueToIndex_
+    valueToIndex_.erase(heap_[index]);
+
+    if (index == heap_.size() - 1) {
+      // Removing the last element
+      heap_.pop_back();
+      return;
+    }
+
+    // Move last element to the removed position
+    T last = std::move(heap_.back());
+    heap_.pop_back();
+    heap_[index] = std::move(last);
+    valueToIndex_[heap_[index]] = index;
+
+    // Re-heapify
+    percolateUp(index);
+    percolateDown(index);
+  }
+
+  void percolateUp(size_t index) {
+    while (index > 0) {
+      size_t parent = (index - 1) / 2;
+      if (!comparator_(heap_[index], heap_[parent])) {
+        break;
+      }
+      swapElements(index, parent);
+      index = parent;
+    }
+  }
+
+  void percolateDown(size_t index) {
+    while (true) {
+      size_t left = 2 * index + 1;
+      size_t right = 2 * index + 2;
+      size_t smallest = index;
+
+      if (left < heap_.size() && comparator_(heap_[left], heap_[smallest])) {
+        smallest = left;
+      }
+      if (right < heap_.size() && comparator_(heap_[right], heap_[smallest])) {
+        smallest = right;
+      }
+
+      if (smallest == index) {
+        break;
+      }
+
+      swapElements(index, smallest);
+      index = smallest;
+    }
+  }
+
+  void swapElements(size_t i, size_t j) {
+    std::swap(heap_[i], heap_[j]);
+    valueToIndex_[heap_[i]] = i;
+    valueToIndex_[heap_[j]] = j;
+  }
+
+  void buildHeap() {
+    // Build index map
+    valueToIndex_.clear();
+    for (size_t i = 0; i < heap_.size(); ++i) {
+      valueToIndex_[heap_[i]] = i;
+    }
+
+    // Build heap from the bottom up
+    for (int i = static_cast<int>(heap_.size()) / 2 - 1; i >= 0; --i) {
+      percolateDown(static_cast<size_t>(i));
+    }
   }
 };
+
 } // namespace facebook::velox::stateful

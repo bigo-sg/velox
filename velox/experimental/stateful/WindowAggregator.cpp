@@ -193,6 +193,7 @@ RowVectorPtr addWindowTimestampToOutput(
 }
 
 void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+  stateHandler()->setCurrentKey(timer->key());
   fireWindow(timer->key(), timer->timestamp(), timer->ns());
   clearWindow(timer->key(), timer->timestamp(), timer->ns());
 }
@@ -234,7 +235,7 @@ void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32
 }
 
 void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
-  if (timer->timestamp() >= lastTriggeredProcessingTime_) {
+  if (timer->timestamp() > lastTriggeredProcessingTime_) {
     lastTriggeredProcessingTime_ = timer->timestamp();
     auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());
     for (const auto& [windowKey, datas] : windowKeyToData) {
@@ -254,8 +255,8 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<u
       }
     }
     windowBuffer_->clear();
-    onTimer(timer);
   }
+  onTimer(timer);
 }
 
 long WindowAggregator::sliceStateMergeTarget(long sliceToMerge) {

@@ -15,13 +15,12 @@
  */
 #pragma once
 
-#include "velox/common/serialization/Serializable.h"
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink org.apache.flink.runtime.state.hashmap.HashMapStateBackend.
+// This class is relevant to flink org.apache.flink.runtime.state.hashmap.HashMapStateBackend.
 class HashMapStateBackend : public StateBackend {
  public:
   std::string getName() const {

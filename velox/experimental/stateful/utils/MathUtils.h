@@ -15,38 +15,18 @@
  */
 #pragma once
 
-#include <algorithm>
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
-/**
- * This class is relevent to flink org.apache.flink.runtime.state.heap.StateMap.
- * remove namespace first. It is a simplified implementation.
- * @param <K> type of key
- * @param <N> type of namespace
- * @param <S> type of state
- */
-template <typename K, typename N, typename S>
-class StateEntry {
- public:
- StateEntry(K key, N ns, S state)
-     : key_(std::move(key)), namespace_(ns), state_(std::move(state)) {}
+    static int roundUpToPowerOfTwo(int32_t x) {
+        x = x - 1;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        return x + 1;
+    }
 
-  K getKey() {
-    return key_;
-  }
-
-  N getNamespace() {
-    return namespace_;
-  }
-
-  S getState() {
-    return state_;
-  }
-
- private:
-  K key_;
-  N namespace_;
-  S state_;
-};
-} // namespace facebook::velox::stateful
+}

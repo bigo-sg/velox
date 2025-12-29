@@ -20,7 +20,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink HeapMapState.
+// This class is relevant to flink HeapMapState.
 template <typename K, typename N, typename UK, typename UV>
 class HeapMapState : public MapState<K, N, UK, UV> {
  public:
