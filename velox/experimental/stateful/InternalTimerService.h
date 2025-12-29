@@ -42,7 +42,7 @@ class InternalTimerService {
   }
 
   void registerProcessingTimeTimer(K key, N ns, int64_t time) {
-    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& oldHead = processingTimeTimersQueue_.peek();
+    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& oldHead = processingTimeTimersQueue_.empty() ? nullptr : processingTimeTimersQueue_.peek();
     if (processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns))) {
       int64_t nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<int64_t>::max() ;
       if (time < nextTriggerTime) {
@@ -62,7 +62,7 @@ class InternalTimerService {
 
   int64_t currentWatermark() {
     // TODO: Implement watermark logic if needed.
-    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.peek();
+    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
     if (timer != nullptr) {
       return timer->timestamp();
     }
@@ -75,7 +75,7 @@ class InternalTimerService {
   }
 
   void advanceWatermark(int64_t time) {
-    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.peek();
+    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
     while (timer != nullptr && timer->timestamp() <= time) {
       auto timer = eventTimeTimersQueue_.poll();
       triggerable_->onEventTime(timer);
@@ -103,11 +103,9 @@ class InternalTimerService {
         triggerOnProcessingTime = false;
         continue;
       }
-      if (!timer) {
-        processingTimeTimersQueue_.poll();
-        triggerable_->onProcessingTime(timer);
-        timer = nullptr;
-      }
+      processingTimeTimersQueue_.poll();
+      triggerable_->onProcessingTime(timer);
+      timer = nullptr;
     }
 
     if (!taskName.empty()) {

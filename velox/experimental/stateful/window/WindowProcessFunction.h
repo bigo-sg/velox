@@ -23,7 +23,6 @@
 #include "velox/vector/ComplexVector.h"
 
 #include <algorithm>
-#include <map>
 #include <vector>
 
 namespace facebook::velox::stateful {

@@ -193,7 +193,6 @@ RowVectorPtr addWindowTimestampToOutput(
 }
 
 void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
-  stateHandler()->setCurrentKey(timer->key());
   fireWindow(timer->key(), timer->timestamp(), timer->ns());
   clearWindow(timer->key(), timer->timestamp(), timer->ns());
 }

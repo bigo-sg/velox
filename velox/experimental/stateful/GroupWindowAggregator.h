@@ -21,7 +21,6 @@
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
-#include "velox/experimental/stateful/window/WindowBuffer.h"
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
 #include "velox/experimental/stateful/window/WindowTrigger.h"
 

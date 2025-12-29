@@ -70,9 +70,7 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
   /// Throws if the queue is empty.
   T poll() override {
     VELOX_CHECK(!empty(), "Cannot poll from an empty priority queu");
-    T top = std::move(heap_[0]);
-    removeAt(0);
-    return top;
+    return removeAt(0);
   }
 
   /// Adds an element to the queue.
@@ -175,18 +173,18 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
     }
   }
 
-  void removeAt(size_t index) {
+  T removeAt(size_t index) {
     if (index >= heap_.size()) {
-      return;
+      VELOX_FAIL("Logical error, the removed index {} is greater than heap size {}", index, heap_.size());
     }
-
+    T t = std::move(heap_[index]);
     // Remove from valueToIndex_
-    valueToIndex_.erase(heap_[index]);
+    valueToIndex_.erase(t);
 
     if (index == heap_.size() - 1) {
       // Removing the last element
       heap_.pop_back();
-      return;
+      return t;
     }
 
     // Move last element to the removed position
@@ -198,6 +196,7 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
     // Re-heapify
     percolateUp(index);
     percolateDown(index);
+    return t;
   }
 
   void percolateUp(size_t index) {

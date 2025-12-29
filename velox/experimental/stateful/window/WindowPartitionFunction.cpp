@@ -16,7 +16,6 @@
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
-#include "velox/vector/FlatVector.h"
 
 #include <numeric>
 
