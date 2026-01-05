@@ -75,7 +75,9 @@ void StreamJoin::getOutput() {
     for (auto & [key, data] : keyToData) {
       leftRecordStateView_->addRecord(key, data);
       auto result = join(key, data, rightRecordStateView_, true);
-      pushOutput(result);
+      if (result) {
+        pushOutput(result);
+      }
     }
   }
 
@@ -85,7 +87,9 @@ void StreamJoin::getOutput() {
     for (auto & [key, data] : keyToData) {
       rightRecordStateView_->addRecord(key, data);
       auto result = join(key, data, leftRecordStateView_, false);
-      pushOutput(result);
+      if (result) {
+        pushOutput(result);
+      }
     }
   }
 }
