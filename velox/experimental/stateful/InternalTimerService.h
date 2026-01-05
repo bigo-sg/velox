@@ -97,19 +97,22 @@ class InternalTimerService {
     nextTimer_ = std::nullopt;
     std::shared_ptr<TimerHeapInternalTimer<K, N>> timer = nullptr;
     bool triggerOnProcessingTime = true;
-    while (triggerOnProcessingTime && !processingTimeTimersQueue_.empty()) {
-      timer = processingTimeTimersQueue_.peek();
-      if (!timer || timer->timestamp() > time) {
-        triggerOnProcessingTime = false;
-        continue;
+    const std::shared_ptr<std::mutex> mtx = triggerable_->getMutex();
+    if (mtx) {
+      std::lock_guard<std::mutex> lock(*mtx);
+      while (triggerOnProcessingTime && !processingTimeTimersQueue_.empty()) {
+        timer = processingTimeTimersQueue_.peek();
+        if (!timer || timer->timestamp() > time) {
+          triggerOnProcessingTime = false;
+          continue;
+        }
+        processingTimeTimersQueue_.poll();
+        triggerable_->onProcessingTime(timer);
+        timer = nullptr;
       }
-      processingTimeTimersQueue_.poll();
-      triggerable_->onProcessingTime(timer);
-      timer = nullptr;
-    }
-
-    if (!taskName.empty()) {
-      processingTimeService_->unregister(taskName);
+      if (!taskName.empty()) {
+        processingTimeService_->unregister(taskName);
+      }
     }
 
     if (timer != nullptr && !nextTimer_.has_value()) {

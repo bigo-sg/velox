@@ -18,6 +18,7 @@
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 
 #include <memory>
+#include <mutex>
 
 namespace facebook::velox::stateful {
 
@@ -25,11 +26,19 @@ namespace facebook::velox::stateful {
 template<typename K, typename N>
 class Triggerable {
  public:
+  Triggerable() {
+    mtx_ = std::make_shared<std::mutex>();
+  }
   virtual void onEventTime(
       std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) = 0;
   
   virtual void onProcessingTime(
       std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) {}
+
+  const std::shared_ptr<std::mutex> getMutex() { return mtx_; }
+
+protected:
+    std::shared_ptr<std::mutex> mtx_;
 };
 
 } // namespace facebook::velox::stateful

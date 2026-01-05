@@ -15,6 +15,7 @@
  */
 #include <list>
 #include <memory>
+#include <mutex>
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
@@ -34,7 +35,7 @@ WindowAggregator::WindowAggregator(
     const bool isEventTime,
     const int windowStartIndex,
     const int windowEndIndex)
-    : StatefulOperator(std::move(globalAggregator), std::move(targets)),
+    : StatefulOperator(std::move(globalAggregator), std::move(targets)), Triggerable<uint32_t, long>(),
       localAggregator_(std::move(localAggregator)),
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
@@ -96,6 +97,7 @@ void WindowAggregator::getOutput() {
         }
       } else {
           // the assigned slice hasn't been triggered, accumulate into the assigned slice
+          std::lock_guard<std::mutex> lock(*mtx_);
           windowBuffer_->addElement(key, sliceEnd, windowData);
       }
     }
@@ -253,7 +255,9 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<u
         windowState_->update(windowKey.key(), windowKey.window(), newAcc);
       }
     }
-    windowBuffer_->clear();
+    if (!windowKeyToData.empty()) {
+      windowBuffer_->clear();
+    }
   }
   onTimer(timer);
 }

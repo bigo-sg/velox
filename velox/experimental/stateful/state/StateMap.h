@@ -147,12 +147,11 @@ class StateMap {
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> primaryTable_;
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> incrementalRehashTable_;
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> empty_;
-
   int32_t highestRequiredSnapshotVersion_;
   int32_t stateMapVersion_;
   int32_t rehashIndex_;
-  int32_t primaryTableSize_;
-  int32_t incrementalRehashTableSize_;
+  uint64_t primaryTableSize_;
+  uint64_t incrementalRehashTableSize_;
   uint64_t modCount_;
   uint64_t threshold_;
   N lastNamespace_;
@@ -181,8 +180,7 @@ class StateMap {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
     std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab = selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
-    std::shared_ptr<StateMapEntry<K, N, S>> prev = nullptr;
-    for (auto e = tab[index]; e != nullptr; prev = e, e = e->next_) {
+    for (std::shared_ptr<StateMapEntry<K, N, S>> e = tab[index], prev = nullptr; e != nullptr; prev = e, e = e->next_) {
       if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
         if (prev == nullptr) {
           tab[index] = e->next_;

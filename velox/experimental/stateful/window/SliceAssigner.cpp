@@ -38,15 +38,13 @@ SliceAssigner::SliceAssigner(
 
 std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
-    // TODO: using Processing Time Service
-    int64_t timestamp_ms = TimeWindowUtil::getCurrentProcessingTime();
-    if (windowType_ == WindowType::TUMBLE) { // tumble window
-      // TODO:: support get utcTimestamp by timezone.
-      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestamp_ms, 0);
+    int64_t timestampMs = TimeWindowUtil::getCurrentProcessingTime();
+    if (windowType_ == WindowType::TUMBLE) {
+      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
       int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
       return {{windowStart + size_, input}};
     } else {
-      return {{timestamp_ms, input}};
+      return {{timestampMs, input}};
     }
   }
   return keySelector_->partition(input);

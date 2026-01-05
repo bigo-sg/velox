@@ -16,6 +16,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 #include "velox/exec/Driver.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
