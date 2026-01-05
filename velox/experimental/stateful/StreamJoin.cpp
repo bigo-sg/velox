@@ -75,7 +75,12 @@ void StreamJoin::getOutput() {
     for (auto & [key, data] : keyToData) {
       leftRecordStateView_->addRecord(key, data);
       auto result = join(key, data, rightRecordStateView_, true);
-      pushOutput(result);
+      if (result) {
+        VELOX_MEM_LOG(ERROR) << "StreamJoin::getOutput() called @" << __LINE__ << " result: " << reinterpret_cast<unsigned long>(result.get());
+        pushOutput(result);
+      } else {
+        VELOX_MEM_LOG(ERROR) << "StreamJoin::getOutput() called @" << __LINE__ << " result is nullptr";
+      }
     }
   }
 
@@ -85,7 +90,12 @@ void StreamJoin::getOutput() {
     for (auto & [key, data] : keyToData) {
       rightRecordStateView_->addRecord(key, data);
       auto result = join(key, data, leftRecordStateView_, false);
-      pushOutput(result);
+      if (result) {
+        VELOX_MEM_LOG(ERROR) << "StreamJoin::getOutput() called @" << __LINE__ << " result: " << reinterpret_cast<unsigned long>(result.get());
+        pushOutput(result);
+      } else {
+        VELOX_MEM_LOG(ERROR) << "StreamJoin::getOutput() called @" << __LINE__ << " result is nullptr";
+      }
     }
   }
 }
