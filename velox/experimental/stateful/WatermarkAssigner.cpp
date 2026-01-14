@@ -41,33 +41,45 @@ void WatermarkAssigner::getOutput() {
     return;
   }
 
-  for (int i = 0; i < input_->size(); i++) {
-    VELOX_CHECK(
-      !input_->childAt(rowtimeFieldIndex_)->isNullAt(i),
-      "RowTime field should not be null, please convert it to a non-null long value.");
-  }
-  RowVectorPtr timestamps = op()->getOutput();
+  VELOX_CHECK(!input_->childAt(rowtimeFieldIndex_)->mayHaveNulls(), "RowTime field should not have nulls");
+
+  RowVectorPtr  timestampVector = op()->getOutput();
 
   VELOX_CHECK(
-    timestamps->size() == input_->size(),
+    timestampVector->size() == input_->size(),
     "Timestamps are not equal to input.");
 
-  auto timestamp = timestamps->childAt(0)->asFlatVector<int64_t>();
-  int lastIndex = 0;
-  for (int i = 0; i < timestamps->size(); i++) {
-    currentWatermark = std::max(currentWatermark, timestamp->valueAt(0));
-    if (currentWatermark - lastWatermark > watermarkInterval_) {
-      auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, i - lastIndex + 1));
-      lastIndex = i + 1;
-      pushOutput(std::move(output));
-      advanceWatermark();
+  const int64_t* timestamps = timestampVector->childAt(0)->asFlatVector<int64_t>()->rawValues();
+  const vector_size_t size = timestampVector->size();
+  vector_size_t lastIndex = 0;
+  
+  // Pre-compute threshold to avoid repeated subtraction in hot loop
+  int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval_;
+  
+  for (vector_size_t i = 0; i < size; ++i) {
+    const int64_t timestamp = timestamps[i];
+    
+    // Only update currentWatermark if timestamp is greater (avoid unnecessary max call)
+    if (timestamp > currentWatermark) {
+      currentWatermark = timestamp;
+      
+      // Check if watermark threshold is crossed
+      if (currentWatermark > nextWatermarkThreshold) {
+        auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, i - lastIndex + 1));
+        lastIndex = i + 1;
+        pushOutput(std::move(output));
+        advanceWatermark();
+        // Update threshold after watermark advance
+        nextWatermarkThreshold = lastWatermark + watermarkInterval_;
+      }
     }
   }
+  
+  // Handle remaining data
   if (lastIndex == 0) {
     pushOutput(std::move(input_));
-  }
-  else if (lastIndex < input_->size()) {
-    auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, input_->size() - lastIndex));
+  } else if (lastIndex < size) {
+    auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, size - lastIndex));
     pushOutput(std::move(output));
   }
   input_.reset();
