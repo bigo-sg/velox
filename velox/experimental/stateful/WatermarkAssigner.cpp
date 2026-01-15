@@ -15,6 +15,9 @@
  */
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 
+#include "velox/common/base/BitUtil.h"
+#include "velox/common/base/Nulls.h"
+
 #include <iostream>
 
 namespace facebook::velox::stateful {
@@ -41,7 +44,16 @@ void WatermarkAssigner::getOutput() {
     return;
   }
 
-  VELOX_CHECK(!input_->childAt(rowtimeFieldIndex_)->mayHaveNulls(), "RowTime field should not have nulls");
+  // Check for nulls using countNulls
+  auto* rowtimeVector = input_->childAt(rowtimeFieldIndex_).get();
+  const uint64_t* rawNulls = rowtimeVector->rawNulls();
+  if (rawNulls != nullptr) {
+    const vector_size_t size = rowtimeVector->size();
+    const uint64_t nullCount = bits::countNulls(rawNulls, 0, size);
+    if (nullCount > 0) {
+      VELOX_FAIL("RowTime field should not have nulls, but found {} nulls", nullCount);
+    }
+  }
 
   RowVectorPtr  timestampVector = op()->getOutput();
 
@@ -50,13 +62,13 @@ void WatermarkAssigner::getOutput() {
     "Timestamps are not equal to input.");
 
   const int64_t* timestamps = timestampVector->childAt(0)->asFlatVector<int64_t>()->rawValues();
-  const vector_size_t size = timestampVector->size();
+  const vector_size_t timestampSize = timestampVector->size();
   vector_size_t lastIndex = 0;
   
   // Pre-compute threshold to avoid repeated subtraction in hot loop
   int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval_;
   
-  for (vector_size_t i = 0; i < size; ++i) {
+  for (vector_size_t i = 0; i < timestampSize; ++i) {
     const int64_t timestamp = timestamps[i];
     
     // Only update currentWatermark if timestamp is greater (avoid unnecessary max call)
@@ -78,8 +90,8 @@ void WatermarkAssigner::getOutput() {
   // Handle remaining data
   if (lastIndex == 0) {
     pushOutput(std::move(input_));
-  } else if (lastIndex < size) {
-    auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, size - lastIndex));
+  } else if (lastIndex < timestampSize) {
+    auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, timestampSize - lastIndex));
     pushOutput(std::move(output));
   }
   input_.reset();
