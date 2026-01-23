@@ -46,6 +46,8 @@ class StatefulOperator {
 
   void processWatermark(long timestamp, int index);
 
+  virtual void processWatermark(long timestamp);
+
   void initializeState(StateBackend* stateBackend);
 
   void snapshotState();

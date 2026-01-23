@@ -102,6 +102,20 @@ void StatefulOperator::processWatermark(long timestamp, int index) {
   }
 }
 
+void StatefulOperator::processWatermark(long timestamp) {
+  // If the current task has only one operator, forward the watermark directly to Flink.
+  // Otherwise, forward the watermark to downstream operators.
+  if (targets_.empty()) {
+    auto outNodeId = operator_->planNodeId();
+    auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
+    task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
+    return;
+  }
+  for (auto& target : targets_) {
+    target->processWatermark(timestamp);
+  }
+}
+
 void StatefulOperator::initializeState(StateBackend* stateBackend) {
   if (!stateHandler_) {
     KeyedStateBackendParameters parameters(
