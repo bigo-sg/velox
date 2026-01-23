@@ -17,8 +17,6 @@
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 void StatefulOperator::initialize() {
@@ -80,6 +78,10 @@ void StatefulOperator::pushOutput(RowVectorPtr output) {
 void StatefulOperator::emitWatermark(long timestamp) {
   // If the current task has only one operator, forward the watermark directly to Flink.
   // Otherwise, forward the watermark to downstream operators.
+  if (isSink()) {
+    return;
+  }
+
   if (targets_.empty()) {
     auto outNodeId = operator_->planNodeId();
     auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
