@@ -17,15 +17,46 @@
 
 #include <climits>
 #include <vector>
+#include "velox/common/base/Exceptions.h"
 
 namespace facebook::velox::stateful {
-
-class PartialWatermark;
 
 // This class is relevent to flink CombinedWatermarkStatus.
 class CombinedWatermarkStatus {
  public:
+  // This class represents a partial watermark from a single input stream.
+  class PartialWatermark {
+   public:
+    bool setWatermark(long watermark) {
+      if (watermark < watermark_) {
+        // If the new watermark is less than or equal to the current one, we do not update it.
+        return false;
+      }
+
+      watermark_ = watermark;
+      idle_ = false;
+      return true;
+    }
+
+    bool idle() const {
+      return idle_;
+    }
+
+    long watermark() const {
+      return watermark_;
+    }
+
+    void setIdle(bool idle) {
+      idle_ = idle;
+    }
+
+   private:
+    long watermark_ = LONG_MIN;
+    bool idle_ = false;
+  };
+
   CombinedWatermarkStatus(int numWatermarks) {
+    VELOX_CHECK(numWatermarks > 0, "numWatermarks must be greater than 0");
     partialWatermarks_.resize(numWatermarks);
   }
 
@@ -39,27 +70,6 @@ class CombinedWatermarkStatus {
   std::vector<PartialWatermark> partialWatermarks_;
   bool idle_ = false;
   long combinedWatermark_ = LONG_MIN;
-};
-
-class PartialWatermark {
- public:
-  bool setWatermark(long watermark);
-
-  bool idle() const {
-    return idle_;
-  }
-
-  long watermark() const {
-    return watermark_;
-  }
-
-  void setIdle(bool idle) {
-    idle_ = idle;
-  }
-
- private:
-  long watermark_ = LONG_MIN;
-  bool idle_ = false;
 };
 
 } // namespace facebook::velox::stateful

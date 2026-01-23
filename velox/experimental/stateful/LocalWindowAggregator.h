@@ -45,7 +45,7 @@ class LocalWindowAggregator : public StatefulOperator {
   }
 
  private:
-  void processWatermarkInternal(long timestamp) override;
+  void processWatermarkInternal(long timestamp);
   RowVectorPtr addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd);
 
   std::unique_ptr<KeySelector> keySelector_;

@@ -26,7 +26,7 @@ void StatefulOperator::initialize() {
   for (auto& target : targets_) {
     target->initialize();
   }
-  combinedWatermarkStatus_ = std::make_shared<CombinedWatermarkStatus>(numInputs());
+  combinedWatermarkStatus_ = std::make_unique<CombinedWatermarkStatus>(numInputs());
 }
   
 bool StatefulOperator::isFinished() {
@@ -77,32 +77,7 @@ void StatefulOperator::pushOutput(RowVectorPtr output) {
   targets_[targets_.size() - 1]->getOutput();
 }
 
-void StatefulOperator::pushWatermark(long timestamp, int index) {
-  if (isSink())
-    return;
-  if (targets_.empty()) {
-    if (!isSink()) {
-      auto outNodeId = operator_->planNodeId();
-      auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
-      task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
-    }
-    return;
-  }
-  for (int i = 0; i < targets_.size(); i++) {
-    targets_[i]->processWatermark(timestamp, index);
-  }
-}
-
-void StatefulOperator::processWatermark(long timestamp, int index) {
-  if (combinedWatermarkStatus_->updateWatermark(index - 1, timestamp)) {
-    // If the watermark is updated, we need to advance the timer service.
-    long combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
-    processWatermarkInternal(combinedWatermark);
-    pushWatermark(combinedWatermark, 1);
-  }
-}
-
-void StatefulOperator::processWatermark(long timestamp) {
+void StatefulOperator::emitWatermark(long timestamp) {
   // If the current task has only one operator, forward the watermark directly to Flink.
   // Otherwise, forward the watermark to downstream operators.
   if (targets_.empty()) {
@@ -114,6 +89,18 @@ void StatefulOperator::processWatermark(long timestamp) {
   for (auto& target : targets_) {
     target->processWatermark(timestamp);
   }
+}
+
+void StatefulOperator::processWatermark(long timestamp, int index) {
+  if (combinedWatermarkStatus_->updateWatermark(index, timestamp)) {
+    // If the watermark is updated, we need to advance the timer service.
+    long combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
+    processWatermark(combinedWatermark);
+  }
+}
+
+void StatefulOperator::processWatermark(long timestamp) {
+  emitWatermark(timestamp);
 }
 
 void StatefulOperator::initializeState(StateBackend* stateBackend) {

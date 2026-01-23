@@ -83,8 +83,7 @@ class StatefulOperator {
 
  protected:
   void pushOutput(RowVectorPtr output);
-  void pushWatermark(long timestamp, int index);
-  virtual void processWatermarkInternal(long timestamp) {}
+  void emitWatermark(long timestamp);
 
   virtual int numInputs() const {
     return 1;
@@ -99,7 +98,7 @@ class StatefulOperator {
   std::vector<std::unique_ptr<StatefulOperator>> targets_;
   bool sink;
   bool sourceEmpty_ = true;
-  std::shared_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
+  std::unique_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
   StreamOperatorStateHandlerPtr stateHandler_;
 };
 

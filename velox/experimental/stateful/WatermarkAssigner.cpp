@@ -101,7 +101,7 @@ void WatermarkAssigner::advanceWatermark() {
   if (currentWatermark > lastWatermark) {
       lastWatermark = currentWatermark;
       // emit watermark
-      pushWatermark(currentWatermark, 1);
+      emitWatermark(currentWatermark);
   }
 }
 

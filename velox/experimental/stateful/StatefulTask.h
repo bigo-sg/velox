@@ -59,6 +59,8 @@ class StatefulTask : public exec::Task {
 
   void notifyWatermark(long watermark, int index);
 
+  void notifyWatermark(long watermark);
+
   void initializeState();
 
   void snapshotState();

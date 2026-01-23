@@ -138,6 +138,10 @@ void StatefulTask::notifyWatermark(long watermark, int index) {
   operatorChain_->processWatermark(watermark, index);
 }
 
+void StatefulTask::notifyWatermark(long watermark) {
+  operatorChain_->processWatermark(watermark);
+}
+
 void StatefulTask::initializeState() {
   // TODO: need to be call in flink operator's setup.
   //operatorChain_->initializeState();

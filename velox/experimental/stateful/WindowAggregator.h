@@ -53,7 +53,7 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
 
  private:
-  void processWatermarkInternal(long timestamp) override;
+  void processWatermarkInternal(long timestamp);
 
   long sliceStateMergeTarget(long sliceToMerge);
 
