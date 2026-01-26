@@ -59,7 +59,7 @@ void LocalWindowAggregator::getOutput() {
   input_.reset();
 }
 
-void LocalWindowAggregator::processWatermarkInternal(long timestamp) {
+void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
   if (timestamp > currentWatermark_) {
     currentWatermark_ = timestamp;
     if (currentWatermark_ >= nextTriggerWatermark_) {

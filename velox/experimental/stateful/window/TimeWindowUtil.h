@@ -25,8 +25,8 @@ namespace facebook::velox::stateful {
 // This class is relevent to flink TimeWindowUitl.
 class TimeWindowUtil {
  public:
-  static long getNextTriggerWatermark(
-    long currentWatermark,
+  static int64_t getNextTriggerWatermark(
+    int64_t currentWatermark,
     long interval,
     int shiftTimezone,
     bool useDayLightSaving);

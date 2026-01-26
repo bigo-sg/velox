@@ -20,16 +20,16 @@
 namespace facebook::velox::stateful {
 
 // static
-long TimeWindowUtil::getNextTriggerWatermark(
-    long currentWatermark,
+int64_t TimeWindowUtil::getNextTriggerWatermark(
+    int64_t currentWatermark,
     long interval,
     int shiftTimezone,
     bool useDayLightSaving) {
-  if (currentWatermark == LONG_MAX) {
+  if (currentWatermark == INT64_MAX) {
       return currentWatermark;
   }
 
-  long triggerWatermark;
+  int64_t triggerWatermark;
   // consider the DST timezone
   if (useDayLightSaving) {
     // TODO: support time zone

@@ -45,7 +45,7 @@ class LocalWindowAggregator : public StatefulOperator {
   }
 
  private:
-  void processWatermarkInternal(long timestamp);
+  void processWatermarkInternal(int64_t timestamp);
   RowVectorPtr addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd);
 
   std::unique_ptr<KeySelector> keySelector_;
@@ -57,7 +57,7 @@ class LocalWindowAggregator : public StatefulOperator {
   RowTypePtr outputType_;
 
   RowVectorPtr input_;
-  long currentWatermark_ = 0;
-  long nextTriggerWatermark_ = 0;
+  int64_t currentWatermark_ = 0;
+  int64_t nextTriggerWatermark_ = 0;
 };
 } // namespace facebook::velox::stateful

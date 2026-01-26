@@ -43,7 +43,7 @@ class InternalTimerService {
     eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  long currentWatermark() {
+  int64_t currentWatermark() {
     // TODO: Implement watermark logic if needed.
     if (eventTimeTimersQueue_.peek() != nullptr) {
       return eventTimeTimersQueue_.peek()->timestamp();
@@ -56,7 +56,7 @@ class InternalTimerService {
     return 0; // or some other default value
   }
 
-  void advanceWatermark(long time) {
+  void advanceWatermark(int64_t time) {
     while (eventTimeTimersQueue_.peek() != nullptr &&
            eventTimeTimersQueue_.peek()->timestamp() <= time) {
       auto timer = eventTimeTimersQueue_.poll();

@@ -82,7 +82,7 @@ class GroupWindowAggregator : public StatefulOperator, public Triggerable<uint32
 
     long getCurrentProcessingTime() override;
 
-    long getCurrentWatermark() override;
+    int64_t getCurrentWatermark() override;
 
     // TODO: support it
     // MetricGroup getMetricGroup()；
@@ -153,7 +153,7 @@ class WindowContext : public FunctionContext<TimeWindow> {
 
   long currentProcessingTime() override;
 
-  long currentWatermark() override;
+  int64_t currentWatermark() override;
 
   int getShiftTimeZone() override;
 

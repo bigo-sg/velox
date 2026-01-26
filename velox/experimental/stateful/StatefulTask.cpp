@@ -133,11 +133,11 @@ void StatefulTask::addOutput(StreamElementPtr output) {
   pendings_.push_back(std::move(output));
 }
 
-void StatefulTask::notifyWatermark(long watermark, int index) {
+void StatefulTask::notifyWatermark(int64_t watermark, int index) {
   operatorChain_->processWatermark(watermark, index);
 }
 
-void StatefulTask::notifyWatermark(long watermark) {
+void StatefulTask::notifyWatermark(int64_t watermark) {
   operatorChain_->processWatermark(watermark);
 }
 

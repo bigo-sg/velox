@@ -44,9 +44,9 @@ class StatefulOperator {
 
   virtual void close();
 
-  void processWatermark(long timestamp, int index);
+  virtual void processWatermark(int64_t timestamp, int index);
 
-  virtual void processWatermark(long timestamp);
+  virtual void processWatermark(int64_t timestamp);
 
   void initializeState(StateBackend* stateBackend);
 
@@ -83,7 +83,7 @@ class StatefulOperator {
 
  protected:
   void pushOutput(RowVectorPtr output);
-  void emitWatermark(long timestamp);
+  void emitWatermark(int64_t timestamp);
 
   virtual int numInputs() const {
     return 1;

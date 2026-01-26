@@ -16,6 +16,7 @@
 #pragma once
 
 #include <climits>
+#include <cstdint>
 #include <vector>
 #include "velox/common/base/Exceptions.h"
 
@@ -27,7 +28,7 @@ class CombinedWatermarkStatus {
   // This class represents a partial watermark from a single input stream.
   class PartialWatermark {
    public:
-    bool setWatermark(long watermark) {
+    bool setWatermark(int64_t watermark) {
       if (watermark < watermark_) {
         // If the new watermark is less than or equal to the current one, we do not update it.
         return false;
@@ -42,7 +43,7 @@ class CombinedWatermarkStatus {
       return idle_;
     }
 
-    long watermark() const {
+    int64_t watermark() const {
       return watermark_;
     }
 
@@ -51,7 +52,7 @@ class CombinedWatermarkStatus {
     }
 
    private:
-    long watermark_ = LONG_MIN;
+    int64_t watermark_ = INT64_MIN;
     bool idle_ = false;
   };
 
@@ -60,16 +61,16 @@ class CombinedWatermarkStatus {
     partialWatermarks_.resize(numWatermarks);
   }
 
-  bool updateWatermark(int index, long timestamp);
+  bool updateWatermark(int index, int64_t timestamp);
 
-  long getCombinedWatermark();
+  int64_t getCombinedWatermark();
 
  private:
   bool updateCombinedWatermark();
 
   std::vector<PartialWatermark> partialWatermarks_;
   bool idle_ = false;
-  long combinedWatermark_ = LONG_MIN;
+  int64_t combinedWatermark_ = INT64_MIN;
 };
 
 } // namespace facebook::velox::stateful

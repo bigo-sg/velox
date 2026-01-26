@@ -48,7 +48,7 @@ class WatermarkAssigner : public StatefulOperator {
   const int rowtimeFieldIndex_;
   const long watermarkInterval_;
 
-  long currentWatermark = 0;
-  long lastWatermark = 0;
+  int64_t currentWatermark = 0;
+  int64_t lastWatermark = 0;
 };
 } // namespace facebook::velox::stateful

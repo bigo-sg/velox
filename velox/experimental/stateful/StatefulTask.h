@@ -57,9 +57,9 @@ class StatefulTask : public exec::Task {
   /// no-more-splits before calling 'next' for the first time.
   StreamElementPtr next(int32_t& retCode);
 
-  void notifyWatermark(long watermark, int index);
+  void notifyWatermark(int64_t watermark, int index);
 
-  void notifyWatermark(long watermark);
+  void notifyWatermark(int64_t watermark);
 
   void initializeState();
 

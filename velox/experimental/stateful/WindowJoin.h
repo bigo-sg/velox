@@ -62,7 +62,7 @@ class WindowJoin : public StatefulOperator, public Triggerable<uint32_t, long> {
  private:
   void join(uint32_t key, long windowEnd);
 
-  void processWatermarkInternal(long timestamp);
+  void processWatermarkInternal(int64_t timestamp);
 
   void processData(
       exec::Operator* input,

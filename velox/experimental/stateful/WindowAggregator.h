@@ -53,7 +53,7 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
 
  private:
-  void processWatermarkInternal(long timestamp);
+  void processWatermarkInternal(int64_t timestamp);
 
   long sliceStateMergeTarget(long sliceToMerge);
 
@@ -67,8 +67,8 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
   const bool isEventTime = true; // TODO: support processing time
 
   RowVectorPtr input_;
-  long currentProgress_ = 0;
-  long nextTriggerWatermark_ = 0;
+  int64_t currentProgress_ = 0;
+  int64_t nextTriggerWatermark_ = 0;
   std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> windowState_;
   std::shared_ptr<InternalTimerService<uint32_t, long>> windowTimerService_;
 };

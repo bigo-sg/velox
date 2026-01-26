@@ -82,7 +82,7 @@ class TriggerContext : public std::enable_shared_from_this<TriggerContext>{
 
   virtual long getCurrentProcessingTime() = 0;
 
-  virtual long getCurrentWatermark() = 0;
+  virtual int64_t getCurrentWatermark() = 0;
 
   // TODO: support it
   // MetricGroup getMetricGroup()；

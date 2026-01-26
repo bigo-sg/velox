@@ -75,7 +75,7 @@ void StatefulOperator::pushOutput(RowVectorPtr output) {
   targets_[targets_.size() - 1]->getOutput();
 }
 
-void StatefulOperator::emitWatermark(long timestamp) {
+void StatefulOperator::emitWatermark(int64_t timestamp) {
   // If the current task has only one operator, forward the watermark directly to Flink.
   // Otherwise, forward the watermark to downstream operators.
   if (isSink()) {
@@ -93,15 +93,15 @@ void StatefulOperator::emitWatermark(long timestamp) {
   }
 }
 
-void StatefulOperator::processWatermark(long timestamp, int index) {
+void StatefulOperator::processWatermark(int64_t timestamp, int index) {
   if (combinedWatermarkStatus_->updateWatermark(index, timestamp)) {
     // If the watermark is updated, we need to advance the timer service.
-    long combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
+    int64_t combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
     processWatermark(combinedWatermark);
   }
 }
 
-void StatefulOperator::processWatermark(long timestamp) {
+void StatefulOperator::processWatermark(int64_t timestamp) {
   emitWatermark(timestamp);
 }
 

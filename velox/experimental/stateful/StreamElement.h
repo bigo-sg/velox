@@ -40,10 +40,10 @@ using StreamElementPtr = std::shared_ptr<StreamElement>;
 
 class Watermark :  public StreamElement {
  public:
-  Watermark(std::string nodeId, long timestamp)
+  Watermark(std::string nodeId, int64_t timestamp)
       : StreamElement(nodeId), timestamp_(timestamp) {}
 
-  long timestamp() const {
+  int64_t timestamp() const {
     return timestamp_;
   }
 
@@ -56,7 +56,7 @@ class Watermark :  public StreamElement {
   }
 
  private:
-  const long timestamp_;
+  const int64_t timestamp_;
 };
 
 class StreamRecord :  public StreamElement {
@@ -68,7 +68,7 @@ class StreamRecord :  public StreamElement {
         hasTimestamp_(false),
         key_(-1) {}
 
-  StreamRecord(std::string nodeId, RowVectorPtr record, long timestamp)
+  StreamRecord(std::string nodeId, RowVectorPtr record, int64_t timestamp)
       : StreamElement(nodeId),
         record_(std::move(record)),
         timestamp_(timestamp),
@@ -86,7 +86,7 @@ class StreamRecord :  public StreamElement {
     return record_;
   }
 
-  long timestamp() const {
+  int64_t timestamp() const {
     return timestamp_;
   }
 
@@ -108,7 +108,7 @@ class StreamRecord :  public StreamElement {
 
  private:
   const RowVectorPtr record_;
-  const long timestamp_;
+  const int64_t timestamp_;
   bool hasTimestamp_ = false;
   const int key_;
 };
