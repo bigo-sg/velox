@@ -61,18 +61,67 @@
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
 #include "velox/experimental/stateful/agg/AggsHandleFunction.h"
 #include "velox/experimental/stateful/agg/GroupAggregator.h"
+#include <algorithm>
 
 namespace facebook::velox::stateful {
 
 static std::atomic<int> opId = 0;
+
+static int nextOperatorId() {
+    return opId.fetch_add(1);
+}
 
 // static
 StatefulOperatorPtr StatefulPlanner::plan(
     const core::PlanFragment& planFragment,
     exec::DriverCtx* ctx,
     StateBackend* stateBackend) {
-  return nodeToStatefulOperator(planFragment.planNode, ctx, stateBackend);
+  // return nodeToStatefulOperator(planFragment.planNode, ctx, stateBackend);
+  StatefulPlanner planner(ctx, stateBackend);
+  return planner.buildOperators(planFragment.planNode);
 }
+
+#define CHECK_NODE_TYPE(TYPE, node) std::dynamic_pointer_cast<const TYPE>(node->node()) != nullptr
+
+StatefulOperatorPtr StatefulPlanner::buildOperators(const core::PlanNodePtr& planNode) {
+    auto statefulNode = std::dynamic_pointer_cast<const StatefulPlanNode>(planNode);
+    VELOX_CHECK(statefulNode, "Not stateful node: {}", planNode->toString());
+    StatefulOperatorPtr result;
+    if (std::dynamic_pointer_cast<const WatermarkAssignerNode>(statefulNode->node()) != nullptr) {
+        result = buildWatermarkAssignerOperator(*statefulNode);
+    }
+    VELOX_CHECK(result, "Failed to build operator for node: {}", planNode->toString());
+    return result;
+}
+
+std::vector<StatefulOperatorPtr> StatefulPlanner::buildOperators(const std::vector<core::PlanNodePtr>& targets) {
+    std::vector<StatefulOperatorPtr> operators;
+    operators.resize(targets.size());
+    std::transform(targets.begin(), targets.end(), operators.begin(), [this](const core::PlanNodePtr& target) {
+        return buildOperators(target);
+    });
+    return operators;
+}
+
+StatefulOperatorPtr StatefulPlanner::buildWatermarkAssignerOperator(const StatefulPlanNode& planNode) {
+    std::vector<StatefulOperatorPtr> targets = buildOperators(planNode.targets());
+
+    auto watermarkAssignerNode = std::dynamic_pointer_cast<const WatermarkAssignerNode>(planNode.node());
+
+    auto op = std::make_unique<exec::FilterProject>(
+        nextOperatorId(),
+        ctx_,
+        nullptr,
+        watermarkAssignerNode->project());
+
+    return std::make_unique<WatermarkAssigner>(
+        std::move(op),
+        std::move(targets),
+        watermarkAssignerNode->idleTimeout(),
+        watermarkAssignerNode->rowtimeFieldIndex(),
+        watermarkAssignerNode->watermarkInterval());
+}
+
 
 //static
 StatefulOperatorPtr StatefulPlanner::nodeToStatefulOperator(

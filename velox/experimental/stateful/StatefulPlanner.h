@@ -17,6 +17,7 @@
 
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 
 namespace facebook::velox::core {
@@ -33,8 +34,14 @@ class StatefulPlanner {
       const core::PlanFragment& planFragment,
       exec::DriverCtx* ctx,
       StateBackend* stateBackend);
-
+ protected:
+    StatefulPlanner(exec::DriverCtx* ctx, StateBackend* stateBackend) : ctx_(ctx),stateBackend_(stateBackend)  {}
+   
  private:
+  exec::DriverCtx* ctx_ = nullptr;
+  StateBackend* stateBackend_ = nullptr;
+
+
   static std::unique_ptr<StatefulOperator> nodeToStatefulOperator(
       const core::PlanNodePtr& planNode,
       exec::DriverCtx* ctx,
@@ -43,5 +50,8 @@ class StatefulPlanner {
   static std::unique_ptr<exec::Operator> nodeToOperator(
       const core::PlanNodePtr& planNode,
       exec::DriverCtx* ctx);
+  StatefulOperatorPtr buildOperators(const core::PlanNodePtr& planNode);
+  std::vector<StatefulOperatorPtr> buildOperators(const std::vector<core::PlanNodePtr>& targets);
+  StatefulOperatorPtr buildWatermarkAssignerOperator(const StatefulPlanNode& planNode);
 };
 } // namespace facebook::velox::stateful
