@@ -27,8 +27,8 @@ namespace facebook::velox::stateful {
 template <typename K, typename N, typename S>
 class StateEntry {
  public:
- StateEntry(K key, N ns, S state)
-     : key_(std::move(key)), namespace_(ns), state_(std::move(state)) {}
+  StateEntry(K key, N ns, S state)
+      : key_(std::move(key)), namespace_(ns), state_(std::move(state)) {}
 
   K getKey() {
     return key_;

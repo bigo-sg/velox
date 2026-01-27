@@ -25,14 +25,14 @@ namespace facebook::velox::stateful {
 
 /**
  * StatefulTask is used to support streaming engines such as Flink.
- * It needs to handle state operations. 
+ * It needs to handle state operations.
  */
 class StatefulTask : public exec::Task {
-  // TODO: Temporally based on Task since we want to reuse context releated classes
+  // TODO: Temporally based on Task since we want to reuse context releated
+  // classes
  public:
-
-  /// Creates a stateful task to execute a plan fragment, but doesn't start execution
-  /// until StatefulTask::next() method is called.
+  /// Creates a stateful task to execute a plan fragment, but doesn't start
+  /// execution until StatefulTask::next() method is called.
   /// @param taskId Unique task identifier.
   /// @param planFragment Plan fragment.
   /// @param queryCtx Query context containing MemoryPool and MemoryAllocator
@@ -47,8 +47,9 @@ class StatefulTask : public exec::Task {
   ~StatefulTask();
 
   /// Single-threaded execution API. Runs the query and returns results one
-  /// batch at a time. Returns nullptr and retCode 1 if query evaluation is finished and no
-  /// more data will be produced, return nullptt and retCode 0 is no data produced for this batch.
+  /// batch at a time. Returns nullptr and retCode 1 if query evaluation is
+  /// finished and no more data will be produced, return nullptt and retCode 0
+  /// is no data produced for this batch.
   ///  Throws an exception if query execution failed.
   ///
   /// This API is available for streaming plans such as Flink.
@@ -61,7 +62,8 @@ class StatefulTask : public exec::Task {
 
   void notifyWatermark(int64_t watermark);
 
-  void initializeState();
+  void initializeState(
+      const std::shared_ptr<const KeyedStateBackendParameters> params);
 
   void snapshotState();
 
@@ -80,7 +82,6 @@ class StatefulTask : public exec::Task {
   void addOutput(StreamElementPtr element);
 
  private:
- 
   StatefulTask(
       const std::string& taskId,
       core::PlanFragment planFragment,
@@ -88,7 +89,8 @@ class StatefulTask : public exec::Task {
 
   void initOperators();
 
-  void initStateBackend();
+  void initStateBackend(
+      const std::shared_ptr<const KeyedStateBackendParameters> parameters);
 
   StreamElementPtr popOutput();
 

@@ -13,19 +13,21 @@
 # limitations under the License.
 include_guard(GLOBAL)
 
-set(VELOX_CPPKAFKA_VERSION v0.4.1)
+set(VELOX_ROCKSDB_VERSION FRocksDB-6.20.3)
 # release artifacts are tough (except the auto generated ones)
-set(VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM
-    45770ae0404cb9ba73d659618c51cd55b574c66ed3c7b148360222fb524b0ff7)
-set(VELOX_CPPKAFKA_SOURCE_URL
-    "https://github.com/mfontanini/cppkafka/archive/refs/tags/v0.4.1.tar.gz")
+set(VELOX_ROCKSDB_BUILD_SHA256_CHECKSUM
+    00ec077666ef76859d68cdff04a8cd40cad5afcb9ec1d100016358d7140a578d)
+set(VELOX_ROCKSDB_SOURCE_URL
+    "https://github.com/ververica/frocksdb/archive/refs/heads/FRocksDB-6.20.3.zip"
+)
+set(ROCKSDB_BUILD_SHARED ON)
 
-velox_resolve_dependency_url(CPPKAFKA)
+velox_resolve_dependency_url(ROCKSDB)
 
-message(STATUS "Building CPPKAFKA from source")
+message(STATUS "Building ROCKSDB from source")
 FetchContent_Declare(
-  cppkafka
-  URL ${VELOX_CPPKAFKA_SOURCE_URL}
-  URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM})
+  rocksdb
+  URL ${VELOX_ROCKSDB_SOURCE_URL}
+  URL_HASH ${VELOX_ROCKSDB_BUILD_SHA256_CHECKSUM})
 
-FetchContent_MakeAvailable(cppkafka)
+FetchContent_MakeAvailable(rocksdb)

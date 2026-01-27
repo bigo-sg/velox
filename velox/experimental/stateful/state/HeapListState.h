@@ -30,7 +30,7 @@ class HeapListState : public ListState<K, N, V> {
             StateTable<K, N, std::shared_ptr<std::list<V>>>>(keyGroupNumber);
   }
 
-  std::list<V>& get(K key, N ns) override {
+  std::list<V> get(K key, N ns) override {
     auto currentList = stateTable_->get(key, ns);
     return *currentList.get();
   }

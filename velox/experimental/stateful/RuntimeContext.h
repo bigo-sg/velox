@@ -19,36 +19,37 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink org.apache.flink.api.common.functions.RuntimeContext.
+// This class is relevent to flink
+// org.apache.flink.api.common.functions.RuntimeContext.
 class RuntimeContext {
  public:
-  RuntimeContext(int operatorId, KeyedStateBackendPtr keyedStateBackend) 
+  RuntimeContext(int32_t operatorId, KeyedStateBackendPtr keyedStateBackend)
       : operatorId_(operatorId),
-        keyedStateBackend_(std::move(keyedStateBackend)) {};
+        keyedStateBackend_(std::move(keyedStateBackend)){};
 
   // The type of state has to be specified as c++ not support template well.
-  std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>> getMapState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<MapState<uint32_t, int32_t, RowVectorPtr, int32_t>>
+  getMapState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);
   }
 
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> getListState(
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>> getListState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateListState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> getValueState(
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> getValueState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
   }
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
-      Triggerable* triggerable) {
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
+      Triggerable<uint32_t, int64_t>* triggerable) {
     return keyedStateBackend_->createTimerService(triggerable);
   }
 
  private:
-  int operatorId_;
+  int32_t operatorId_;
   KeyedStateBackendPtr keyedStateBackend_;
 };
 

@@ -18,8 +18,11 @@
 
 namespace facebook::velox::stateful {
 
-KeyedStateBackendPtr HashMapStateBackend::createKeyedStateBackend(
-    KeyedStateBackendParameters parameters) {
+HashMapStateBackend::HashMapStateBackend(
+    const std::shared_ptr<const KeyedStateBackendParameters> parameters)
+    : StateBackend(parameters) {}
+
+KeyedStateBackendPtr HashMapStateBackend::createKeyedStateBackend() {
   return std::make_shared<HeapKeyedStateBackend>();
 }
 

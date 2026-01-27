@@ -33,14 +33,13 @@ template <typename K, typename N, typename S>
 class StateMap {
  public:
   StateMap() {
-      tempTable_.resize(1024);
+    tempTable_.resize(1024);
   }
 
   S get(K key, N ns) {
     auto hash = (std::hash<K>{}(key) + std::hash<N>{}(ns)) % tempTable_.size();
-    if (tempTable_[hash] != nullptr
-        && tempTable_[hash]->getKey() == key
-        && tempTable_[hash]->getNamespace() == ns) {
+    if (tempTable_[hash] != nullptr && tempTable_[hash]->getKey() == key &&
+        tempTable_[hash]->getNamespace() == ns) {
       return tempTable_[hash]->getState();
     }
     return S(); // Return default state if not found
@@ -54,9 +53,8 @@ class StateMap {
 
   void remove(K key, N ns) {
     auto hash = (std::hash<K>{}(key) + std::hash<N>{}(ns)) % tempTable_.size();
-    if (tempTable_[hash] != nullptr
-        && tempTable_[hash]->getKey() == key
-        && tempTable_[hash]->getNamespace() == ns) {
+    if (tempTable_[hash] != nullptr && tempTable_[hash]->getKey() == key &&
+        tempTable_[hash]->getNamespace() == ns) {
       tempTable_[hash] = nullptr; // Remove the entry
     }
   }

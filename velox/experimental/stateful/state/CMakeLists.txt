@@ -16,4 +16,8 @@ velox_add_library(
   velox_stateful_state
   OBJECT
   HeapKeyedStateBackend.cpp
-  HashMapStateBackend.cpp)
+  HashMapStateBackend.cpp
+  RocksDBKeyedStateBackend.cpp
+  RocksDBStateBackend.cpp)
+
+velox_link_libraries(velox_stateful_state Folly::folly rocksdb)

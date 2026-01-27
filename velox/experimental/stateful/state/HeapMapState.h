@@ -20,7 +20,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink HeapMapState.
+// This class is relevant to flink HeapMapState.
 template <typename K, typename N, typename UK, typename UV>
 class HeapMapState : public MapState<K, N, UK, UV> {
  public:
@@ -31,14 +31,12 @@ class HeapMapState : public MapState<K, N, UK, UV> {
   }
 
   UV get(K key, N ns, UK userKey) override {
-    std::shared_ptr<std::map<UK, UV>> currentMap =
-        getOrCreate(key, ns);
+    std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
     return currentMap->count(userKey) ? (*currentMap)[userKey] : UV();
   }
 
   void put(K key, N ns, UK userKey, UV value) override {
-    std::shared_ptr<std::map<UK, UV>> currentMap =
-        getOrCreate(key, ns);
+    std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
     currentMap->insert({userKey, value});
   }
 
@@ -51,15 +49,13 @@ class HeapMapState : public MapState<K, N, UK, UV> {
   }
 
   void remove(K key, N ns, UK userKey) override {
-    std::shared_ptr<std::map<UK, UV>> currentMap =
-        getOrCreate(key, ns);
+    std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
     currentMap->erase(userKey);
   }
 
  private:
   std::shared_ptr<std::map<UK, UV>> getOrCreate(K key, N ns) {
-    std::shared_ptr<std::map<UK, UV>> currentMap =
-        stateTable_->get(key, ns);
+    std::shared_ptr<std::map<UK, UV>> currentMap = stateTable_->get(key, ns);
     if (currentMap == nullptr) {
       currentMap = std::make_shared<std::map<UK, UV>>();
       stateTable_->put(key, ns, currentMap);
@@ -67,7 +63,8 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     return currentMap;
   }
 
-  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>> stateTable_;
+  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>
+      stateTable_;
   int keyGroupNumber_;
 };
 } // namespace facebook::velox::stateful

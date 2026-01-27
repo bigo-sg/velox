@@ -15,8 +15,6 @@
  */
 #include "velox/experimental/stateful/StreamKeyedOperator.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 StreamKeyedOperator::StreamKeyedOperator(

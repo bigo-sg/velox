@@ -24,9 +24,10 @@ void StatefulOperator::initialize() {
   for (auto& target : targets_) {
     target->initialize();
   }
-  combinedWatermarkStatus_ = std::make_unique<CombinedWatermarkStatus>(numInputs());
+  combinedWatermarkStatus_ =
+      std::make_unique<CombinedWatermarkStatus>(numInputs());
 }
-  
+
 bool StatefulOperator::isFinished() {
   return operator_->isFinished();
 }
@@ -62,8 +63,10 @@ void StatefulOperator::getOutput() {
 void StatefulOperator::pushOutput(RowVectorPtr output) {
   if (targets_.empty()) {
     auto outNodeId = operator_->planNodeId();
-    auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
-    task->addOutput(std::make_shared<StreamRecord>(outNodeId, std::move(output)));
+    auto task = std::static_pointer_cast<StatefulTask>(
+        operator_->operatorCtx()->driverCtx()->task);
+    task->addOutput(
+        std::make_shared<StreamRecord>(outNodeId, std::move(output)));
     return;
   }
   for (int i = 0; i < targets_.size() - 1; i++) {
@@ -76,15 +79,16 @@ void StatefulOperator::pushOutput(RowVectorPtr output) {
 }
 
 void StatefulOperator::emitWatermark(int64_t timestamp) {
-  // If the current task has only one operator, forward the watermark directly to Flink.
-  // Otherwise, forward the watermark to downstream operators.
+  // If the current task has only one operator, forward the watermark directly
+  // to Flink. Otherwise, forward the watermark to downstream operators.
   if (isSink()) {
     return;
   }
 
   if (targets_.empty()) {
     auto outNodeId = operator_->planNodeId();
-    auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
+    auto task = std::static_pointer_cast<StatefulTask>(
+        operator_->operatorCtx()->driverCtx()->task);
     task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
     return;
   }
@@ -96,7 +100,8 @@ void StatefulOperator::emitWatermark(int64_t timestamp) {
 void StatefulOperator::processWatermark(int64_t timestamp, int index) {
   if (combinedWatermarkStatus_->updateWatermark(index, timestamp)) {
     // If the watermark is updated, we need to advance the timer service.
-    int64_t combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
+    int64_t combinedWatermark =
+        combinedWatermarkStatus_->getCombinedWatermark();
     processWatermark(combinedWatermark);
   }
 }
@@ -105,16 +110,10 @@ void StatefulOperator::processWatermark(int64_t timestamp) {
   emitWatermark(timestamp);
 }
 
-void StatefulOperator::initializeState(StateBackend* stateBackend) {
+void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   if (!stateHandler_) {
-    KeyedStateBackendParameters parameters(
-        op()->operatorCtx()->driverCtx()->task->taskId(), op()->operatorId());
     stateHandler_ = std::make_shared<StreamOperatorStateHandler>(
-        op()->operatorId(),
-        stateBackend->createKeyedStateBackend(
-            KeyedStateBackendParameters(
-                op()->operatorCtx()->driverCtx()->task->taskId(),
-                op()->operatorId())));
+        op()->operatorId(), stateBackend->createKeyedStateBackend());
   }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
@@ -124,11 +123,14 @@ void StatefulOperator::initializeState(StateBackend* stateBackend) {
   // TODO: flink restore is a seperated logic
   // stateHandler_->initializeState();
   for (auto& target : targets_) {
-    target->initializeState(stateBackend);
+    target->initializeStateBackend(stateBackend);
   }
 }
 
 void StatefulOperator::snapshotState() {
+  if (!stateHandler_) {
+    return;
+  }
   stateHandler_->snapshotState();
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
@@ -140,7 +142,11 @@ void StatefulOperator::snapshotState() {
   }
 }
 
-std::vector<std::string> StatefulOperator::notifyCheckpointComplete(long checkpointId) {
+std::vector<std::string> StatefulOperator::notifyCheckpointComplete(
+    long checkpointId) {
+  if (!stateHandler_) {
+    return {};
+  }
   stateHandler_->notifyCheckpointComplete(checkpointId);
   auto checkpointListener = dynamic_cast<CheckpointListener*>(op().get());
   if (checkpointListener) {
@@ -149,13 +155,18 @@ std::vector<std::string> StatefulOperator::notifyCheckpointComplete(long checkpo
   }
   std::vector<std::string> committed = operator_->commit(checkpointId);
   for (auto& target : targets_) {
-    std::vector<std::string> otherCommitted = target->notifyCheckpointComplete(checkpointId);
-    committed.insert(committed.end(), otherCommitted.begin(), otherCommitted.end());
+    std::vector<std::string> otherCommitted =
+        target->notifyCheckpointComplete(checkpointId);
+    committed.insert(
+        committed.end(), otherCommitted.begin(), otherCommitted.end());
   }
   return committed;
 }
 
 void StatefulOperator::notifyCheckpointAborted(long checkpointId) {
+  if (!stateHandler_) {
+    return;
+  }
   stateHandler_->notifyCheckpointAborted(checkpointId);
   auto checkpointListener = dynamic_cast<CheckpointListener*>(op().get());
   if (checkpointListener) {
