@@ -50,8 +50,18 @@ class StatefulPlanner {
   static std::unique_ptr<exec::Operator> nodeToOperator(
       const core::PlanNodePtr& planNode,
       exec::DriverCtx* ctx);
-  StatefulOperatorPtr buildOperators(const core::PlanNodePtr& planNode);
-  std::vector<StatefulOperatorPtr> buildOperators(const std::vector<core::PlanNodePtr>& targets);
-  StatefulOperatorPtr buildWatermarkAssignerOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformStatefulOperators(const core::PlanNodePtr& planNode);
+  std::vector<StatefulOperatorPtr> transformStatefulOperators(const std::vector<core::PlanNodePtr>& targets);
+  std::unique_ptr<exec::Operator> transformOperator(const core::PlanNodePtr& planNode);
+  StatefulOperatorPtr transformWatermarkAssignerOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformStreamPartitionOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformStreamJoinOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformStreamWindowJoinOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformStreamWindowAggregationOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformGroupWindowAggregationOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformStreamRankOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformGroupAggregationOperator(const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformGenericOperator(const StatefulPlanNode& planNode);
+
 };
 } // namespace facebook::velox::stateful
