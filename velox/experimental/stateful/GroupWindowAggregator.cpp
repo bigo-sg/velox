@@ -213,7 +213,7 @@ long GroupWindowAggregator::WindowTriggerContext::getCurrentProcessingTime() {
   return internalTimerService_->currentProcessingTime();
 }
 
-long GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
+int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
   return internalTimerService_->currentWatermark();
 }
 
@@ -284,7 +284,7 @@ long WindowContext::currentProcessingTime() {
   return timerService_->currentProcessingTime();
 }
 
-long WindowContext::currentWatermark() {
+int64_t WindowContext::currentWatermark() {
   return timerService_->currentWatermark();
 }
 

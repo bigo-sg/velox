@@ -95,9 +95,8 @@ exec::TaskStats StatefulTask::statefulTaskStats() {
 
 StreamElementPtr StatefulTask::next(int32_t& retCode) {
   retCode = 0;
-
   if (!pendings_.empty()) {
-    return std::move(popOutput());
+    return popOutput();
   } else if (state() == exec::TaskState::kFinished) {
     // If the task is already finished, return null and 1 for retCode.
     retCode = 1;
@@ -127,15 +126,19 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
       return nullptr;
     }
   }
-  return std::move(popOutput());
+  return popOutput();
 }
 
 void StatefulTask::addOutput(StreamElementPtr output) {
   pendings_.push_back(std::move(output));
 }
 
-void StatefulTask::notifyWatermark(long watermark, int index) {
+void StatefulTask::notifyWatermark(int64_t watermark, int index) {
   operatorChain_->processWatermark(watermark, index);
+}
+
+void StatefulTask::notifyWatermark(int64_t watermark) {
+  operatorChain_->processWatermark(watermark);
 }
 
 void StatefulTask::initializeState() {
@@ -165,8 +168,9 @@ StreamElementPtr StatefulTask::popOutput() {
 void StatefulTask::finish() {
   VELOX_CHECK(
       pendings_.empty(),
-      "Outputs have {} not been consumed before finishing the task.",
-      pendings_.size());
+      "Outputs have {} not been consumed before finishing the task. {} {}",
+      pendings_.size(),
+      operatorChain_->detail());
   operatorChain_->close();
   // TODO: update operator stats
 

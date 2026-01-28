@@ -141,7 +141,7 @@ void WindowJoin::join(uint32_t key, long window) {
   rightWindowState_->remove(key, window);
 }
 
-void WindowJoin::processWatermarkInternal(long timestamp) {
+void WindowJoin::processWatermarkInternal(int64_t timestamp) {
   timerService_->advanceWatermark(timestamp);
 }
 

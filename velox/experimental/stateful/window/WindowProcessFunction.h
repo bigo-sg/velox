@@ -38,7 +38,7 @@ class FunctionContext {
 
   virtual long currentProcessingTime() = 0;
 
-  virtual long currentWatermark() = 0;
+  virtual int64_t currentWatermark() = 0;
 
   virtual int getShiftTimeZone() = 0;
 

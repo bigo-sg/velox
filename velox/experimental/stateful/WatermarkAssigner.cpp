@@ -18,8 +18,6 @@
 #include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Nulls.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 WatermarkAssigner::WatermarkAssigner(
@@ -101,7 +99,7 @@ void WatermarkAssigner::advanceWatermark() {
   if (currentWatermark > lastWatermark) {
       lastWatermark = currentWatermark;
       // emit watermark
-      pushWatermark(currentWatermark, 1);
+      emitWatermark(currentWatermark);
   }
 }
 

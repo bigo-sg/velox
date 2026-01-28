@@ -96,7 +96,7 @@ void WindowAggregator::getOutput() {
   input_.reset();
 }
 
-void WindowAggregator::processWatermarkInternal(long timestamp) {
+void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
   if (isEventTime && timestamp > currentProgress_) {
     currentProgress_ = timestamp;
     if (currentProgress_ >= nextTriggerWatermark_) {

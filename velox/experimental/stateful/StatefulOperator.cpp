@@ -17,8 +17,6 @@
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 void StatefulOperator::initialize() {
@@ -26,7 +24,7 @@ void StatefulOperator::initialize() {
   for (auto& target : targets_) {
     target->initialize();
   }
-  combinedWatermarkStatus_ = std::make_shared<CombinedWatermarkStatus>(numInputs());
+  combinedWatermarkStatus_ = std::make_unique<CombinedWatermarkStatus>(numInputs());
 }
   
 bool StatefulOperator::isFinished() {
@@ -77,29 +75,34 @@ void StatefulOperator::pushOutput(RowVectorPtr output) {
   targets_[targets_.size() - 1]->getOutput();
 }
 
-void StatefulOperator::pushWatermark(long timestamp, int index) {
-  if (isSink())
-    return;
-  if (targets_.empty()) {
-    if (!isSink()) {
-      auto outNodeId = operator_->planNodeId();
-      auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
-      task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
-    }
+void StatefulOperator::emitWatermark(int64_t timestamp) {
+  // If the current task has only one operator, forward the watermark directly to Flink.
+  // Otherwise, forward the watermark to downstream operators.
+  if (isSink()) {
     return;
   }
-  for (int i = 0; i < targets_.size(); i++) {
-    targets_[i]->processWatermark(timestamp, index);
+
+  if (targets_.empty()) {
+    auto outNodeId = operator_->planNodeId();
+    auto task = std::static_pointer_cast<StatefulTask>(operator_->operatorCtx()->driverCtx()->task);
+    task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
+    return;
+  }
+  for (auto& target : targets_) {
+    target->processWatermark(timestamp);
   }
 }
 
-void StatefulOperator::processWatermark(long timestamp, int index) {
-  if (combinedWatermarkStatus_->updateWatermark(index - 1, timestamp)) {
+void StatefulOperator::processWatermark(int64_t timestamp, int index) {
+  if (combinedWatermarkStatus_->updateWatermark(index, timestamp)) {
     // If the watermark is updated, we need to advance the timer service.
-    long combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
-    processWatermarkInternal(combinedWatermark);
-    pushWatermark(combinedWatermark, 1);
+    int64_t combinedWatermark = combinedWatermarkStatus_->getCombinedWatermark();
+    processWatermark(combinedWatermark);
   }
+}
+
+void StatefulOperator::processWatermark(int64_t timestamp) {
+  emitWatermark(timestamp);
 }
 
 void StatefulOperator::initializeState(StateBackend* stateBackend) {
