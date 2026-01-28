@@ -41,15 +41,6 @@ class StatefulPlanner {
   exec::DriverCtx* ctx_ = nullptr;
   StateBackend* stateBackend_ = nullptr;
 
-
-  static std::unique_ptr<StatefulOperator> nodeToStatefulOperator(
-      const core::PlanNodePtr& planNode,
-      exec::DriverCtx* ctx,
-      StateBackend* stateBackend);
-
-  static std::unique_ptr<exec::Operator> nodeToOperator(
-      const core::PlanNodePtr& planNode,
-      exec::DriverCtx* ctx);
   StatefulOperatorPtr transformStatefulOperators(const core::PlanNodePtr& planNode);
   std::vector<StatefulOperatorPtr> transformStatefulOperators(const std::vector<core::PlanNodePtr>& targets);
   std::unique_ptr<exec::Operator> transformOperator(const core::PlanNodePtr& planNode);
