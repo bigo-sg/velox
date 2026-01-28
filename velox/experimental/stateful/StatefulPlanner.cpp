@@ -15,24 +15,18 @@
  */
 #include "velox/core/PlanFragment.h"
 #include "velox/exec/AssignUniqueId.h"
-#include "velox/exec/CallbackSink.h"
 #include "velox/exec/EnforceSingleRow.h"
-#include "velox/exec/Exchange.h"
 #include "velox/exec/Expand.h"
 #include "velox/exec/FilterProject.h"
 #include "velox/exec/GroupId.h"
 #include "velox/exec/HashAggregation.h"
-#include "velox/exec/HashBuild.h"
 #include "velox/exec/HashProbe.h"
 #include "velox/exec/IndexLookupJoin.h"
 #include "velox/exec/Limit.h"
 #include "velox/exec/MarkDistinct.h"
-#include "velox/exec/Merge.h"
 #include "velox/exec/MergeJoin.h"
-#include "velox/exec/NestedLoopJoinBuild.h"
 #include "velox/exec/NestedLoopJoinProbe.h"
 #include "velox/exec/OrderBy.h"
-#include "velox/exec/RoundRobinPartitionFunction.h"
 #include "velox/exec/RowNumber.h"
 #include "velox/exec/StreamingAggregation.h"
 #include "velox/exec/TableScan.h"
@@ -79,8 +73,6 @@ StatefulOperatorPtr StatefulPlanner::plan(
   StatefulPlanner planner(ctx, stateBackend);
   return planner.transformStatefulOperators(planFragment.planNode);
 }
-
-#define CHECK_NODE_TYPE(TYPE, node) std::dynamic_pointer_cast<const TYPE>(node->node()) != nullptr
 
 StatefulOperatorPtr StatefulPlanner::transformStatefulOperators(const core::PlanNodePtr& planNode) {
     auto statefulNode = std::dynamic_pointer_cast<const StatefulPlanNode>(planNode);
@@ -272,7 +264,6 @@ StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(con
     auto windowAggNode = std::dynamic_pointer_cast<const GroupWindowAggregationNode>(planNode.node());
     VELOX_CHECK(windowAggNode, "Failed to cast to GroupWindowAggregationNode");
 
-    VELOX_MEM_LOG(ERROR)<< "transformGroupWindowAggregationOperator:" << planNode.toString();
     auto op = transformOperator(windowAggNode->aggregation());
 
     std::unique_ptr<KeySelector> keySelector =
@@ -340,6 +331,14 @@ StatefulOperatorPtr StatefulPlanner::transformGroupAggregationOperator(const Sta
     return std::make_unique<StreamKeyedOperator>(
         std::move(op),
         std::move(keySelector),
+        std::move(targets));
+}
+
+StatefulOperatorPtr StatefulPlanner::transformGenericOperator(const StatefulPlanNode& planNode) {
+    std::vector<StatefulOperatorPtr> targets = transformStatefulOperators(planNode.targets());
+    std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
+    return std::make_unique<StatefulOperator>(
+        std::move(op),
         std::move(targets));
 }
 
@@ -456,21 +455,9 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(const core::P
             topNNode->outputRankNumber(),
             topNNode->cacheSize());
     }
-    std::unique_ptr<exec::Operator> extended;
-    extended = exec::Operator::fromPlanNode(ctx_, nextOperatorId(), planNode);
-    if (!extended) {
-        VELOX_MEM_LOG(ERROR)<< "Failed to create operator for plan node:" << process::StackTrace().toString();
-    }
-    VELOX_CHECK(extended, "Unsupported plan node: {}", planNode->toString());
+    std::unique_ptr<exec::Operator> extended = exec::Operator::fromPlanNode(ctx_, nextOperatorId(), planNode);
+    VELOX_CHECK(extended, "Unsupported plan node: {}\n{}", planNode->toString(), process::StackTrace().toString());
     return extended;
-}
-
-StatefulOperatorPtr StatefulPlanner::transformGenericOperator(const StatefulPlanNode& planNode) {
-    std::vector<StatefulOperatorPtr> targets = transformStatefulOperators(planNode.targets());
-    std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
-    return std::make_unique<StatefulOperator>(
-        std::move(op),
-        std::move(targets));
 }
 
 } // namespace facebook::velox::stateful
