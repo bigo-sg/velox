@@ -15,7 +15,6 @@
  */
 
 #include "velox/connectors/filesystem/FileSystemDataSink.h"
-#include <common/compression/Compression.h>
 #include "velox/common/base/Fs.h"
 #include "velox/dwio/common/FileSink.h"
 #include "velox/dwio/common/Options.h"

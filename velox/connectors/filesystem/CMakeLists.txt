@@ -21,7 +21,9 @@ velox_add_library(
   FileSystemConfig.cpp
   FileSystemConnector.cpp
   FileSystemInsertTableHandle.cpp
-  FileSystemDataSink.cpp)
+   FileSystemDataSink.cpp
+  FileSystemIndexSource.cpp
+  FileSystemColumnHandle.cpp)
 
 velox_link_libraries(velox_filesystem_connector velox_common_io velox_connector)
 
