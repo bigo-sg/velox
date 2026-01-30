@@ -64,30 +64,31 @@ class StreamRecord :  public StreamElement {
   StreamRecord(std::string nodeId, RowVectorPtr record)
       : StreamElement(nodeId),
         record_(std::move(record)),
-        timestamp_(-1),
-        hasTimestamp_(false),
+        timestamps_(nullptr),
         key_(-1) {}
 
-  StreamRecord(std::string nodeId, RowVectorPtr record, int64_t timestamp)
+  /// @param timestamps RowVector with one column of int64_t, same size as record;
+  /// each row is the event time for the corresponding row in record.
+  StreamRecord(std::string nodeId, RowVectorPtr record, RowVectorPtr timestamps)
       : StreamElement(nodeId),
         record_(std::move(record)),
-        timestamp_(timestamp),
-        hasTimestamp_(true),
+        timestamps_(std::move(timestamps)),
         key_(-1) {}
 
   StreamRecord(std::string nodeId, int key, RowVectorPtr record)
       : StreamElement(nodeId),
         record_(std::move(record)),
-        timestamp_(-1),
-        hasTimestamp_(false),
+        timestamps_(nullptr),
         key_(key) {}
 
   const RowVectorPtr& record() const {
     return record_;
   }
 
-  int64_t timestamp() const {
-    return timestamp_;
+  /// Per-row timestamps; valid only when hasTimestamp() is true.
+  /// Same size as record(); typically one column of int64_t.
+  const RowVectorPtr& timestamps() const {
+    return timestamps_;
   }
 
   int key() const {
@@ -103,13 +104,12 @@ class StreamRecord :  public StreamElement {
   }
 
   bool hasTimestamp() const {
-    return hasTimestamp_;
+    return timestamps_ != nullptr;
   }
 
  private:
   const RowVectorPtr record_;
-  const int64_t timestamp_;
-  bool hasTimestamp_ = false;
+  const RowVectorPtr timestamps_;
   const int key_;
 };
 } // namespace facebook::velox::stateful
