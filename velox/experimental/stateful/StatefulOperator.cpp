@@ -33,9 +33,10 @@ bool StatefulOperator::isFinished() {
   return operator_->isFinished();
 }
 
-void StatefulOperator::addInput(RowVectorPtr input) {
-  operator_->traceInput(input);
-  operator_->addInput(std::move(input));
+void StatefulOperator::addInput(StreamElementPtr input) {
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  operator_->traceInput(record->record());
+  operator_->addInput(record->record());
 }
 
 bool StatefulOperator::sourceEmpty() {
@@ -51,32 +52,31 @@ void StatefulOperator::close() {
   targets_.clear();
 }
 
-void StatefulOperator::getOutput() {
+void StatefulOperator::advance() {
   sourceEmpty_ = true;
   auto intermediateResult = operator_->getOutput();
   if (!intermediateResult) {
     return;
   }
   sourceEmpty_ = false;
-  pushOutput(std::move(intermediateResult));
+  pushOutput(std::make_shared<StreamRecord>(
+      getPlanNodeId(), std::move(intermediateResult)));
 }
 
-void StatefulOperator::pushOutput(RowVectorPtr output) {
+void StatefulOperator::pushOutput(StreamElementPtr output) {
   if (targets_.empty()) {
-    auto outNodeId = operator_->planNodeId();
     auto task = std::static_pointer_cast<StatefulTask>(
         operator_->operatorCtx()->driverCtx()->task);
-    task->addOutput(
-        std::make_shared<StreamRecord>(outNodeId, std::move(output)));
+    task->addOutput(std::move(output));
     return;
   }
-  for (int i = 0; i < targets_.size() - 1; i++) {
-    auto copy = output;
-    targets_[i]->addInput(std::move(copy));
-    targets_[i]->getOutput();
+
+  for (size_t i = 0; i < targets_.size() - 1; i++) {
+    targets_[i]->addInput(output);
+    targets_[i]->advance();
   }
-  targets_[targets_.size() - 1]->addInput(std::move(output));
-  targets_[targets_.size() - 1]->getOutput();
+  targets_[targets_.size() - 1]->addInput(output);
+  targets_[targets_.size() - 1]->advance();
 }
 
 void StatefulOperator::emitWatermark(int64_t timestamp) {
@@ -87,10 +87,9 @@ void StatefulOperator::emitWatermark(int64_t timestamp) {
   }
 
   if (targets_.empty()) {
-    auto outNodeId = operator_->planNodeId();
     auto task = std::static_pointer_cast<StatefulTask>(
         operator_->operatorCtx()->driverCtx()->task);
-    task->addOutput(std::make_shared<Watermark>(outNodeId, timestamp));
+    task->addOutput(std::make_shared<Watermark>(getPlanNodeId(), timestamp));
     return;
   }
   for (auto& target : targets_) {
@@ -114,7 +113,10 @@ void StatefulOperator::processWatermark(int64_t timestamp) {
 void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   if (!stateHandler_) {
     stateHandler_ = std::make_shared<StreamOperatorStateHandler>(
-        op()->operatorId(), stateBackend->createKeyedStateBackend());
+        op()->operatorId(),
+        stateBackend->createKeyedStateBackend(KeyedStateBackendParameters(
+            op()->operatorCtx()->driverCtx()->task->taskId(),
+            op()->operatorId())));
   }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
@@ -148,6 +150,7 @@ std::vector<std::string> StatefulOperator::notifyCheckpointComplete(
   if (!stateHandler_) {
     return {};
   }
+
   stateHandler_->notifyCheckpointComplete(checkpointId);
   auto checkpointListener = dynamic_cast<CheckpointListener*>(op().get());
   if (checkpointListener) {

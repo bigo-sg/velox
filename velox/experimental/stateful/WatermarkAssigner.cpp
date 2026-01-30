@@ -32,12 +32,14 @@ WatermarkAssigner::WatermarkAssigner(
       rowtimeFieldIndex_(rowtimeFieldIndex),
       watermarkInterval_(watermarkInterval) {}
 
-void WatermarkAssigner::addInput(RowVectorPtr input) {
-  input_ = input;
-  op()->addInput(std::move(input));
+void WatermarkAssigner::addInput(StreamElementPtr input) {
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
+  op()->addInput(input_);
 }
 
-void WatermarkAssigner::getOutput() {
+
+void WatermarkAssigner::advance() {
   if (!input_) {
     return;
   }
@@ -81,7 +83,8 @@ void WatermarkAssigner::getOutput() {
         auto output = std::dynamic_pointer_cast<RowVector>(
             input_->slice(lastIndex, i - lastIndex + 1));
         lastIndex = i + 1;
-        pushOutput(std::move(output));
+        pushOutput(
+            std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
         advanceWatermark();
         // Update threshold after watermark advance
         nextWatermarkThreshold = lastWatermark + watermarkInterval_;
@@ -91,11 +94,13 @@ void WatermarkAssigner::getOutput() {
 
   // Handle remaining data
   if (lastIndex == 0) {
-    pushOutput(std::move(input_));
+    pushOutput(
+        std::make_shared<StreamRecord>(getPlanNodeId(), std::move(input_)));
   } else if (lastIndex < timestampSize) {
     auto output = std::dynamic_pointer_cast<RowVector>(
         input_->slice(lastIndex, timestampSize - lastIndex));
-    pushOutput(std::move(output));
+    pushOutput(
+        std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
   }
   input_.reset();
 }

@@ -54,7 +54,7 @@ bool WindowJoin::isFinished() {
   return leftInput_->isFinished() && rightInput_->isFinished();
 }
 
-void WindowJoin::addInput(RowVectorPtr input) {
+void WindowJoin::addInput(StreamElementPtr input) {
   VELOX_NYI();
 }
 
@@ -66,7 +66,7 @@ void WindowJoin::close() {
   rightWindowState_->clear();
 }
 
-void WindowJoin::getOutput() {
+void WindowJoin::advance() {
   // TODO: use nested loop join logic to produce output now.
   // But it's not equal to Flink's streaming join.
   processData(
@@ -136,7 +136,8 @@ void WindowJoin::join(uint32_t key, int64_t window) {
     probe_->setBuildData(buildVector);
 
     auto result = probe_->getOutput();
-    pushOutput(result);
+    pushOutput(
+        std::make_shared<StreamRecord>(getPlanNodeId(), std::move(result)));
   }
   // TODO: clear state
   leftWindowState_->remove(key, window);

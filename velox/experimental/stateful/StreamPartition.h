@@ -30,9 +30,9 @@ class StreamPartition : public StatefulOperator {
 
   bool isFinished() override;
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   std::string name() const override {
     return "StreamPartition";

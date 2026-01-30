@@ -17,6 +17,7 @@
 #include <cstdint>
 #include "velox/experimental/stateful/StatefulTask.h"
 
+
 namespace facebook::velox::stateful {
 
 StreamPartition::StreamPartition(
@@ -36,16 +37,17 @@ bool StreamPartition::isFinished() {
   return false;
 }
 
-void StreamPartition::addInput(RowVectorPtr input) {
+void StreamPartition::addInput(StreamElementPtr input) {
   VELOX_CHECK_NULL(input_);
-  input_ = std::move(input);
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void StreamPartition::getOutput() {
+void StreamPartition::advance() {
   prepareForInput(input_);
 
   if (numPartitions_ == 1) {
-    pushToTask(std::make_shared<StreamRecord>(op()->planNodeId(), 0, input_));
+    pushToTask(std::make_shared<StreamRecord>(getPlanNodeId(), 0, input_));
     input_.reset();
     return;
   }
@@ -75,7 +77,7 @@ void StreamPartition::getOutput() {
     }
     auto partitionData = wrapChildren(input_, partitionSize, indexBuffers_[i]);
     pushToTask(
-        std::make_shared<StreamRecord>(op()->planNodeId(), i, partitionData));
+        std::make_shared<StreamRecord>(getPlanNodeId(), i, partitionData));
   }
   input_.reset();
 }

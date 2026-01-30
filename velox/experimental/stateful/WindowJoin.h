@@ -21,6 +21,10 @@
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+<<<<<<< HEAD
+=======
+#include "velox/experimental/stateful/StreamElement.h"
+>>>>>>> 72bb1ba5f (refactor(stateful): route addInput through StreamElementPtr)
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
@@ -44,9 +48,9 @@ class WindowJoin : public StatefulOperator,
 
   bool isFinished() override;
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   void close() override;
 
@@ -75,7 +79,11 @@ class WindowJoin : public StatefulOperator,
 
   RowVectorPtr filterWindowFiredRows(RowVectorPtr& input);
 
+<<<<<<< HEAD
   std::map<int64_t, RowVectorPtr> partitionWindowData(
+=======
+  std::map<long, RowVectorPtr> partitionWindowData(
+>>>>>>> 72bb1ba5f (refactor(stateful): route addInput through StreamElementPtr)
       RowVectorPtr& input,
       int windowEndIndex);
 
