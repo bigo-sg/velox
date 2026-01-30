@@ -35,7 +35,7 @@ class StatefulPlanner {
       exec::DriverCtx* ctx,
       StateBackend* stateBackend);
  protected:
-    StatefulPlanner(exec::DriverCtx* ctx, StateBackend* stateBackend) : ctx_(ctx),stateBackend_(stateBackend)  {}
+    StatefulPlanner(exec::DriverCtx* ctx, StateBackend* stateBackend) : ctx_(ctx), stateBackend_(stateBackend)  {}
    
  private:
   exec::DriverCtx* ctx_ = nullptr;

@@ -427,15 +427,15 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(const core::P
             ctx_,
             aggsHandlerNode,
             std::make_unique<AggsHandleFunction>(), // TODO: not complete yet
-            0, // stateRetentionTime: default to 0
-            aggsHandlerNode->generateUpdateBefore());
+            aggsHandlerNode->generateUpdateBefore(),
+            aggsHandlerNode->needRetraction());
     } else if (auto deduplicateNode = std::dynamic_pointer_cast<const DeduplicateNode>(planNode)) {
         return std::make_unique<RowTimeDeduplicateRanker>(
             nextOperatorId(),
             ctx_,
             deduplicateNode,
-            deduplicateNode->minRetentionTime(),
             deduplicateNode->rowtimeIndex(),
+            deduplicateNode->minRetentionTime(),
             deduplicateNode->generateUpdateBefore(),
             deduplicateNode->generateInsert(),
             deduplicateNode->keepLastRow());
