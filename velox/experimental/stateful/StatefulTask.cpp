@@ -150,6 +150,10 @@ void StatefulTask::notifyWatermark(int64_t watermark, int index) {
   operatorChain_->processWatermark(watermark, index);
 }
 
+void StatefulTask::notifyWatermark(int64_t watermark) {
+  operatorChain_->processWatermark(watermark);
+}
+
 void StatefulTask::initializeState(
     const std::shared_ptr<const KeyedStateBackendParameters> parameters) {
   initStateBackend(parameters);
