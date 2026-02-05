@@ -15,11 +15,11 @@
 */
 #pragma once
 
-#include <rocksdb/options.h>
 #include <memory>
+#include <set>
+#include <rocksdb/db.h>
+#include <rocksdb/options.h>
 #include "velox/experimental/stateful/state/StateBackend.h"
-#include "rocksdb/db.h"
-#include "rocksdb/options.h"
 
 namespace facebook::velox::stateful {
 
@@ -46,7 +46,7 @@ public:
         const int64_t dbHandle,
         const int64_t readOptionHandle,
         const int64_t writeOptionHandle,
-        const std::list<std::string>& states,
+        const std::set<std::string>& states,
         const std::unordered_map<std::string, int64_t>& columnFamilies,
         const std::unordered_map<std::string, std::string>& stateOperators,
         const std::unordered_map<std::string, TypePtr>& stateKeys,
@@ -59,17 +59,17 @@ public:
 
     const rocksdb::WriteOptions* getWriteOptions() const;
 
-    const std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*> getColumnFamilies() const;
+    std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*> getColumnFamilies() const;
 
-    const std::list<std::string> getStates() const;
+    const std::set<std::string>& getStates() const;
 
-    const std::unordered_map<std::string, std::string> getStateOperators() const;
+    const std::unordered_map<std::string, std::string>& getStateOperators() const;
 
-    const std::unordered_map<std::string, TypePtr> getStateKeys() const;
+    const std::unordered_map<std::string, TypePtr>& getStateKeys() const;
 
-    const std::unordered_map<std::string, TypePtr> getStateNamespaces() const;
+    const std::unordered_map<std::string, TypePtr>& getStateNamespaces() const;
 
-    const std::unordered_map<std::string, TypePtr> getStateValues() const;
+    const std::unordered_map<std::string, TypePtr>& getStateValues() const;
 
     folly::dynamic serialize() const override;
 
@@ -83,7 +83,7 @@ private:
     int64_t writeOptionHandle_;
     /// The list of state names, related to the states have been registered in rocksdb state backend. It's used to justify 
     /// the given state name is valid or not.
-    std::list<std::string> states_;
+    std::set<std::string> states_;
     /// The map between state and operators, it's used to justify the relationship between the state and the operator. 
     /// In Flink, the state is binded to operator one-to-one.
     std::unordered_map<std::string, std::string> stateOperators_;

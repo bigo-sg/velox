@@ -29,7 +29,7 @@ RocksDBKeyedStateBackend::RocksDBKeyedStateBackend(
     rocksdb::DB* db,
     const rocksdb::ReadOptions* readOptions,
     const rocksdb::WriteOptions* writeOptions,
-    const std::list<std::string>& states,
+    const std::set<std::string>& states,
     const std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>& stateColumnFamilies,
     const std::unordered_map<std::string, std::string>& stateOperators,
     const std::unordered_map<std::string, TypePtr>& stateKeys,
@@ -50,34 +50,20 @@ RocksDBKeyedStateBackend::RocksDBKeyedStateBackend(
     }
 
 void RocksDBKeyedStateBackend::checkValidState(const std::string& stateName) {
-    auto stateIt = std::find(states_.begin(), states_.end(), stateName);
-    if (stateIt == states_.end()) {
-        VELOX_FAIL("The rocksdb state {} is not registered", stateName);
-    }
-    auto stateCFIt = stateColumnFamilies_.find(stateName);
-    if (stateCFIt == stateColumnFamilies_.end()) {
-        VELOX_FAIL("No column family related to rocksdb state {}", stateName);
-    }
-    auto stateKeyIt = stateKeys_.find(stateName);
-    if (stateKeyIt == stateKeys_.end()) {
-        VELOX_FAIL("No state key related to rocksdb state {}", stateName);
-    }
-    auto stateNamespaceIt = stateNamespaces_.find(stateName);
-    if (stateNamespaceIt == stateNamespaces_.end()) {
-        VELOX_FAIL("No state namespace related to rocksdb state {}", stateName);
-    }
-    auto stateValueIt = stateValues_.find(stateName);
-    if (stateValueIt == stateValues_.end()) {
-        VELOX_FAIL("No state value related to rocksdb state {}", stateName);
-    }
+    VELOX_CHECK(states_.count(stateName), "The rocksdb state {} is not registered", stateName);
+    VELOX_CHECK(stateColumnFamilies_.count(stateName), "No column family related to rocksdb state {}", stateName);
+    VELOX_CHECK(stateKeys_.count(stateName), "No state key related to rocksdb state {}", stateName);
+    VELOX_CHECK(stateNamespaces_.count(stateName), "No state namespace related to rocksdb state {}", stateName);
+    VELOX_CHECK(stateValues_.count(stateName), "No state value related to rocksdb state {}", stateName);
 }
 
 RowTypePtr combineToRowType(const TypePtr& keyType, const TypePtr& valueType) {
     std::vector<std::string> names;
     std::vector<TypePtr> types;
-
     if (keyType->kind() == TypeKind::ROW) {
         auto keyRowType = std::dynamic_pointer_cast<const RowType>(keyType);
+        names.reserve(keyRowType->size());
+        types.reserve(keyRowType->size());
         for (size_t i = 0; i < keyRowType->size(); ++i) {
             names.push_back(keyRowType->nameOf(i));
             types.push_back(keyRowType->childAt(i));
@@ -89,6 +75,8 @@ RowTypePtr combineToRowType(const TypePtr& keyType, const TypePtr& valueType) {
 
     if (valueType->kind() == TypeKind::ROW) {
         auto valueRowType = std::dynamic_pointer_cast<const RowType>(valueType);
+        names.reserve(valueRowType->size() + names.size());
+        types.reserve(valueRowType->size() + types.size());
         for (size_t i = 0; i < valueRowType->size(); ++i) {
             names.push_back(valueRowType->nameOf(i));
             types.push_back(valueRowType->childAt(i));
@@ -121,22 +109,27 @@ std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> RocksDBKeyedStateBa
 }
 
 std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> RocksDBKeyedStateBackend::getOrCreateListState(StateDescriptor& stateDescriptor) {
+    // TODO: implement this
     return nullptr;
 }
 
 std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>> RocksDBKeyedStateBackend::getOrCreateMapState(StateDescriptor& stateDescriptor) {
+    // TODO: implement this
     return nullptr;
 }
 
 std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> RocksDBKeyedStateBackend::getOrCreateGroupValueState(StateDescriptor& stateDescriptor) {
+    // TODO: implement this
     return nullptr;
 }
 
 std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> RocksDBKeyedStateBackend::getOrCreateGroupMapState(StateDescriptor& stateDescriptor) {
+    // TODO: implement this
     return nullptr;
 }
 
 std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>> RocksDBKeyedStateBackend::getOrCreateRankMapState(StateDescriptor& stateDescriptor) {
+    // TODO: implement this
     return nullptr;
 }
 
@@ -145,6 +138,7 @@ std::shared_ptr<InternalTimerService<uint32_t, long>> RocksDBKeyedStateBackend::
 }
 
 std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> RocksDBKeyedStateBackend::createGroupWindowAggTimerService(Triggerable<uint32_t, TimeWindow>* triggerable) {
+    // TODO: implement this
     return nullptr;
 }
 

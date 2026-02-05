@@ -19,6 +19,7 @@
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include <unordered_map>
+#include <set>
 
 namespace facebook::velox::stateful {
 
@@ -28,7 +29,7 @@ public:
         rocksdb::DB* db,
         const rocksdb::ReadOptions* readOptions,
         const rocksdb::WriteOptions* writeOptions,
-        const std::list<std::string>& states,
+        const std::set<std::string>& states,
         const std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>& stateColumnFamilies,
         const std::unordered_map<std::string, std::string>& stateOperators,
         const std::unordered_map<std::string, TypePtr>& stateKeys,
@@ -53,17 +54,20 @@ public:
 
     std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> createGroupWindowAggTimerService(Triggerable<uint32_t, TimeWindow>* triggerable) override;
 
+    // Deprecated, this maybe removed later
     void snapshot(long checkpointId, long timestamp, CheckpointOptions checkpointOptions) override;
 
+    // Deprecated, this maybe removed later
     void notifyCheckpointComplete(long checkpointId) override;
 
+    // Deprecated, this maybe removed later
     void notifyCheckpointAborted(long checkpointId) override;
 
 private:
     rocksdb::DB* db_;
     const rocksdb::ReadOptions* readOptions_;
     const rocksdb::WriteOptions* writeOptions_;
-    std::list<std::string> states_;
+    std::set<std::string> states_;
     std::unordered_map<std::string, TypePtr> stateKeys_;
     std::unordered_map<std::string, TypePtr> stateNamespaces_;
     std::unordered_map<std::string, TypePtr> stateValues_;

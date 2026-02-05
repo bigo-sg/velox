@@ -45,10 +45,10 @@ class TypeSerializer : public TypeBaseSerializer {
   TypeSerializer() : TypeBaseSerializer() {}
   ~TypeSerializer() override = default;
   /// Serialize the given value to char array.
-  virtual const std::string serialize(const D& data) = 0;
+  virtual std::string serialize(const D& data) = 0;
 
   /// Deserialize the give char array to value.
-  virtual const D deserialize(const std::string& str) = 0;
+  virtual D deserialize(const std::string& str) = 0;
 
  protected:
   std::unique_ptr<ByteInputStream> toByteStream(
@@ -68,7 +68,7 @@ class ValueSerializer : public TypeSerializer<D> {
  public:
   ValueSerializer() : TypeSerializer<D>() {}
 
-  const std::string serialize(const D& t) override {
+  std::string serialize(const D& t) override {
     if constexpr (
         std::is_same_v<D, int8_t> || std::is_same_v<D, int16_t> ||
         std::is_same_v<D, int32_t> || std::is_same_v<D, int64_t> ||
@@ -96,7 +96,7 @@ class ValueSerializer : public TypeSerializer<D> {
     }
   }
 
-  const D deserialize(const std::string& str) override {
+  D deserialize(const std::string& str) override {
     if constexpr (
         std::is_same_v<D, int8_t> || std::is_same_v<D, int16_t> ||
         std::is_same_v<D, int32_t> || std::is_same_v<D, int64_t> ||
@@ -133,13 +133,13 @@ class ComplexVectorSerializer : public TypeSerializer<D> {
     checkTypes();
   }
 
-  const std::string serialize(const D& t) override {
+  std::string serialize(const D& t) override {
     std::ostringstream output;
     serde_->serializeSingleColumn(t, nullptr, pool_, &output);
     return output.str();
   }
 
-  const D deserialize(const std::string& str) override {
+  D deserialize(const std::string& str) override {
     auto byteStream = TypeSerializer<D>::toByteStream(str.data(), str.size());
     VectorPtr vec;
     serde_->deserializeSingleColumn(
@@ -156,7 +156,7 @@ class ComplexVectorSerializer : public TypeSerializer<D> {
     }
   }
 
-  const TypePtr getDataType() const {
+  const TypePtr& getDataType() const {
     return dataType_;
   }
 

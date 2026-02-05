@@ -34,7 +34,7 @@ class SerializedCompositeKeyBuilder {
         keyGroupPrefixBytes_(keyGroupPrefixBytes),
         initialSize_(initialSize) {}
 
-  const std::string buildCompositeKeyNamespace(K key, N ns) {
+  std::string buildCompositeKeyNamespace(const K& key, const N& ns) {
     std::string keySlice = keySerializer_->serialize(key);
     std::string namespaceSlice = namespaceSerializer_->serialize(ns);
     std::string compositeString;

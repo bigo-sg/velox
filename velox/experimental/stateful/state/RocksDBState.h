@@ -139,15 +139,15 @@ public:
         memory::MemoryPool* pool)
     : RocksDBState<K, N, V>(db, readOptions, writeOptions, columnFamily, keySerializer, namespaceSerializer, valueSerializer, defaultValue, pool) {}
 
-    V value(K key, N ns) override {
+    V value(const K& key, const N& ns) override {
         return RocksDBState<K, N, V>::get(key, ns);
     }
 
-    void update(K key, N ns, V value) override {
+    void update(const K& key, const N& ns, const V& value) override {
         return RocksDBState<K, N, V>::put(key, ns, value);
     }
 
-    void remove(K key, N ns) override {
+    void remove(const K& key, const N& ns) override {
         return RocksDBState<K, N, V>::remove(key, ns);
     }
 
@@ -169,15 +169,15 @@ public:
         memory::MemoryPool* pool)
     : RocksDBState<K, N, ArrayVectorPtr>(db, readOptions, writeOptions, columnFamily, keySerializer, namespaceSerializer, valueSerializer, defaultValue, pool) {}
 
-    ArrayVectorPtr vectorGet(K key, N ns) override {
+    ArrayVectorPtr vectorGet(const K& key, const N& ns) override {
         return RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
     }
 
-    void vectorUpdate(K key, N ns, const ArrayVectorPtr& vec) override {  
+    void vectorUpdate(const K& key, const N& ns, const ArrayVectorPtr& vec) override {  
         RocksDBState<K, N, ArrayVectorPtr>::put(key, ns, vec);
     }
 
-    void vectorAdd(K key, N ns, const ArrayVectorPtr& vec) override {
+    void vectorAdd(const K& key, const N& ns, const ArrayVectorPtr& vec) override {
         ArrayVectorPtr stateVector = RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
         if (stateVector) {
             stateVector->append(vec.get());
@@ -187,8 +187,8 @@ public:
         }
     }
 
-    std::list<V> get(K key, N ns) override {
-        std::list<V> result;
+    std::vector<V> get(const K& key, const N& ns) override {
+        std::vector<V> result;
         ArrayVectorPtr arrayVector = RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
         const VectorPtr& elements = arrayVector->elements();
         if (arrayVector && elements) {
@@ -209,7 +209,7 @@ public:
         return result;
     }
 
-    void add(K key, N ns, V value) override {
+    void add(const K& key, const N& ns, const V& value) override {
         ArrayVectorPtr stateVector = RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
         if (stateVector) {
             FlatVector<V>* flatVector = stateVector->elements()->asFlatVector<V>();
@@ -228,7 +228,7 @@ public:
         }
     }
 
-    void remove(K key, N ns) override {
+    void remove(const K& key, const N& ns) override {
         RocksDBState<K, N, ArrayVectorPtr>::remove(key, ns);
     }
 
@@ -266,15 +266,15 @@ public:
         return UV();
     }
 
-    MapVectorPtr vectorGet(K key, N ns) override {
+    MapVectorPtr vectorGet(const K& key, const N& ns) override {
         return RocksDBState<K, N, MapVectorPtr>::get(key, ns);
     }
 
-    void vectorPut(K key, N ns, const MapVectorPtr& vec) override {
+    void vectorPut(const K& key, const N& ns, const MapVectorPtr& vec) override {
         RocksDBState<K, N, MapVectorPtr>::put(key, ns, vec);
     }
 
-    void put(K key, N ns, UK userKey, UV value) override {
+    void put(const K& key, const N& ns, const UK& userKey, const UV& value) override {
         MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
         if (!mapVector) {
             const auto valueSerializer = std::dynamic_pointer_cast<ComplexVectorSerializer<MapVectorPtr>>(RocksDBState<K, N, MapVectorPtr>::valueSerializer_);
@@ -305,7 +305,7 @@ public:
         RocksDBState<K, N, MapVectorPtr>::put(key, ns, mapVector);
     }
 
-    std::map<UK, UV> entries(K key, N ns) override {
+    std::map<UK, UV> entries(const K& key, const N& ns) override {
         MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
         if (mapVector) {
             FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();
@@ -322,7 +322,7 @@ public:
         return {{}};
     }
 
-    void remove(K key, N ns, UK userKey) override {
+    void remove(const K& key, const N& ns, const UK& userKey) override {
         MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
         if (mapVector) {
             FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();

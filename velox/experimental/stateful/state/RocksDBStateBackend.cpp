@@ -61,7 +61,7 @@ RocksDBKeyedStateBackendParameters::RocksDBKeyedStateBackendParameters(
     const int64_t dbHandle,
     const int64_t readOptionHandle,
     const int64_t writeOptionHandle,
-    const std::list<std::string>& states,
+    const std::set<std::string>& states,
     const std::unordered_map<std::string, int64_t>& columnFamilies,
     const std::unordered_map<std::string, std::string>& stateOperators,
     const std::unordered_map<std::string, TypePtr>& stateKeys,
@@ -107,7 +107,7 @@ RocksDBKeyedStateBackendParameters::getWriteOptions() const {
   return writeOptions;
 }
 
-const std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>
+std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>
 RocksDBKeyedStateBackendParameters::getColumnFamilies() const {
   std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*> cfs;
   for (const auto& [name, cf] : columnFamilyHandles_) {
@@ -118,27 +118,27 @@ RocksDBKeyedStateBackendParameters::getColumnFamilies() const {
   return cfs;
 }
 
-const std::list<std::string> RocksDBKeyedStateBackendParameters::getStates()
+const std::set<std::string>& RocksDBKeyedStateBackendParameters::getStates()
     const {
   return states_;
 }
 
-const std::unordered_map<std::string, std::string>
+const std::unordered_map<std::string, std::string>&
 RocksDBKeyedStateBackendParameters::getStateOperators() const {
   return stateOperators_;
 }
 
-const std::unordered_map<std::string, TypePtr>
+const std::unordered_map<std::string, TypePtr>&
 RocksDBKeyedStateBackendParameters::getStateKeys() const {
   return stateKeys_;
 }
 
-const std::unordered_map<std::string, TypePtr>
+const std::unordered_map<std::string, TypePtr>&
 RocksDBKeyedStateBackendParameters::getStateNamespaces() const {
   return stateNamespaces_;
 }
 
-const std::unordered_map<std::string, TypePtr>
+const std::unordered_map<std::string, TypePtr>&
 RocksDBKeyedStateBackendParameters::getStateValues() const {
   return stateValues_;
 }
@@ -196,9 +196,9 @@ RocksDBKeyedStateBackendParameters::create(
   const int64_t dbHandle = obj["dbHandle"].asInt();
   const int64_t dbReadOptionHandle = obj["readOptionHandle"].asInt();
   const int64_t dbWriteOptionHandle = obj["writeOptionHandle"].asInt();
-  std::list<std::string> states;
+  std::set<std::string> states;
   for (const auto& state : obj["states"]) {
-    states.emplace_back(state.asString());
+    states.emplace(state.asString());
   }
   std::unordered_map<std::string, std::string> stateOperators;
   std::unordered_map<std::string, int64_t> columnFamilies;

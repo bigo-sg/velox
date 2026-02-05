@@ -27,15 +27,15 @@ class HeapListState : public ListState<K, N, V> {
   HeapListState(int keyGroupNumber) {
     stateTable_ =
         std::make_unique<
-            StateTable<K, N, std::shared_ptr<std::list<V>>>>(keyGroupNumber);
+            StateTable<K, N, std::shared_ptr<std::vector<V>>>>(keyGroupNumber);
   }
 
-  std::list<V> get(K key, N ns) override {
+  std::vector<V> get(const K& key, const N& ns) override {
     auto currentList = stateTable_->get(key, ns);
     return *currentList.get();
   }
 
-  void add(K key, N ns, V value) override {
+  void add(const K& key, const N& ns, const V& value) override {
     auto currentList = getOrCreate( key, ns);
     currentList->push_back(value);
   }
@@ -56,21 +56,21 @@ class HeapListState : public ListState<K, N, V> {
     stateTable_->clear();
   }
 
-  void remove(K key, N ns) override {
+  void remove(const K& key, const N& ns) override {
     stateTable_->remove(key, ns);
   }
 
  private:
-  std::shared_ptr<std::list<V>> getOrCreate(K key, N ns) {
-    std::shared_ptr<std::list<V>> currentList =
+  std::shared_ptr<std::vector<V>> getOrCreate(const K& key, const N& ns) {
+    std::shared_ptr<std::vector<V>> currentList =
         stateTable_->get(key, ns);
     if (currentList == nullptr) {
-      currentList = std::make_shared<std::list<V>>();
+      currentList = std::make_shared<std::vector<V>>();
       stateTable_->put(key, ns, currentList);
     }
     return currentList;
   }
 
-  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::list<V>>>> stateTable_;
+  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::vector<V>>>> stateTable_;
 };
 } // namespace facebook::velox::stateful
