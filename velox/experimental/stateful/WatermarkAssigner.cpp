@@ -38,7 +38,6 @@ void WatermarkAssigner::addInput(StreamElementPtr input) {
   op()->addInput(input_);
 }
 
-
 void WatermarkAssigner::advance() {
   if (!input_) {
     return;
