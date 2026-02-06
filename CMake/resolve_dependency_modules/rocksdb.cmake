@@ -31,5 +31,3 @@ FetchContent_Declare(
   URL_HASH ${VELOX_ROCKSDB_BUILD_SHA256_CHECKSUM})
 
 FetchContent_MakeAvailable(rocksdb)
-
-include_directories(${rocksdb_SOURCE_DIR}/include)
