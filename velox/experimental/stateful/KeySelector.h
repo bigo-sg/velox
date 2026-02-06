@@ -15,14 +15,14 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/StatefulPlanNode.h"
-#include "velox/vector/ComplexVector.h"
 #include <climits>
 #include <map>
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink KeySelector.
+/// This class is relevant to Flink KeySelector.
 /// It can partition the RowVector according to the key fields.
 class KeySelector {
  public:

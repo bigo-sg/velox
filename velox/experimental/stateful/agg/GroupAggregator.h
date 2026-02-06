@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/exec/Operator.h"
-#include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 #include "velox/experimental/stateful/agg/AggsHandleFunction.h"
+#include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink GroupAggFunction.
+/// This class is relevant to Flink GroupAggFunction.
 class GroupAggregator : public exec::Operator, public KeyedProcessFunction {
  public:
   GroupAggregator(
@@ -29,7 +30,7 @@ class GroupAggregator : public exec::Operator, public KeyedProcessFunction {
       exec::DriverCtx* driverCtx,
       const std::shared_ptr<const core::PlanNode>& aggNode,
       std::unique_ptr<AggsHandleFunction> aggsFunction,
-      long stateRetentionTime,
+      int64_t stateRetentionTime,
       bool generateUpdateBefore);
 
   bool needsInput() const override {
@@ -60,8 +61,8 @@ class GroupAggregator : public exec::Operator, public KeyedProcessFunction {
 
  private:
   std::unique_ptr<AggsHandleFunction> aggsFunction_;
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> accState_;
-  long stateRetentionTime_;
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> accState_;
+  int64_t stateRetentionTime_;
   bool generateUpdateBefore_;
 };
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WatermarkAssigner.h"
+#include <cstdint>
 
 #include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Nulls.h"
@@ -23,14 +24,13 @@ namespace facebook::velox::stateful {
 WatermarkAssigner::WatermarkAssigner(
     std::unique_ptr<exec::Operator> op,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
-    const long idleTimeout,
+    const int64_t idleTimeout,
     const int rowtimeFieldIndex,
-    const long watermarkInterval)
+    const int64_t watermarkInterval)
     : StatefulOperator(std::move(op), std::move(targets)),
       idleTimeout_(idleTimeout),
       rowtimeFieldIndex_(rowtimeFieldIndex),
-      watermarkInterval_(watermarkInterval) {
-}
+      watermarkInterval_(watermarkInterval) {}
 
 void WatermarkAssigner::addInput(RowVectorPtr input) {
   input_ = input;
@@ -49,33 +49,37 @@ void WatermarkAssigner::getOutput() {
     const vector_size_t size = rowtimeVector->size();
     const uint64_t nullCount = bits::countNulls(rawNulls, 0, size);
     if (nullCount > 0) {
-      VELOX_FAIL("RowTime field should not have nulls, but found {} nulls", nullCount);
+      VELOX_FAIL(
+          "RowTime field should not have nulls, but found {} nulls", nullCount);
     }
   }
 
-  RowVectorPtr  timestampVector = op()->getOutput();
+  RowVectorPtr timestampVector = op()->getOutput();
 
   VELOX_CHECK(
-    timestampVector->size() == input_->size(),
-    "Timestamps are not equal to input.");
+      timestampVector->size() == input_->size(),
+      "Timestamps are not equal to input.");
 
-  const int64_t* timestamps = timestampVector->childAt(0)->asFlatVector<int64_t>()->rawValues();
+  const int64_t* timestamps =
+      timestampVector->childAt(0)->asFlatVector<int64_t>()->rawValues();
   const vector_size_t timestampSize = timestampVector->size();
   vector_size_t lastIndex = 0;
-  
+
   // Pre-compute threshold to avoid repeated subtraction in hot loop
   int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval_;
-  
+
   for (vector_size_t i = 0; i < timestampSize; ++i) {
     const int64_t timestamp = timestamps[i];
-    
-    // Only update currentWatermark if timestamp is greater (avoid unnecessary max call)
+
+    // Only update currentWatermark if timestamp is greater (avoid unnecessary
+    // max call)
     if (timestamp > currentWatermark) {
       currentWatermark = timestamp;
-      
+
       // Check if watermark threshold is crossed
       if (currentWatermark > nextWatermarkThreshold) {
-        auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, i - lastIndex + 1));
+        auto output = std::dynamic_pointer_cast<RowVector>(
+            input_->slice(lastIndex, i - lastIndex + 1));
         lastIndex = i + 1;
         pushOutput(std::move(output));
         advanceWatermark();
@@ -84,12 +88,13 @@ void WatermarkAssigner::getOutput() {
       }
     }
   }
-  
+
   // Handle remaining data
   if (lastIndex == 0) {
     pushOutput(std::move(input_));
   } else if (lastIndex < timestampSize) {
-    auto output = std::dynamic_pointer_cast<RowVector>(input_->slice(lastIndex, timestampSize - lastIndex));
+    auto output = std::dynamic_pointer_cast<RowVector>(
+        input_->slice(lastIndex, timestampSize - lastIndex));
     pushOutput(std::move(output));
   }
   input_.reset();
@@ -97,9 +102,9 @@ void WatermarkAssigner::getOutput() {
 
 void WatermarkAssigner::advanceWatermark() {
   if (currentWatermark > lastWatermark) {
-      lastWatermark = currentWatermark;
-      // emit watermark
-      emitWatermark(currentWatermark);
+    lastWatermark = currentWatermark;
+    // emit watermark
+    emitWatermark(currentWatermark);
   }
 }
 

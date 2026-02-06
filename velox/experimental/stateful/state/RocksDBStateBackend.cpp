@@ -17,6 +17,7 @@
 #include <folly/json/dynamic.h>
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 #include "velox/experimental/stateful/state/RocksDBKeyedStateBackend.h"

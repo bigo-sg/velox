@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
@@ -107,7 +108,7 @@ core::PlanNodePtr WatermarkAssignerNode::create(
       ISerializable::deserialize<core::ProjectNode>(obj["project"], context);
   auto idleTimeout = obj["idleTimeout"].asInt();
   int rowtimeFieldIndex = obj["rowtimeFieldIndex"].asInt();
-  long watermarkInterval = obj["watermarkInterval"].asInt();
+  int64_t watermarkInterval = obj["watermarkInterval"].asInt();
 
   return std::make_shared<const WatermarkAssignerNode>(
       planNodeId, project, idleTimeout, rowtimeFieldIndex, watermarkInterval);

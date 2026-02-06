@@ -47,7 +47,7 @@ void StreamKeyedOperator::close() {
 
 void StreamKeyedOperator::getOutput() {
   auto keyToData = keySelector_->partition(input_);
-  for (auto & [key, data] : keyToData) {
+  for (auto& [key, data] : keyToData) {
     auto result = processor_->processElements(key, data);
     if (result) {
       pushOutput(result);

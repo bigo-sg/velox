@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink
+// This class is relevant to Flink
 // org.apache.flink.api.common.functions.RuntimeContext.
 class RuntimeContext {
  public:

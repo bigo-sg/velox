@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <velox/experimental/stateful/InternalPriorityQueue.h>
 #include <velox/experimental/stateful/TimerHeapInternalTimer.h>
@@ -21,26 +22,28 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink InternalTimerServiceImpl.
-template<typename K, typename N>
+// This class is relevant to Flink InternalTimerServiceImpl.
+template <typename K, typename N>
 class InternalTimerService {
  public:
   InternalTimerService(Triggerable<K, N>* triggerable)
       : triggerable_(triggerable) {}
 
-  void registerEventTimeTimer(K key, N ns, long time) {
-    eventTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void registerEventTimeTimer(K key, N ns, int64_t time) {
+    eventTimeTimersQueue_.add(
+        std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void deleteEventTimeTimer(K key, N ns, long time) {
-    eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void deleteEventTimeTimer(K key, N ns, int64_t time) {
+    eventTimeTimersQueue_.remove(
+        std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void registerProcessingTimeTimer(K key, N ns, long time) {
-  }
+  void registerProcessingTimeTimer(K key, N ns, int64_t time) {}
 
-  void deleteProcessingTimeTimer(K key, N ns, long time) {
-    eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void deleteProcessingTimeTimer(K key, N ns, int64_t time) {
+    eventTimeTimersQueue_.remove(
+        std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
   int64_t currentWatermark() {
@@ -51,7 +54,7 @@ class InternalTimerService {
     return 0; // or some other default value
   }
 
-  long currentProcessingTime() {
+  int64_t currentProcessingTime() {
     // TODO: Implement processing time logic if needed.
     return 0; // or some other default value
   }
@@ -70,7 +73,8 @@ class InternalTimerService {
 
  private:
   Triggerable<K, N>* triggerable_;
-  HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>> eventTimeTimersQueue_;
+  HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>>
+      eventTimeTimersQueue_;
 };
 
 } // namespace facebook::velox::stateful

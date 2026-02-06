@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/functions/Macros.h"
 
-#include <ctime>
 #include <algorithm>
+#include <ctime>
 
 namespace facebook::velox::stateful::udf {
 
@@ -26,14 +27,13 @@ template <typename T>
 struct ExtractFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
 
-  FOLLY_ALWAYS_INLINE bool
-  call(
+  FOLLY_ALWAYS_INLINE bool call(
       int64_t& result,
       const arg_type<Varchar>& field,
       const arg_type<Timestamp>& timestamp) {
-  
     std::string fieldLower(field.data(), field.size());
-    std::transform(fieldLower.begin(), fieldLower.end(), fieldLower.begin(), ::tolower);
+    std::transform(
+        fieldLower.begin(), fieldLower.end(), fieldLower.begin(), ::tolower);
 
     // TODO: maybe should support timezone
     time_t time = timestamp.getSeconds();

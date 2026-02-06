@@ -15,13 +15,13 @@
  */
 #pragma once
 
-#include <memory>
 #include <map>
+#include <memory>
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink org.apache.flink.api.common.State.
+// This class is relevant to Flink org.apache.flink.api.common.State.
 class State {
  public:
   static const int VOID_NAMESPACE = 0;
@@ -30,24 +30,27 @@ class State {
 
 using StatePtr = std::shared_ptr<State>;
 
-// This class is relevant to flink org.apache.flink.api.common.MapState.
+// This class is relevant to Flink org.apache.flink.api.common.MapState.
 template <typename K, typename N, typename UK, typename UV>
 class MapState : public State {
  public:
   virtual UV get(const K& key, const N& ns, const UK& userKey) = 0;
 
-  virtual void put(const K& key, const N& ns, const UK& userKey, const UV& value) = 0;
+  virtual void
+  put(const K& key, const N& ns, const UK& userKey, const UV& value) = 0;
 
   virtual std::map<UK, UV> entries(const K& key, const N& ns) = 0;
 
   virtual void remove(const K& key, const N& ns, const UK& userKey) = 0;
 
-  virtual MapVectorPtr vectorGet(const K& key, const N& ns) { return nullptr; }
+  virtual MapVectorPtr vectorGet(const K& key, const N& ns) {
+    return nullptr;
+  }
 
   virtual void vectorPut(const K& key, const N& ns, const MapVectorPtr& vec) {}
 };
 
-// This class is relevant to flink org.apache.flink.api.common.ListState.
+// This class is relevant to Flink org.apache.flink.api.common.ListState.
 template <typename K, typename N, typename S>
 class ListState : public State {
  public:
@@ -57,14 +60,18 @@ class ListState : public State {
 
   virtual void remove(const K& key, const N& ns) = 0;
 
-  virtual ArrayVectorPtr vectorGet(const K& key, const N& ns) { return nullptr; }
+  virtual ArrayVectorPtr vectorGet(const K& key, const N& ns) {
+    return nullptr;
+  }
 
-  virtual void vectorUpdate(const K& key, const N& ns, const ArrayVectorPtr& vec) {}
+  virtual void
+  vectorUpdate(const K& key, const N& ns, const ArrayVectorPtr& vec) {}
 
-  virtual void vectorAdd(const K& key, const N& ns, const ArrayVectorPtr& vec) {}
+  virtual void vectorAdd(const K& key, const N& ns, const ArrayVectorPtr& vec) {
+  }
 };
 
-// This class is relevant to flink org.apache.flink.api.common.ListState.
+// This class is relevant to Flink org.apache.flink.api.common.ListState.
 template <typename K, typename N, typename V>
 class ValueState : public State {
  public:

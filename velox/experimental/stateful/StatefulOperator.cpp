@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include <cstdint>
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
@@ -117,10 +118,10 @@ void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
-    // TODO: flink restore is a seperated logic
+    // TODO: Flink restore is a separated logic.
     // snapshotable->initializeState();
   }
-  // TODO: flink restore is a seperated logic
+  // TODO: Flink restore is a separated logic.
   // stateHandler_->initializeState();
   for (auto& target : targets_) {
     target->initializeStateBackend(stateBackend);
@@ -143,7 +144,7 @@ void StatefulOperator::snapshotState() {
 }
 
 std::vector<std::string> StatefulOperator::notifyCheckpointComplete(
-    long checkpointId) {
+    int64_t checkpointId) {
   if (!stateHandler_) {
     return {};
   }
@@ -163,7 +164,7 @@ std::vector<std::string> StatefulOperator::notifyCheckpointComplete(
   return committed;
 }
 
-void StatefulOperator::notifyCheckpointAborted(long checkpointId) {
+void StatefulOperator::notifyCheckpointAborted(int64_t checkpointId) {
   if (!stateHandler_) {
     return;
   }

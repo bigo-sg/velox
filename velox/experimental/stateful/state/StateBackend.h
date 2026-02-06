@@ -22,28 +22,29 @@ namespace facebook::velox::stateful {
 
 class KeyedStateBackendParameters;
 
-// This class is relevent to flink org.apache.flink.runtime.state.StateBackend.
+// This class is relevant to Flink org.apache.flink.runtime.state.StateBackend.
 class StateBackend : public ISerializable {
  public:
-  StateBackend(const std::shared_ptr<const KeyedStateBackendParameters> parameters)
-  : parameters_(parameters) {}
+  StateBackend(
+      const std::shared_ptr<const KeyedStateBackendParameters> parameters)
+      : parameters_(parameters) {}
   virtual std::string getName() const = 0;
 
   virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() = 0;
 
  protected:
-    const std::shared_ptr<const KeyedStateBackendParameters> parameters_;
+  const std::shared_ptr<const KeyedStateBackendParameters> parameters_;
 };
 
-enum class StateBackendType {
-  HEAP,
-  ROCKSDB
-};
+enum class StateBackendType { HEAP, ROCKSDB };
 
 class KeyedStateBackendParameters : public ISerializable {
  public:
- KeyedStateBackendParameters(const StateBackendType backendType, const std::string& jobId, const std::string operatorId)
- : backendType_(backendType), jobId_(jobId), operatorId_(operatorId) {}
+  KeyedStateBackendParameters(
+      const StateBackendType backendType,
+      const std::string& jobId,
+      const std::string operatorId)
+      : backendType_(backendType), jobId_(jobId), operatorId_(operatorId) {}
 
   const std::string& getJobId() const {
     return jobId_;
@@ -65,14 +66,18 @@ class KeyedStateBackendParameters : public ISerializable {
     return obj;
   }
 
-  static std::shared_ptr<const KeyedStateBackendParameters> create(const folly::dynamic& obj, void* context) {
+  static std::shared_ptr<const KeyedStateBackendParameters> create(
+      const folly::dynamic& obj,
+      void* context) {
     if (!obj.count("stateBackendType")) {
       return nullptr;
     }
     const std::string jobId = obj["jobId"].asString();
     const std::string operatorId = obj["operatorId"].asString();
-    const StateBackendType backendType = static_cast<StateBackendType>(obj["stateBackendType"].asInt());
-    return std::make_shared<const KeyedStateBackendParameters>(backendType, jobId, operatorId);
+    const StateBackendType backendType =
+        static_cast<StateBackendType>(obj["stateBackendType"].asInt());
+    return std::make_shared<const KeyedStateBackendParameters>(
+        backendType, jobId, operatorId);
   }
 
   static void registerSerDe() {

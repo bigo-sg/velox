@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/core/PlanNode.h"
 
@@ -38,7 +39,7 @@ class StreamElement {
 
 using StreamElementPtr = std::shared_ptr<StreamElement>;
 
-class Watermark :  public StreamElement {
+class Watermark : public StreamElement {
  public:
   Watermark(std::string nodeId, int64_t timestamp)
       : StreamElement(nodeId), timestamp_(timestamp) {}
@@ -59,7 +60,7 @@ class Watermark :  public StreamElement {
   const int64_t timestamp_;
 };
 
-class StreamRecord :  public StreamElement {
+class StreamRecord : public StreamElement {
  public:
   StreamRecord(std::string nodeId, RowVectorPtr record)
       : StreamElement(nodeId),

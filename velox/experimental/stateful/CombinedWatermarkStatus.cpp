@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/CombinedWatermarkStatus.h"
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 

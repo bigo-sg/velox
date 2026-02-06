@@ -25,8 +25,7 @@ GroupWindowAggsHandler::GroupWindowAggsHandler(
           groupAggNode->outputType(),
           operatorId,
           groupAggNode->id(),
-          "GroupWindowAggsHandler") {
-}
+          "GroupWindowAggsHandler") {}
 
 void GroupWindowAggsHandler::addInput(RowVectorPtr input) {
   VELOX_NYI();
@@ -40,41 +39,29 @@ bool GroupWindowAggsHandler::isFinished() {
   return false;
 }
 
-void GroupWindowAggsHandler::open() {
-}
+void GroupWindowAggsHandler::open() {}
 
-void GroupWindowAggsHandler::setAccumulators(TimeWindow ns, RowVectorPtr accumulators) {
+void GroupWindowAggsHandler::setAccumulators(
+    TimeWindow ns,
+    RowVectorPtr accumulators) {}
 
-}
+void GroupWindowAggsHandler::accumulate(RowVectorPtr inputRow) {}
 
-void GroupWindowAggsHandler::accumulate(RowVectorPtr inputRow) {
+void GroupWindowAggsHandler::retract(RowVectorPtr inputRow) {}
 
-}
-
-void GroupWindowAggsHandler::retract(RowVectorPtr inputRow) {
-
-}
-
-void GroupWindowAggsHandler::merge(TimeWindow ns, RowVectorPtr otherAcc) {
-
-}
+void GroupWindowAggsHandler::merge(TimeWindow ns, RowVectorPtr otherAcc) {}
 
 RowVectorPtr GroupWindowAggsHandler::createAccumulators() {
   return RowVector::createEmpty(outputType_, pool());
 }
 
 RowVectorPtr GroupWindowAggsHandler::getAccumulators() {
-  return RowVector::createEmpty(
-      outputType_,
-      pool());
+  return RowVector::createEmpty(outputType_, pool());
 }
 
-void GroupWindowAggsHandler::cleanup(TimeWindow ns) {
+void GroupWindowAggsHandler::cleanup(TimeWindow ns) {}
 
-}
-
-void GroupWindowAggsHandler::close() {
-}
+void GroupWindowAggsHandler::close() {}
 
 RowVectorPtr GroupWindowAggsHandler::getValue(TimeWindow ns) {
   return nullptr;

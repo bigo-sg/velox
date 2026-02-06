@@ -15,12 +15,12 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/window/Window.h"
 #include "velox/exec/Operator.h"
+#include "velox/experimental/stateful/window/Window.h"
 
 namespace facebook::velox::stateful {
 
-/// This is relavent to flink generated NamespaceAggsHandleFunction.
+/// This is relevant to Flink generated NamespaceAggsHandleFunction.
 /// We make it an Operator to be able to use it in a StatefulOperator.
 class GroupWindowAggsHandler : public exec::Operator {
  public:

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/exec/Task.h"
 #include "velox/exec/TaskStats.h"
@@ -67,9 +68,9 @@ class StatefulTask : public exec::Task {
 
   void snapshotState();
 
-  std::vector<std::string> notifyCheckpointComplete(long checkpointId);
+  std::vector<std::string> notifyCheckpointComplete(int64_t checkpointId);
 
-  void notifyCheckpointAborted(long checkpointId);
+  void notifyCheckpointAborted(int64_t checkpointId);
 
   void init();
 

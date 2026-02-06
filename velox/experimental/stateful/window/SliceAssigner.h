@@ -14,40 +14,40 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/KeySelector.h"
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink SliceAssginer.
+/// This class is relevant to Flink SliceAssigner.
 class SliceAssigner {
  public:
   SliceAssigner(
-      std::unique_ptr<KeySelector>  keySelector,
-      long size,
-      long step,
-      long offset,
+      std::unique_ptr<KeySelector> keySelector,
+      int64_t size,
+      int64_t step,
+      int64_t offset,
       int windowType,
       int rowtimeIndex);
 
   std::map<uint32_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
 
-  long getLastWindowEnd(long sliceEnd);
+  int64_t getLastWindowEnd(int64_t sliceEnd);
 
-  long getWindowStart(long windowEnd);
+  int64_t getWindowStart(int64_t windowEnd);
 
-  // Iterable<Long> expiredSlices(long windowEnd);
+  // Iterable<Long> expiredSlices(int64_t windowEnd);
 
-  long getSliceEndInterval();
+  int64_t getSliceEndInterval();
 
  private:
-
   const std::unique_ptr<KeySelector> keySelector_;
-  const long size_;
-  const long step_;
-  const long offset_;
+  const int64_t size_;
+  const int64_t step_;
+  const int64_t offset_;
   const int windowType_; // 0: hopping window, 1: slide window
-  long sliceSize_;
+  int64_t sliceSize_;
   int rowtimeIndex_;
 };
 

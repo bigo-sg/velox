@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
@@ -26,13 +27,13 @@ namespace facebook::velox::stateful {
 class LocalWindowAggregator : public StatefulOperator {
  public:
   LocalWindowAggregator(
-    std::unique_ptr<exec::Operator> op,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    std::unique_ptr<KeySelector> keySelector,
-    std::unique_ptr<KeySelector> sliceAssigner,
-    const long windowInterval,
-    const bool useDayLightSaving,
-    RowTypePtr outputType);
+      std::unique_ptr<exec::Operator> op,
+      std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::unique_ptr<KeySelector> keySelector,
+      std::unique_ptr<KeySelector> sliceAssigner,
+      const int64_t windowInterval,
+      const bool useDayLightSaving,
+      RowTypePtr outputType);
 
   void addInput(RowVectorPtr input) override;
 
@@ -51,7 +52,7 @@ class LocalWindowAggregator : public StatefulOperator {
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<KeySelector> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
-  const long windowInterval_;
+  const int64_t windowInterval_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   RowTypePtr outputType_;
