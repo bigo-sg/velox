@@ -18,14 +18,11 @@
 namespace facebook::velox::stateful {
 
 // This class is relevent to flink InternalTimerServiceImpl.
-template<typename K, typename N>
+template <typename K, typename N>
 class TimerHeapInternalTimer {
  public:
   TimerHeapInternalTimer(long timestamp, K key, N ns)
-     : timestamp_(timestamp),
-       key_(key),
-       ns_(ns),
-       keyGroupIndex_(0) {}
+      : timestamp_(timestamp), key_(key), ns_(ns), keyGroupIndex_(0) {}
 
   long timestamp() {
     return timestamp_;
@@ -44,10 +41,10 @@ class TimerHeapInternalTimer {
   }
 
   bool operator==(const TimerHeapInternalTimer& other) const {
-    return timestamp_ == other.timestamp_ &&
-        key_ == other.key_ &&
-        ns_ == other.ns_;
+    return timestamp_ == other.timestamp_ && key_ == other.key_ &&
+           ns_ == other.ns_;
   }
+
  private:
   long timestamp_;
   K key_;

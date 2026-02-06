@@ -28,15 +28,15 @@ class HeapValueState : public ValueState<K, N, V> {
     stateTable_ = std::make_unique<StateTable<K, N, V>>(keyGroupNumber);
   }
 
-  V value(K key, N ns) override {
+  V value(const K& key, const N& ns) override {
     return stateTable_->get(key, ns);
   }
 
-  void update(K key, N ns, V value) override {
+  void update(const K& key, const N& ns, const V& value) override {
     stateTable_->put(key, ns, value);
   }
 
-  void remove(K key, N ns) override {
+  void remove(const K& key, const N& ns) override {
     stateTable_->remove(key, ns);
   }
 

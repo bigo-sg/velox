@@ -16,8 +16,6 @@
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamPartition.h"
 
-#include <iostream>
-
 namespace facebook::velox::stateful {
 
 StreamPartition::StreamPartition(

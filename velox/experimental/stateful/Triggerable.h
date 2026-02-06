@@ -23,7 +23,7 @@
 namespace facebook::velox::stateful {
 
 // This class is relevent to flink Triggerable.
-template<typename K, typename N>
+template <typename K, typename N>
 class Triggerable {
  public:
   virtual void onEventTime(

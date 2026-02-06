@@ -26,7 +26,7 @@ class UDFTest : public functions::test::FunctionBaseTest {
  protected:
   static void SetUpTestCase() {
     parse::registerTypeResolver();
-    stateful::udf::registerFunctions("");
+    // stateful::udf::registerFunctions("");
     memory::MemoryManager::testingSetInstance({});
   }
 };

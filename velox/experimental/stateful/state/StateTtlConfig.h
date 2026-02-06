@@ -22,8 +22,7 @@ namespace facebook::velox::stateful {
 // This class is relevent to flink org.apache.flink.api.common.State.
 class StateTtlConfig : public ISerializable {
  public:
-  StateTtlConfig(long retentionTime)
-      : retentionTime_(retentionTime) {}
+  StateTtlConfig(long retentionTime) : retentionTime_(retentionTime) {}
 
   folly::dynamic serialize() const override {
     return nullptr;

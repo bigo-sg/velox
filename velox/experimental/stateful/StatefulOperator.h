@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/CombinedWatermarkStatus.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
@@ -26,8 +27,11 @@ class StatefulOperator {
  public:
   StatefulOperator(
       std::unique_ptr<exec::Operator> op,
-      std::vector<std::unique_ptr<StatefulOperator>> targets)
-      : operator_(std::move(op)),
+      std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::shared_ptr<const KeyedStateBackendParameters>
+          keyedStateBackendParameters = nullptr)
+      : keyedStateBackendParameters_(keyedStateBackendParameters),
+        operator_(std::move(op)),
         targets_(std::move(targets)) {
     sink = operator_->operatorType() == "TableWrite";
   }
@@ -48,7 +52,9 @@ class StatefulOperator {
 
   virtual void processWatermark(int64_t timestamp);
 
-  void initializeState(StateBackend* stateBackend);
+  virtual void initializeState() {}
+
+  void initializeStateBackend(StateBackend* stateBackend);
 
   void snapshotState();
 
@@ -58,6 +64,10 @@ class StatefulOperator {
 
   StreamOperatorStateHandlerPtr stateHandler() const {
     return stateHandler_;
+  }
+
+  memory::MemoryPool* memoryPool() {
+    return operator_->pool();
   }
 
   const std::string detail() const {
@@ -88,6 +98,9 @@ class StatefulOperator {
   virtual int numInputs() const {
     return 1;
   }
+
+  std::shared_ptr<const KeyedStateBackendParameters>
+      keyedStateBackendParameters_;
 
  private:
   bool isSink() {

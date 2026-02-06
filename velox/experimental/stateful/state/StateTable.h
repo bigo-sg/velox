@@ -15,17 +15,18 @@
  */
 #pragma once
 
-#include "velox/common/base/Exceptions.h"
-#include "velox/experimental/stateful/state/StateMap.h"
 #include <iostream>
 #include <map>
 #include <vector>
+#include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/state/StateMap.h"
 
 namespace facebook::velox::stateful {
 
 /**
- * This class is relevent to flink org.apache.flink.runtime.state.heap.StateTable.
- * remove namespace first. And implement it here instead of making it as a interface.
+ * This class is relevent to flink
+ * org.apache.flink.runtime.state.heap.StateTable. remove namespace first. And
+ * implement it here instead of making it as a interface.
  * @param <K> type of key
  * @param <S> type of state
  */
@@ -33,8 +34,7 @@ template <typename K, typename N, typename S>
 class StateTable {
  public:
   StateTable(int keyGroupNumber)
-      : keyGroupedStates_(keyGroupNumber),
-        keyGroupNumber_(keyGroupNumber) {}
+      : keyGroupedStates_(keyGroupNumber), keyGroupNumber_(keyGroupNumber) {}
 
   S get(K key, N ns) {
     int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
