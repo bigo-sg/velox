@@ -546,6 +546,9 @@ if(${VELOX_ENABLE_KAFKA_CONNECTOR})
   velox_resolve_dependency(CppKafka)
 endif()
 
+velox_set_source(RocksDB)
+velox_resolve_dependency(RocksDB)
+
 if(${VELOX_BUILD_TESTING})
   # Spark query runner depends on absl, gRPC.
   velox_set_source(absl)
