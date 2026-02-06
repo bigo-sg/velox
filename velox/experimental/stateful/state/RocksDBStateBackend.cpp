@@ -37,7 +37,7 @@ RocksDBStateBackend::createKeyedStateBackend() {
               parameters_);
   VELOX_CHECK(
       rocksdbStateParams != nullptr,
-      "The provided parameters is not for rocksdb state backend.");
+      "The provided parameters are not for rocksdb state backend.");
   return std::make_shared<RocksDBKeyedStateBackend>(
       rocksdbStateParams->getDB(),
       rocksdbStateParams->getReadOptions(),

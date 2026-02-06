@@ -51,7 +51,7 @@ void StreamPartition::advance() {
     return;
   }
 
-  // TODO: The partition function doesn't use max parallism.
+  // TODO: The partition function doesn't use max parallelism.
   partitionFunction_->partition(*input_, partitions_);
   const auto numInput = input_->size();
   std::vector<vector_size_t> maxIndex(numPartitions_, 0);

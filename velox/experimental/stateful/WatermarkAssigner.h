@@ -24,7 +24,7 @@ namespace facebook::velox::stateful {
 
 /// It is related to
 /// org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
-/// in Flink. It extracts timestamp from each row and generate periodic
+/// in Flink. It extracts timestamp from each row and generates periodic
 /// watermark.
 class WatermarkAssigner : public StatefulOperator {
  public:

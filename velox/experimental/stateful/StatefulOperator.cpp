@@ -114,9 +114,7 @@ void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   if (!stateHandler_) {
     stateHandler_ = std::make_shared<StreamOperatorStateHandler>(
         op()->operatorId(),
-        stateBackend->createKeyedStateBackend(KeyedStateBackendParameters(
-            op()->operatorCtx()->driverCtx()->task->taskId(),
-            op()->operatorId())));
+        stateBackend->createKeyedStateBackend());
   }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {

@@ -119,7 +119,7 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
         if (datas.empty()) {
           continue;
         }
-        // TODO: agg should output no matter how many rows in datas.
+        // TODO: agg should output no matter how many rows in data.
         localAggerator_->addInput(
             TimeWindowUtil::mergeVectors(datas, op()->pool()));
         RowVectorPtr localAcc = localAggerator_->getOutput();

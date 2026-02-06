@@ -169,7 +169,7 @@ void GroupWindowAggregator::emitWindowResult(uint32_t key, TimeWindow window) {
   RowVectorPtr acc = windowAggregator_->getAccumulators();
   RowVectorPtr aggResult = windowAggregator_->getValue(window);
   if (produceUpdates_) {
-    // TODO: suppport it.
+    // TODO: support it.
   } else {
     // TODO: use recordCounter_
     // if (!recordCounter_.recordCountIsZero(acc)) {

@@ -28,7 +28,7 @@
 namespace facebook::velox::stateful {
 
 /// This class is related to XXXWindowAggProcessor in Flink.
-/// It's work includes both WindowAggOperator and XXXWindowAggOperator.
+/// Its work includes both WindowAggOperator and XXXWindowAggOperator.
 class WindowAggregator : public StatefulOperator,
                          public Triggerable<uint32_t, int64_t> {
  public:

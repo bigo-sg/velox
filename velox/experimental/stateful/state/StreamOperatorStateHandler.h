@@ -49,7 +49,7 @@ class StreamOperatorStateHandler {
     keyedStateBackend_->notifyCheckpointAborted(checkpointId);
   }
 
-  // The type of state has to be specified as c++ not support template well.
+  // The type of state has to be specified as C++ does not support templates well.
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>> getMapState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);
