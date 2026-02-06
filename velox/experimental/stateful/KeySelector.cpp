@@ -23,10 +23,10 @@ KeySelector::KeySelector(
     int numPartitions)
     : partitionFunction_(std::move(partitionFunction)),
       pool_(pool),
-      numPartitions_(numPartitions) {
-}
+      numPartitions_(numPartitions) {}
 
-std::map<uint32_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input) {
+std::map<uint32_t, RowVectorPtr> KeySelector::partition(
+    const RowVectorPtr& input) {
   if (numPartitions_ == 1) {
     return std::map<uint32_t, RowVectorPtr>{{0, input}};
   }
@@ -67,8 +67,9 @@ std::map<uint32_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& inpu
   }
 
   std::map<uint32_t, RowVectorPtr> results;
-  for (auto & [key, partitionSize] : numOfKeys) {
-    auto partitionData = wrapChildren(input, partitionSize, keyToIndexBuffers[key]);
+  for (auto& [key, partitionSize] : numOfKeys) {
+    auto partitionData =
+        wrapChildren(input, partitionSize, keyToIndexBuffers[key]);
     results[key] = partitionData;
   }
   return results;
@@ -88,8 +89,7 @@ void KeySelector::allocateIndexBuffers(
     const std::map<uint32_t, vector_size_t>& numOfKeys,
     std::map<uint32_t, BufferPtr>& keyToIndexBuffers,
     std::map<uint32_t, vector_size_t*>& keyToRawIndices) {
-
-  for (auto & [key, num] : numOfKeys) {
+  for (auto& [key, num] : numOfKeys) {
     keyToIndexBuffers[key] = allocateIndices(num, pool_);
     keyToRawIndices[key] = keyToIndexBuffers[key]->asMutable<vector_size_t>();
   }

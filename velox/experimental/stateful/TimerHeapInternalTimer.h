@@ -17,7 +17,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink InternalTimerServiceImpl.
+// This class is relevant to Flink InternalTimerServiceImpl.
 template <typename K, typename N>
 class TimerHeapInternalTimer {
  public:
@@ -42,7 +42,7 @@ class TimerHeapInternalTimer {
 
   bool operator==(const TimerHeapInternalTimer& other) const {
     return timestamp_ == other.timestamp_ && key_ == other.key_ &&
-           ns_ == other.ns_;
+        ns_ == other.ns_;
   }
 
  private:

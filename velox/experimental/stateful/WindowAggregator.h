@@ -27,16 +27,17 @@ namespace facebook::velox::stateful {
 
 /// This class is related to XXXWindowAggProcessor in Flink.
 /// It's work includes both WindowAggOperator and XXXWindowAggOperator.
-class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, long> {
+class WindowAggregator : public StatefulOperator,
+                         public Triggerable<uint32_t, long> {
  public:
   WindowAggregator(
-    std::unique_ptr<exec::Operator> localAggerator,
-    std::unique_ptr<exec::Operator> globalAggerator,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    std::unique_ptr<KeySelector> keySelector,
-    std::unique_ptr<SliceAssigner> sliceAssigner,
-    const long windowInterval,
-    const bool useDayLightSaving);
+      std::unique_ptr<exec::Operator> localAggerator,
+      std::unique_ptr<exec::Operator> globalAggerator,
+      std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::unique_ptr<KeySelector> keySelector,
+      std::unique_ptr<SliceAssigner> sliceAssigner,
+      const long windowInterval,
+      const bool useDayLightSaving);
 
   void initialize() override;
 
@@ -50,7 +51,8 @@ class WindowAggregator : public StatefulOperator, public Triggerable<uint32_t, l
     return "WindowAggregator";
   }
 
-  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
+  void onEventTime(
+      std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
 
  private:
   void processWatermarkInternal(int64_t timestamp);

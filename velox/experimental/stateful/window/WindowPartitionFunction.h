@@ -19,7 +19,6 @@
 
 namespace facebook::velox::stateful {
 
-
 /// Partition data according to the timestamp field in RowVector.
 /// This is used to partition data for window processing.
 class WindowPartitionFunction : public core::PartitionFunction {

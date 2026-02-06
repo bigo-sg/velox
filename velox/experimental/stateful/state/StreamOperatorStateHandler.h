@@ -19,13 +19,15 @@
 
 namespace facebook::velox::stateful {
 
-/** 
- * This class is relevent to flink 
+/**
+ * This class is relevant to Flink
  * org.apache.flink.streaming.api.operators.StreamOperatorStateHandler.
  */
 class StreamOperatorStateHandler {
  public:
-  StreamOperatorStateHandler(int operatorId, KeyedStateBackendPtr keyedStateBackend)
+  StreamOperatorStateHandler(
+      int operatorId,
+      KeyedStateBackendPtr keyedStateBackend)
       : operatorId_(operatorId),
         keyedStateBackend_(std::move(keyedStateBackend)) {}
 
@@ -62,18 +64,18 @@ class StreamOperatorStateHandler {
     return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> getGroupValueState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
+  getGroupValueState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateGroupValueState(stateDescriptor);
   }
 
-  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> getGroupMapState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
+  getGroupMapState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateGroupMapState(stateDescriptor);
   }
 
-  std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>> getRankMapState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
+  getRankMapState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateRankMapState(stateDescriptor);
   }
 
@@ -83,10 +85,11 @@ class StreamOperatorStateHandler {
   }
 
   // TODO: should make it using template
-  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> createGroupWindowAggTimerService(
-    Triggerable<uint32_t, TimeWindow>* triggerable) {
-  return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
-}
+  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+  createGroupWindowAggTimerService(
+      Triggerable<uint32_t, TimeWindow>* triggerable) {
+    return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
+  }
 
  private:
   int operatorId_;

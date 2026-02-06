@@ -20,14 +20,14 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink HeapMapState.
+// This class is relevant to Flink HeapMapState.
 template <typename K, typename N, typename V>
 class HeapListState : public ListState<K, N, V> {
  public:
   HeapListState(int keyGroupNumber) {
     stateTable_ =
-        std::make_unique<
-            StateTable<K, N, std::shared_ptr<std::vector<V>>>>(keyGroupNumber);
+        std::make_unique<StateTable<K, N, std::shared_ptr<std::vector<V>>>>(
+            keyGroupNumber);
   }
 
   std::vector<V> get(const K& key, const N& ns) override {
@@ -36,7 +36,7 @@ class HeapListState : public ListState<K, N, V> {
   }
 
   void add(const K& key, const N& ns, const V& value) override {
-    auto currentList = getOrCreate( key, ns);
+    auto currentList = getOrCreate(key, ns);
     currentList->push_back(value);
   }
 
@@ -62,8 +62,7 @@ class HeapListState : public ListState<K, N, V> {
 
  private:
   std::shared_ptr<std::vector<V>> getOrCreate(const K& key, const N& ns) {
-    std::shared_ptr<std::vector<V>> currentList =
-        stateTable_->get(key, ns);
+    std::shared_ptr<std::vector<V>> currentList = stateTable_->get(key, ns);
     if (currentList == nullptr) {
       currentList = std::make_shared<std::vector<V>>();
       stateTable_->put(key, ns, currentList);
@@ -71,6 +70,7 @@ class HeapListState : public ListState<K, N, V> {
     return currentList;
   }
 
-  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::vector<V>>>> stateTable_;
+  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::vector<V>>>>
+      stateTable_;
 };
 } // namespace facebook::velox::stateful

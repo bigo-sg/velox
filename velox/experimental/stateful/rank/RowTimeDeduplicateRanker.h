@@ -20,8 +20,9 @@
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink RowTimeDeduplicateFunction.
-class RowTimeDeduplicateRanker : public exec::Operator, public KeyedProcessFunction {
+/// This class is relevant to Flink RowTimeDeduplicateFunction.
+class RowTimeDeduplicateRanker : public exec::Operator,
+                                 public KeyedProcessFunction {
  public:
   RowTimeDeduplicateRanker(
       int32_t operatorId,

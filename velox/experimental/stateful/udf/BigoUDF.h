@@ -17,8 +17,8 @@
 
 #include "velox/functions/Macros.h"
 
-#include <string>
 #include <algorithm>
+#include <string>
 
 namespace facebook::velox::stateful::udf {
 
@@ -26,8 +26,7 @@ template <typename T>
 struct CountCharFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
 
-  FOLLY_ALWAYS_INLINE bool
-  call(
+  FOLLY_ALWAYS_INLINE bool call(
       out_type<int64_t>& result,
       const arg_type<Varchar>& input,
       const arg_type<Varchar>& str) {

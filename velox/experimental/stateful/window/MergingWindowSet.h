@@ -15,25 +15,25 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/window/GroupWindowAssigner.h"
-#include "velox/experimental/stateful/window/WindowProcessFunction.h"
-#include "velox/experimental/stateful/window/Window.h"
 #include <folly/container/EvictingCacheMap.h>
 #include <map>
 #include <set>
+#include "velox/experimental/stateful/window/GroupWindowAssigner.h"
+#include "velox/experimental/stateful/window/Window.h"
+#include "velox/experimental/stateful/window/WindowProcessFunction.h"
 
 namespace facebook::velox::stateful {
 
 class MergingFunction;
 class DefaultAccMergingConsumer;
 
-// This class is relevent to flink MergingWindowSet.
+// This class is relevant to Flink MergingWindowSet.
 class MergingWindowSet {
  public:
   MergingWindowSet(
       std::shared_ptr<MergingWindowAssigner> windowAssigner,
       std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> mapping);
-  
+
   void initializeCache(uint32_t key);
 
   TimeWindow addWindow(
@@ -54,10 +54,10 @@ class MergingWindowSet {
 
   folly::EvictingCacheMap<uint32_t, std::set<TimeWindow>> cachedSortedWindows_;
   std::set<TimeWindow> sortedWindows_;
-
 };
 
-// This class is relevent to flink MergingFunctionImpl in MergingWindowProcessFunction.
+// This class is relevant to Flink MergingFunctionImpl in
+// MergingWindowProcessFunction.
 class MergingFunction {
  public:
   MergingFunction(

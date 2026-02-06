@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamPartition.h"
+#include "velox/experimental/stateful/StatefulTask.h"
 
 namespace facebook::velox::stateful {
 
@@ -23,8 +23,7 @@ StreamPartition::StreamPartition(
     const core::PartitionFunctionSpec& partitionFunctionSpec,
     int numPartitions)
     : StatefulOperator(std::move(op), {}),
-      partitionFunction_(
-        std::move(partitionFunctionSpec.create(
+      partitionFunction_(std::move(partitionFunctionSpec.create(
           numPartitions_,
           /*localExchange=*/false))),
       numPartitions_(numPartitions) {
@@ -74,13 +73,15 @@ void StreamPartition::getOutput() {
       continue;
     }
     auto partitionData = wrapChildren(input_, partitionSize, indexBuffers_[i]);
-    pushToTask(std::make_shared<StreamRecord>(op()->planNodeId(), i, partitionData));
+    pushToTask(
+        std::make_shared<StreamRecord>(op()->planNodeId(), i, partitionData));
   }
   input_.reset();
 }
 
 void StreamPartition::pushToTask(StreamElementPtr output) {
-  auto task = std::static_pointer_cast<StatefulTask>(op()->operatorCtx()->driverCtx()->task);
+  auto task = std::static_pointer_cast<StatefulTask>(
+      op()->operatorCtx()->driverCtx()->task);
   task->addOutput(std::move(output));
 }
 

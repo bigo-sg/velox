@@ -58,37 +58,46 @@ void WindowAggregator::getOutput() {
 
   std::map<uint32_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<uint32_t, RowVectorPtr> sliceEndToData = 
+    std::map<uint32_t, RowVectorPtr> sliceEndToData =
         sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       auto windowData = data;
       if (!isEventTime) {
         // TODO: support processing time
-        //windowTimerService_->registerProcessingTimeWindowTimer(sliceEnd, sliceEnd - 1);
+        // windowTimerService_->registerProcessingTimeWindowTimer(sliceEnd,
+        // sliceEnd - 1);
       }
 
-      if (isEventTime && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
-        // the assigned slice has been triggered, which means current element is late,
-        // but maybe not need to drop
+      if (isEventTime &&
+          TimeWindowUtil::isWindowFired(
+              sliceEnd, currentProgress_, shiftTimeZone_)) {
+        // the assigned slice has been triggered, which means current element is
+        // late, but maybe not need to drop
         long lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
-        if (TimeWindowUtil::isWindowFired(lastWindowEnd, currentProgress_, shiftTimeZone_)) {
-            // the last window has been triggered, so the element can be dropped now
-            // TODO: record dropped counter.
-            continue;
+        if (TimeWindowUtil::isWindowFired(
+                lastWindowEnd, currentProgress_, shiftTimeZone_)) {
+          // the last window has been triggered, so the element can be dropped
+          // now
+          // TODO: record dropped counter.
+          continue;
         } else {
-            // TODO: addElement may have data output.
-            windowBuffer_->addElement(key, sliceStateMergeTarget(sliceEnd), windowData);
-            // we need to register a timer for the next unfired window,
-            // because this may the first time we see elements under the key
-            long unfiredFirstWindow = sliceEnd;
-            while (TimeWindowUtil::isWindowFired(unfiredFirstWindow, currentProgress_, shiftTimeZone_)) {
-                unfiredFirstWindow += windowInterval_;
-            }
-            windowTimerService_->registerEventTimeTimer(key, unfiredFirstWindow, unfiredFirstWindow - 1);
+          // TODO: addElement may have data output.
+          windowBuffer_->addElement(
+              key, sliceStateMergeTarget(sliceEnd), windowData);
+          // we need to register a timer for the next unfired window,
+          // because this may the first time we see elements under the key
+          long unfiredFirstWindow = sliceEnd;
+          while (TimeWindowUtil::isWindowFired(
+              unfiredFirstWindow, currentProgress_, shiftTimeZone_)) {
+            unfiredFirstWindow += windowInterval_;
+          }
+          windowTimerService_->registerEventTimeTimer(
+              key, unfiredFirstWindow, unfiredFirstWindow - 1);
         }
       } else {
-          // the assigned slice hasn't been triggered, accumulate into the assigned slice
-          windowBuffer_->addElement(key, sliceEnd, windowData);
+        // the assigned slice hasn't been triggered, accumulate into the
+        // assigned slice
+        windowBuffer_->addElement(key, sliceEnd, windowData);
       }
     }
   }
@@ -100,16 +109,19 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
   if (isEventTime && timestamp > currentProgress_) {
     currentProgress_ = timestamp;
     if (currentProgress_ >= nextTriggerWatermark_) {
-      // we only need to call advanceProgress() when current watermark may trigger window
+      // we only need to call advanceProgress() when current watermark may
+      // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentProgress_);
-      for (const auto&[windowKey, datas] : windowKeyToData) {
+      for (const auto& [windowKey, datas] : windowKeyToData) {
         if (datas.empty()) {
           continue;
         }
         // TODO: agg should output no matter how many rows in datas.
-        localAggerator_->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
-        RowVectorPtr localAcc = localAggerator_->getOutput(); 
-        auto stateAcc = windowState_->value(windowKey.key(), windowKey.window());
+        localAggerator_->addInput(
+            TimeWindowUtil::mergeVectors(datas, op()->pool()));
+        RowVectorPtr localAcc = localAggerator_->getOutput();
+        auto stateAcc =
+            windowState_->value(windowKey.key(), windowKey.window());
         std::list<RowVectorPtr> allDatas;
         if (!localAcc && !stateAcc) {
           continue;
@@ -128,14 +140,17 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
         }
       }
       windowTimerService_->advanceWatermark(currentProgress_);
-      nextTriggerWatermark_ =
-          TimeWindowUtil::getNextTriggerWatermark(
-              currentProgress_, windowInterval_, shiftTimeZone_, useDayLightSaving_);
+      nextTriggerWatermark_ = TimeWindowUtil::getNextTriggerWatermark(
+          currentProgress_,
+          windowInterval_,
+          shiftTimeZone_,
+          useDayLightSaving_);
     }
   }
 }
 
-void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowAggregator::onEventTime(
+    std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
   pushOutput(output);

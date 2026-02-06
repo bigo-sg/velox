@@ -16,12 +16,12 @@
 #pragma once
 
 #include "velox/exec/Operator.h"
-#include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 #include "velox/experimental/stateful/agg/AggsHandleFunction.h"
+#include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink GroupAggFunction.
+/// This class is relevant to Flink GroupAggFunction.
 class GroupAggregator : public exec::Operator, public KeyedProcessFunction {
  public:
   GroupAggregator(

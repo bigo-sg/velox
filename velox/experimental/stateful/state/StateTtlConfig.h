@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink org.apache.flink.api.common.State.
+// This class is relevant to Flink org.apache.flink.api.common.State.
 class StateTtlConfig : public ISerializable {
  public:
   StateTtlConfig(long retentionTime) : retentionTime_(retentionTime) {}

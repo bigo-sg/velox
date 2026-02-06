@@ -17,10 +17,10 @@
 
 #include "velox/exec/NestedLoopJoinProbe.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
-#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 
@@ -52,7 +52,8 @@ class WindowJoin : public StatefulOperator, public Triggerable<uint32_t, long> {
     return "WindowJoin";
   }
 
-  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
+  void onEventTime(
+      std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
 
  protected:
   int numInputs() const override {
@@ -72,7 +73,9 @@ class WindowJoin : public StatefulOperator, public Triggerable<uint32_t, long> {
 
   RowVectorPtr filterWindowFiredRows(RowVectorPtr& input);
 
-  std::map<long, RowVectorPtr> partitionWindowData(RowVectorPtr& input, int windowEndIndex);
+  std::map<long, RowVectorPtr> partitionWindowData(
+      RowVectorPtr& input,
+      int windowEndIndex);
 
   const std::unique_ptr<exec::Operator> leftInput_;
   const std::unique_ptr<exec::Operator> rightInput_;

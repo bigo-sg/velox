@@ -21,7 +21,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink JoinRecordStateViews.
+// This class is relevant to Flink JoinRecordStateViews.
 class JoinRecordStateViews {
  public:
   static JoinRecordStateViewPtr create(
@@ -30,10 +30,9 @@ class JoinRecordStateViews {
       // JoinInputSideSpec inputSideSpec,
       // InternalTypeInfo<RowData> recordType,
       long retentionTime);
-
 };
 
-// This class is relevent to flink InputSideHasNoUniqueKey.
+// This class is relevant to Flink InputSideHasNoUniqueKey.
 class InputSideHasNoUniqueKey : public JoinRecordStateView {
  public:
   InputSideHasNoUniqueKey(

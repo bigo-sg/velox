@@ -19,14 +19,19 @@
 namespace facebook::velox::stateful {
 
 long WindowTrigger::triggerTime(TimeWindow window) {
-  return TimeWindowUtil::toEpochMillsForTimer(window.maxTimestamp(), ctx_->getShiftTimeZone());
+  return TimeWindowUtil::toEpochMillsForTimer(
+      window.maxTimestamp(), ctx_->getShiftTimeZone());
 }
 
 void AfterEndOfWindow::open(std::shared_ptr<TriggerContext> ctx) {
   ctx_ = ctx;
 }
 
-bool AfterEndOfWindow::onElement(uint32_t key, RowVectorPtr element, long timestamp, TimeWindow window) {
+bool AfterEndOfWindow::onElement(
+    uint32_t key,
+    RowVectorPtr element,
+    long timestamp,
+    TimeWindow window) {
   if (triggerTime(window) <= ctx_->getCurrentWatermark()) {
     // if the watermark is already past the window fire immediately
     return true;
@@ -53,7 +58,9 @@ bool AfterEndOfWindow::canMerge() {
 }
 
 void AfterEndOfWindow::onMerge(
-    uint32_t key, TimeWindow window, std::shared_ptr<TriggerContext> mergeContext) {
+    uint32_t key,
+    TimeWindow window,
+    std::shared_ptr<TriggerContext> mergeContext) {
   ctx_->registerEventTimeTimer(key, window, triggerTime(window));
 }
 

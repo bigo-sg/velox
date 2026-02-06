@@ -17,7 +17,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink CheckpointListener.
+// This class is relevant to Flink CheckpointListener.
 class CheckpointListener {
  public:
   virtual void notifyCheckpointComplete(long checkpointId) = 0;

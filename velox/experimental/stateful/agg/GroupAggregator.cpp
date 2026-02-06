@@ -25,15 +25,14 @@ GroupAggregator::GroupAggregator(
     long stateRetentionTime,
     bool generateUpdateBefore)
     : exec::Operator(
-      driverCtx,
-      aggNode->outputType(),
-      operatorId,
-      aggNode->id(),
-      "GroupAggregator"),
+          driverCtx,
+          aggNode->outputType(),
+          operatorId,
+          aggNode->id(),
+          "GroupAggregator"),
       aggsFunction_(std::move(aggsFunction)),
       stateRetentionTime_(stateRetentionTime),
-      generateUpdateBefore_(generateUpdateBefore) {
-}
+      generateUpdateBefore_(generateUpdateBefore) {}
 
 void GroupAggregator::open(StreamOperatorStateHandler* stateHandler) {
   StateDescriptor stateDesc("deduplicate-state");
@@ -45,8 +44,10 @@ void GroupAggregator::open(StreamOperatorStateHandler* stateHandler) {
   accState_ = stateHandler->getValueState(stateDesc);
 }
 
-RowVectorPtr GroupAggregator::processElements(uint32_t key, RowVectorPtr input) {
-  // TODO: not identically equal to flink.
+RowVectorPtr GroupAggregator::processElements(
+    uint32_t key,
+    RowVectorPtr input) {
+  // TODO: not identically equal to Flink.
   bool firstRow;
   RowVectorPtr accumulators = accState_->value(key, State::VOID_NAMESPACE);
   if (!accumulators) {

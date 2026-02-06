@@ -33,21 +33,16 @@ StreamJoin::StreamJoin(
       rightInput_(std::move(rightInput)),
       leftKeySelector_(std::move(leftKeySelector)),
       rightKeySelector_(std::move(rightKeySelector)),
-      probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())) {
-}
+      probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())) {}
 
 void StreamJoin::initialize() {
   StatefulOperator::initialize();
   leftInput_->initialize();
   rightInput_->initialize();
-  leftRecordStateView_ = JoinRecordStateViews::create(
-      stateHandler().get(),
-      "left-records",
-      0);
-  rightRecordStateView_ = JoinRecordStateViews::create(
-      stateHandler().get(),
-      "right-records",
-      0);
+  leftRecordStateView_ =
+      JoinRecordStateViews::create(stateHandler().get(), "left-records", 0);
+  rightRecordStateView_ =
+      JoinRecordStateViews::create(stateHandler().get(), "right-records", 0);
 }
 
 bool StreamJoin::isFinished() {
@@ -68,11 +63,11 @@ void StreamJoin::close() {
 
 void StreamJoin::getOutput() {
   // TODO: use nested loop join logic to produce output now.
-  // But it's not equal to flink's streaming join.
+  // But it's not equal to Flink's streaming join.
   auto leftResult = leftInput_->getOutput();
   if (leftResult) {
     auto keyToData = leftKeySelector_->partition(leftResult);
-    for (auto & [key, data] : keyToData) {
+    for (auto& [key, data] : keyToData) {
       leftRecordStateView_->addRecord(key, data);
       auto result = join(key, data, rightRecordStateView_, true);
       if (result) {
@@ -84,7 +79,7 @@ void StreamJoin::getOutput() {
   auto rightResult = rightInput_->getOutput();
   if (rightResult) {
     auto keyToData = rightKeySelector_->partition(rightResult);
-    for (auto & [key, data] : keyToData) {
+    for (auto& [key, data] : keyToData) {
       rightRecordStateView_->addRecord(key, data);
       auto result = join(key, data, leftRecordStateView_, false);
       if (result) {
@@ -112,8 +107,8 @@ RowVectorPtr StreamJoin::join(
     probe_->setBuildData(std::move(buildVector));
   } else {
     // TODO: support another side.
-    //probe_->addInput(std::move(buildVector));
-    //probe_->setBuildData(std::move(input));
+    // probe_->addInput(std::move(buildVector));
+    // probe_->setBuildData(std::move(input));
   }
   auto result = probe_->getOutput();
   return result;

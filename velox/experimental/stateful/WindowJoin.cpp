@@ -35,8 +35,7 @@ WindowJoin::WindowJoin(
       rightKeySelector_(std::move(rightKeySelector)),
       probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())),
       leftWindowEndIndex_(leftWindowEndIndex),
-      rightWindowEndIndex_(rightWindowEndIndex) {
-}
+      rightWindowEndIndex_(rightWindowEndIndex) {}
 
 void WindowJoin::initialize() {
   StatefulOperator::initialize();
@@ -68,7 +67,7 @@ void WindowJoin::close() {
 
 void WindowJoin::getOutput() {
   // TODO: use nested loop join logic to produce output now.
-  // But it's not equal to flink's streaming join.
+  // But it's not equal to Flink's streaming join.
   processData(
       leftInput_.get(),
       leftKeySelector_.get(),
@@ -110,12 +109,14 @@ std::map<long, RowVectorPtr> WindowJoin::partitionWindowData(
   std::map<long, RowVectorPtr> windowEndToData;
   // TODO: this is just a example,.
   auto row = input->childAt(windowEndIndex);
-  long windowEnd = row->asFlatVector<int64_t>()->valueAt(0); // Assuming first column is window end
+  long windowEnd = row->asFlatVector<int64_t>()->valueAt(
+      0); // Assuming first column is window end
   windowEndToData[windowEnd] = input;
   return windowEndToData;
 }
 
-void WindowJoin::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowJoin::onEventTime(
+    std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
   join(timer->key(), timer->ns());
 }
 
@@ -132,7 +133,7 @@ void WindowJoin::join(uint32_t key, long window) {
   for (auto value : leftValues) {
     probe_->addInput(std::move(value));
     probe_->setBuildData(buildVector);
-  
+
     auto result = probe_->getOutput();
     pushOutput(result);
   }

@@ -17,13 +17,14 @@
 
 #include "velox/core/PlanNode.h"
 #include "velox/exec/Operator.h"
-#include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink AppendOnlyTopNFunction.
-class AppendOnlyTopNRanker : public exec::Operator, public KeyedProcessFunction {
+/// This class is relevant to Flink AppendOnlyTopNFunction.
+class AppendOnlyTopNRanker : public exec::Operator,
+                             public KeyedProcessFunction {
  public:
   AppendOnlyTopNRanker(
       int32_t operatorId,

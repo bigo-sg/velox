@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink Snapshotable.
+// This class is relevant to Flink Snapshotable.
 class Snapshotable {
  public:
   virtual void snapshot(

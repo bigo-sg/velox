@@ -47,7 +47,7 @@ void LocalWindowAggregator::getOutput() {
 
   std::map<uint32_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<uint32_t, RowVectorPtr> sliceEndToData = 
+    std::map<uint32_t, RowVectorPtr> sliceEndToData =
         sliceAssigner_->partition(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       // TODO: addElement may have data output.
@@ -63,21 +63,25 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
   if (timestamp > currentWatermark_) {
     currentWatermark_ = timestamp;
     if (currentWatermark_ >= nextTriggerWatermark_) {
-      // we only need to call advanceProgress() when current watermark may trigger window
+      // we only need to call advanceProgress() when current watermark may
+      // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentWatermark_);
-      for (const auto&[windowKey, datas] : windowKeyToData) {
+      for (const auto& [windowKey, datas] : windowKeyToData) {
         if (datas.empty()) {
           continue;
         }
         op()->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
         RowVectorPtr output = op()->getOutput();
         if (output) {
-          pushOutput(addWindowEndToVector(std::move(output), windowKey.window()));
+          pushOutput(
+              addWindowEndToVector(std::move(output), windowKey.window()));
         }
       }
-      nextTriggerWatermark_ =
-          TimeWindowUtil::getNextTriggerWatermark(
-              currentWatermark_, windowInterval_, shiftTimeZone_, useDayLightSaving_);
+      nextTriggerWatermark_ = TimeWindowUtil::getNextTriggerWatermark(
+          currentWatermark_,
+          windowInterval_,
+          shiftTimeZone_,
+          useDayLightSaving_);
     }
   }
 }
@@ -91,7 +95,9 @@ void LocalWindowAggregator::close() {
   nextTriggerWatermark_ = 0;
 }
 
-RowVectorPtr LocalWindowAggregator::addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd) {
+RowVectorPtr LocalWindowAggregator::addWindowEndToVector(
+    RowVectorPtr vector,
+    int64_t sliceEnd) {
   auto newColumn = BaseVector::create(BIGINT(), vector->size(), vector->pool());
   auto windowEndCol = newColumn->as<FlatVector<int64_t>>();
 

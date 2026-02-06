@@ -22,9 +22,9 @@
 namespace facebook::velox::stateful {
 
 /**
- * This class is relevent to flink org.apache.flink.runtime.state.heap.StateMap.
+ * This class is relevant to Flink org.apache.flink.runtime.state.heap.StateMap.
  * remove namespace first.
- * TODO: It is a simplified implementation, not equal to flink.
+ * TODO: It is a simplified implementation, not equal to Flink.
  * @param <K> type of key
  * @param <N> type of namespace
  * @param <S> type of state
@@ -60,7 +60,7 @@ class StateMap {
   }
 
  private:
-  // TODO: use map temporarily, not equal to flink.
+  // TODO: use map temporarily, not equal to Flink.
   std::vector<std::shared_ptr<StateEntry<K, N, S>>> tempTable_;
 };
 } // namespace facebook::velox::stateful

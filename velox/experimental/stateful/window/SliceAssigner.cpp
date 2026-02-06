@@ -16,8 +16,8 @@
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 
 #include <chrono>
-#include <numeric>
 #include <iostream>
+#include <numeric>
 
 namespace facebook::velox::stateful {
 
@@ -38,12 +38,14 @@ SliceAssigner::SliceAssigner(
   sliceSize_ = std::gcd(size, step);
 }
 
-std::map<uint32_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
+std::map<uint32_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
+    const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
     // TODO: using Processing Time Service
     auto now = std::chrono::system_clock::now();
     long timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now.time_since_epoch()).count();
+                            now.time_since_epoch())
+                            .count();
     return {{timestamp_ms, input}};
   }
   return keySelector_->partition(input);

@@ -21,15 +21,16 @@ namespace facebook::velox::stateful {
 JoinRecordStateViewPtr JoinRecordStateViews::create(
     StreamOperatorStateHandler* stateHandler,
     std::string stateName,
-    //JoinInputSideSpec inputSideSpec,
-    //InternalTypeInfo<RowData> recordType,
+    // JoinInputSideSpec inputSideSpec,
+    // InternalTypeInfo<RowData> recordType,
     long retentionTime) {
   StateTtlConfig ttlConfig(retentionTime);
-  return std::make_unique<InputSideHasNoUniqueKey>(stateHandler, stateName, ttlConfig);
+  return std::make_unique<InputSideHasNoUniqueKey>(
+      stateHandler, stateName, ttlConfig);
 }
 
 InputSideHasNoUniqueKey::InputSideHasNoUniqueKey(
-  StreamOperatorStateHandler* stateHandler,
+    StreamOperatorStateHandler* stateHandler,
     std::string& stateName,
     StateTtlConfig ttlConfig) {
   StateDescriptor recordStateDesc(stateName);
@@ -44,9 +45,9 @@ InputSideHasNoUniqueKey::InputSideHasNoUniqueKey(
 void InputSideHasNoUniqueKey::addRecord(uint32_t key, RowVectorPtr record) {
   int cnt = recordState_->get(key, ns_, record);
   if (cnt != -1) {
-      cnt += 1;
+    cnt += 1;
   } else {
-      cnt = 1;
+    cnt = 1;
   }
   recordState_->put(key, ns_, std::move(record), cnt);
 }

@@ -31,7 +31,8 @@ class WindowContext;
 
 /// This class is related to AggregateWindowOperator in Flink.
 /// It's for group window aggregator. Rename it to GroupWindowAggregator.
-class GroupWindowAggregator : public StatefulOperator, public Triggerable<uint32_t, TimeWindow> {
+class GroupWindowAggregator : public StatefulOperator,
+                              public Triggerable<uint32_t, TimeWindow> {
  public:
   GroupWindowAggregator(
       std::unique_ptr<GroupWindowAggsHandler> windowAggerator,
@@ -58,21 +59,27 @@ class GroupWindowAggregator : public StatefulOperator, public Triggerable<uint32
     return "GroupWindowAggregator";
   }
 
-  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, TimeWindow>> timer) override;
+  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, TimeWindow>>
+                       timer) override;
 
  private:
   // This class is related to TriggerContext in Flink WindowOperator.
-  // TODO: may need to make it implement a interface like flink.
+  // TODO: may need to make it implement an interface like Flink.
   class WindowTriggerContext : public TriggerContext {
    public:
     WindowTriggerContext(
         std::shared_ptr<WindowTrigger> trigger,
-        std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> internalTimerService,
+        std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+            internalTimerService,
         int shiftTimeZone);
 
     void open() override;
 
-    bool onElement(uint32_t key, RowVectorPtr row, long timestamp, TimeWindow window) override;
+    bool onElement(
+        uint32_t key,
+        RowVectorPtr row,
+        long timestamp,
+        TimeWindow window) override;
 
     bool onProcessingTime(TimeWindow window, long time) override;
 
@@ -87,13 +94,17 @@ class GroupWindowAggregator : public StatefulOperator, public Triggerable<uint32
     // TODO: support it
     // MetricGroup getMetricGroup()；
 
-    void registerProcessingTimeTimer(uint32_t key, TimeWindow window, long time) override;
+    void registerProcessingTimeTimer(uint32_t key, TimeWindow window, long time)
+        override;
 
-    void registerEventTimeTimer(uint32_t key, TimeWindow window, long time) override;
+    void registerEventTimeTimer(uint32_t key, TimeWindow window, long time)
+        override;
 
-    void deleteProcessingTimeTimer(uint32_t key, TimeWindow window, long time) override;
+    void deleteProcessingTimeTimer(uint32_t key, TimeWindow window, long time)
+        override;
 
-    void deleteEventTimeTimer(uint32_t key, TimeWindow window, long time) override;
+    void deleteEventTimeTimer(uint32_t key, TimeWindow window, long time)
+        override;
 
     int getShiftTimeZone();
 
@@ -105,7 +116,8 @@ class GroupWindowAggregator : public StatefulOperator, public Triggerable<uint32
 
    private:
     std::shared_ptr<WindowTrigger> trigger_;
-    std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> internalTimerService_;
+    std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+        internalTimerService_;
     int shiftTimeZone_;
     TimeWindow window;
     std::vector<TimeWindow> mergedWindows;
@@ -127,7 +139,8 @@ class GroupWindowAggregator : public StatefulOperator, public Triggerable<uint32
 
   RowVectorPtr input_;
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> windowState_;
-  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> windowTimerService_;
+  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+      windowTimerService_;
   std::shared_ptr<TriggerContext> triggerContext_;
   std::shared_ptr<WindowContext> windowContext_;
   std::shared_ptr<WindowTrigger> trigger_;
@@ -137,7 +150,8 @@ class WindowContext : public FunctionContext<TimeWindow> {
  public:
   WindowContext(
       GroupWindowAggsHandler* windowAggregator,
-      std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> windowState,
+      std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
+          windowState,
       std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> timerService,
       std::shared_ptr<TriggerContext> triggerContext,
       std::shared_ptr<StreamOperatorStateHandler> stateHandler,
@@ -167,17 +181,20 @@ class WindowContext : public FunctionContext<TimeWindow> {
 
   void clearTrigger(TimeWindow window) override;
 
-  void onMerge(TimeWindow newWindow, std::vector<TimeWindow>& mergedWindows) override;
+  void onMerge(TimeWindow newWindow, std::vector<TimeWindow>& mergedWindows)
+      override;
 
   void deleteCleanupTimer(TimeWindow window) override;
 
   void setCurrentKey(uint32_t key) {
     currentKey_ = key;
   }
+
  private:
   GroupWindowAggsHandler* windowAggregator_;
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> windowState_;
-  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> previousWindowState_;
+  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
+      previousWindowState_;
   std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> timerService_;
   std::shared_ptr<TriggerContext> triggerContext_;
   std::shared_ptr<StreamOperatorStateHandler> stateHandler_;

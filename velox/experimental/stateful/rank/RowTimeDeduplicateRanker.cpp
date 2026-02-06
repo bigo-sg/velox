@@ -28,17 +28,16 @@ RowTimeDeduplicateRanker::RowTimeDeduplicateRanker(
     bool generateInsert,
     bool keepLastRow)
     : exec::Operator(
-      driverCtx,
-      rankNode->outputType(),
-      operatorId,
-      rankNode->id(),
-      "RowTimeDeduplicateRanker"),
+          driverCtx,
+          rankNode->outputType(),
+          operatorId,
+          rankNode->id(),
+          "RowTimeDeduplicateRanker"),
       minRetentionTime_(minRetentionTime),
       rowtimeIndex_(rowtimeIndex),
       generateUpdateBefore_(generateUpdateBefore),
       generateInsert_(generateInsert),
-      keepLastRow_(keepLastRow) {
-}
+      keepLastRow_(keepLastRow) {}
 
 void RowTimeDeduplicateRanker::open(StreamOperatorStateHandler* stateHandler) {
   StateDescriptor stateDesc("deduplicate-state");
@@ -50,8 +49,10 @@ void RowTimeDeduplicateRanker::open(StreamOperatorStateHandler* stateHandler) {
   state_ = stateHandler->getValueState(stateDesc);
 }
 
-RowVectorPtr RowTimeDeduplicateRanker::processElements(uint32_t key, RowVectorPtr input) {
-  // TODO: not identically equal to flink, flink may generate output each row,
+RowVectorPtr RowTimeDeduplicateRanker::processElements(
+    uint32_t key,
+    RowVectorPtr input) {
+  // TODO: not identically equal to Flink. Flink may generate output each row,
   // but we only generate output once a batch.
   RowVectorPtr preRow = state_->value(key, State::VOID_NAMESPACE);
   RowVectorPtr output = nullptr;
@@ -62,8 +63,11 @@ RowVectorPtr RowTimeDeduplicateRanker::processElements(uint32_t key, RowVectorPt
     index = 1;
     outputIndex = 0;
   }
-  auto preTimestamp = preRow->childAt(rowtimeIndex_)->as<DictionaryVector<Timestamp>>()->valueAt(0);
-  auto tsVector = input->childAt(rowtimeIndex_)->as<DictionaryVector<Timestamp>>();
+  auto preTimestamp = preRow->childAt(rowtimeIndex_)
+                          ->as<DictionaryVector<Timestamp>>()
+                          ->valueAt(0);
+  auto tsVector =
+      input->childAt(rowtimeIndex_)->as<DictionaryVector<Timestamp>>();
   for (auto i = index; i < input->size(); ++i) {
     auto timestamp = tsVector->valueAt(i);
     if ((keepLastRow_ && timestamp >= preTimestamp) ||
@@ -73,7 +77,8 @@ RowVectorPtr RowTimeDeduplicateRanker::processElements(uint32_t key, RowVectorPt
     }
   }
   if (outputIndex >= 0) {
-    RowVectorPtr output = std::dynamic_pointer_cast<RowVector>(input->slice(outputIndex, 1));
+    RowVectorPtr output =
+        std::dynamic_pointer_cast<RowVector>(input->slice(outputIndex, 1));
     state_->update(key, State::VOID_NAMESPACE, output);
   }
   return output;

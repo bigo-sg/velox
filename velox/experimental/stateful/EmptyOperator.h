@@ -19,19 +19,20 @@
 
 namespace facebook::velox::stateful {
 
-// This is used to make some stateful operators that do not require an operator valid.
+// This is used to make some stateful operators that do not require an operator
+// valid.
 class EmptyOperator : public exec::Operator {
  public:
-  EmptyOperator( 
+  EmptyOperator(
       int32_t operatorId,
       exec::DriverCtx* driverCtx,
-      const core::PlanNodePtr& node) :
-      Operator(
-          driverCtx,
-          node->outputType(),
-          operatorId,
-          node->id(),
-          "EmptyOperator") {}
+      const core::PlanNodePtr& node)
+      : Operator(
+            driverCtx,
+            node->outputType(),
+            operatorId,
+            node->id(),
+            "EmptyOperator") {}
 
   void initialize() override {}
 
@@ -64,7 +65,6 @@ class EmptyOperator : public exec::Operator {
   }
 
   void close() override {}
-
 };
 
 } // namespace facebook::velox::stateful

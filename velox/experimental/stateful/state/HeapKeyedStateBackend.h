@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink HeapKeyedStateBackend.
+// This class is relevant to Flink HeapKeyedStateBackend.
 class HeapKeyedStateBackend : public KeyedStateBackend {
  public:
   // TODO: use template to support different key type.

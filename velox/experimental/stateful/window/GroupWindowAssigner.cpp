@@ -17,18 +17,19 @@
 
 namespace facebook::velox::stateful {
 
- SessionWindowAssigner::SessionWindowAssigner(
-    long gap,
-    bool isEventTime)
-    : gap_(gap), isEventTime_(isEventTime) {
-}
+SessionWindowAssigner::SessionWindowAssigner(long gap, bool isEventTime)
+    : gap_(gap), isEventTime_(isEventTime) {}
 
-std::vector<TimeWindow> SessionWindowAssigner::assignWindows(RowVectorPtr element, long timestamp) {
+std::vector<TimeWindow> SessionWindowAssigner::assignWindows(
+    RowVectorPtr element,
+    long timestamp) {
   return {TimeWindow(timestamp, timestamp + gap_)};
 }
 
 void SessionWindowAssigner::mergeWindows(
-    TimeWindow newWindow, std::set<TimeWindow>& sortedWindows, MergeResultCollector& callback) {
+    TimeWindow newWindow,
+    std::set<TimeWindow>& sortedWindows,
+    MergeResultCollector& callback) {
   auto ceiling = sortedWindows.upper_bound(newWindow);
   auto floor = sortedWindows.lower_bound(newWindow);
 
@@ -48,7 +49,9 @@ void SessionWindowAssigner::mergeWindows(
 }
 
 TimeWindow SessionWindowAssigner::mergeWindow(
-    const TimeWindow& curWindow, const TimeWindow& other, std::set<TimeWindow>& mergedWindow) {
+    const TimeWindow& curWindow,
+    const TimeWindow& other,
+    std::set<TimeWindow>& mergedWindow) {
   if (curWindow.intersects(other)) {
     mergedWindow.insert(other);
     return curWindow.cover(other);
@@ -57,7 +60,9 @@ TimeWindow SessionWindowAssigner::mergeWindow(
   }
 }
 
-void MergeResultCollector::merge(TimeWindow mergeResult, std::set<TimeWindow> toBeMerged) {
-    mergeResults_.insert({mergeResult, toBeMerged});
+void MergeResultCollector::merge(
+    TimeWindow mergeResult,
+    std::set<TimeWindow> toBeMerged) {
+  mergeResults_.insert({mergeResult, toBeMerged});
 }
 } // namespace facebook::velox::stateful

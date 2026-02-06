@@ -26,17 +26,19 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
     int shiftTimezone,
     bool useDayLightSaving) {
   if (currentWatermark == INT64_MAX) {
-      return currentWatermark;
+    return currentWatermark;
   }
 
   int64_t triggerWatermark;
   // consider the DST timezone
   if (useDayLightSaving) {
     // TODO: support time zone
-    //long utcWindowStart =
+    // long utcWindowStart =
     //          getWindowStartWithOffset(
-    //                  toUtcTimestampMills(currentWatermark, shiftTimezone), 0L, interval);
-    //triggerWatermark = toEpochMillsForTimer(utcWindowStart + interval - 1, shiftTimezone);
+    //                  toUtcTimestampMills(currentWatermark, shiftTimezone),
+    //                  0L, interval);
+    // triggerWatermark = toEpochMillsForTimer(utcWindowStart + interval - 1,
+    // shiftTimezone);
   } else {
     long start = getWindowStartWithOffset(currentWatermark, 0L, interval);
     triggerWatermark = start + interval - 1;
@@ -50,19 +52,24 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
 }
 
 // static
-long TimeWindowUtil::getWindowStartWithOffset(long timestamp, long offset, long windowSize) {
+long TimeWindowUtil::getWindowStartWithOffset(
+    long timestamp,
+    long offset,
+    long windowSize) {
   long remainder = (timestamp - offset) % windowSize;
   // handle both positive and negative cases
   if (remainder < 0) {
-      return timestamp - (remainder + windowSize);
+    return timestamp - (remainder + windowSize);
   } else {
-      return timestamp - remainder;
+    return timestamp - remainder;
   }
 }
 
 // static
 bool TimeWindowUtil::isWindowFired(
-    long windowEnd, long currentProgress, int shiftTimeZone) {
+    long windowEnd,
+    long currentProgress,
+    int shiftTimeZone) {
   if (windowEnd == LONG_MAX) {
     return false;
   }
@@ -72,7 +79,10 @@ bool TimeWindowUtil::isWindowFired(
 }
 
 // static
-long TimeWindowUtil::cleanupTime(long maxTimestamp, long allowedLateness, bool isEventTime) {
+long TimeWindowUtil::cleanupTime(
+    long maxTimestamp,
+    long allowedLateness,
+    bool isEventTime) {
   if (isEventTime) {
     long cleanupTime = std::max(0L, maxTimestamp + allowedLateness);
     return cleanupTime >= maxTimestamp ? cleanupTime : LONG_MAX;
@@ -103,10 +113,8 @@ RowVectorPtr TimeWindowUtil::mergeVectors(
     totalRows += data->size();
   }
 
-  auto merged = BaseVector::create<RowVector>(
-      datas.front()->type(),
-      totalRows,
-      pool);
+  auto merged =
+      BaseVector::create<RowVector>(datas.front()->type(), totalRows, pool);
 
   size_t offset = 0;
   for (auto& data : datas) {

@@ -20,7 +20,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to flink HeapMapState.
+// This class is relevant to Flink HeapMapState.
 template <typename K, typename N, typename UK, typename UV>
 class HeapMapState : public MapState<K, N, UK, UV> {
  public:
@@ -35,7 +35,8 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     return currentMap->count(userKey) ? (*currentMap)[userKey] : UV();
   }
 
-  void put(const K& key, const N& ns, const UK& userKey, const UV& value) override {
+  void put(const K& key, const N& ns, const UK& userKey, const UV& value)
+      override {
     std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
     currentMap->insert({userKey, value});
   }

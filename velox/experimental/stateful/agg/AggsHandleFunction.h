@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink AggsHandleFunction.
+/// This class is relevant to Flink AggsHandleFunction.
 class AggsHandleFunction {
  public:
   void open(StreamOperatorStateHandler* store) {}

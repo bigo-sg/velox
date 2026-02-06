@@ -22,7 +22,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink CombinedWatermarkStatus.
+// This class is relevant to Flink CombinedWatermarkStatus.
 class CombinedWatermarkStatus {
  public:
   // This class represents a partial watermark from a single input stream.
@@ -30,7 +30,8 @@ class CombinedWatermarkStatus {
    public:
     bool setWatermark(int64_t watermark) {
       if (watermark < watermark_) {
-        // If the new watermark is less than or equal to the current one, we do not update it.
+        // If the new watermark is less than or equal to the current one, we do
+        // not update it.
         return false;
       }
 

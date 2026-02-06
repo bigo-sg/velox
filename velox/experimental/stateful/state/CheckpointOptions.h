@@ -17,7 +17,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink CheckpointOptions.
+// This class is relevant to Flink CheckpointOptions.
 class CheckpointOptions {
  public:
   static CheckpointOptions defaultOptions() {

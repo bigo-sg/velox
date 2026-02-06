@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink
+// This class is relevant to Flink
 // org.apache.flink.api.common.functions.RuntimeContext.
 class RuntimeContext {
  public:

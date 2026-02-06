@@ -24,7 +24,7 @@
 namespace facebook::velox::stateful {
 
 /**
- * This class is relevent to flink
+ * This class is relevant to Flink
  * org.apache.flink.runtime.state.heap.StateTable. remove namespace first. And
  * implement it here instead of making it as a interface.
  * @param <K> type of key

@@ -20,12 +20,16 @@
 
 namespace facebook::velox::stateful {
 
-void RecordsWindowBuffer::addElement(uint32_t key, long sliceEnd, RowVectorPtr& element) {
+void RecordsWindowBuffer::addElement(
+    uint32_t key,
+    long sliceEnd,
+    RowVectorPtr& element) {
   minSliceEnd_ = std::min(sliceEnd, minSliceEnd_);
   WindowKey windowKey(key, sliceEnd);
   auto it = buffer_.find(windowKey);
   if (it != buffer_.end()) {
-    // If the key already exists, we can append the element to the existing list.
+    // If the key already exists, we can append the element to the existing
+    // list.
     it->second.push_back(element);
   } else {
     // If the key does not exist, we create a new list and add the element.
@@ -35,9 +39,10 @@ void RecordsWindowBuffer::addElement(uint32_t key, long sliceEnd, RowVectorPtr& 
   }
 }
 
-std::unordered_map<WindowKey, std::list<RowVectorPtr>>& RecordsWindowBuffer::advanceProgress(long progress) {
+std::unordered_map<WindowKey, std::list<RowVectorPtr>>&
+RecordsWindowBuffer::advanceProgress(long progress) {
   if (TimeWindowUtil::isWindowFired(minSliceEnd_, progress, shiftTimeZone_)) {
-    // there should be some window to be fired, flush buffer to state first
+    // There should be some window to be fired, flush buffer to state first.
     return buffer_;
   }
   return empty_;

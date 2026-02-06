@@ -20,7 +20,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to flink org.apache.flink.api.common.StateDescriptor.
+// This class is relevant to Flink org.apache.flink.api.common.StateDescriptor.
 class StateDescriptor {
  public:
   StateDescriptor(

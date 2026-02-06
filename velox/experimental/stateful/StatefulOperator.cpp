@@ -117,10 +117,10 @@ void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
-    // TODO: flink restore is a seperated logic
+    // TODO: Flink restore is a separated logic.
     // snapshotable->initializeState();
   }
-  // TODO: flink restore is a seperated logic
+  // TODO: Flink restore is a separated logic.
   // stateHandler_->initializeState();
   for (auto& target : targets_) {
     target->initializeStateBackend(stateBackend);
