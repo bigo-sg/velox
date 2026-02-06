@@ -17,7 +17,6 @@
 #include <cstdint>
 
 #include <chrono>
-#include <iostream>
 #include <numeric>
 
 namespace facebook::velox::stateful {

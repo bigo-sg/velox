@@ -15,9 +15,8 @@
  */
 #pragma once
 #include <cstdint>
+#include <functional>
 
-#include <climits>
-#include <map>
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {

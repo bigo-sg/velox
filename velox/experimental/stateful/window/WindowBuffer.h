@@ -15,7 +15,9 @@
  */
 #pragma once
 #include <cstdint>
-#include <map>
+#include <list>
+#include <memory>
+#include <unordered_map>
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
 

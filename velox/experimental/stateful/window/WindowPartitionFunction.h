@@ -16,7 +16,7 @@
 #pragma once
 #include <cstdint>
 
-#include <velox/core/PlanNode.h>
+#include "velox/core/PlanNode.h"
 
 namespace facebook::velox::stateful {
 

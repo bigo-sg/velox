@@ -23,8 +23,7 @@
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/vector/ComplexVector.h"
 
-#include <algorithm>
-#include <map>
+#include <type_traits>
 #include <vector>
 
 namespace facebook::velox::stateful {
