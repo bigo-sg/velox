@@ -15,6 +15,7 @@
 velox_add_library(
   velox_stateful_state
   OBJECT
+  State.cpp
   HeapKeyedStateBackend.cpp
   HashMapStateBackend.cpp
   RocksDBKeyedStateBackend.cpp
