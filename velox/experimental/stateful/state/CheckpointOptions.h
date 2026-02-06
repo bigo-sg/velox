@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
@@ -26,8 +27,8 @@ class CheckpointOptions {
   }
 
  private:
-  long chekcpointId = 0;
-  long timestamp = 0;
+  int64_t chekcpointId = 0;
+  int64_t timestamp = 0;
   bool isSavepoint = false;
 };
 

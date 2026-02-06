@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/state/CheckpointListener.h"
@@ -32,10 +33,10 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   virtual std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
   getOrCreateMapState(StateDescriptor& stateDescriptor) = 0;
 
-  virtual std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>>
+  virtual std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateListState(StateDescriptor& stateDescriptor) = 0;
 
-  virtual std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>>
+  virtual std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) = 0;
 
   virtual std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
@@ -48,8 +49,8 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   getOrCreateRankMapState(StateDescriptor& stateDescriptor) = 0;
 
   // TODO: Flink create PriorityQueue.
-  virtual std::shared_ptr<InternalTimerService<uint32_t, long>>
-  createTimerService(Triggerable<uint32_t, long>* triggerable) = 0;
+  virtual std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
+  createTimerService(Triggerable<uint32_t, int64_t>* triggerable) = 0;
 
   virtual std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
   createGroupWindowAggTimerService(

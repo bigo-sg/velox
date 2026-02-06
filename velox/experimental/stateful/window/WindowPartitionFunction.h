@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <velox/core/PlanNode.h>
 
@@ -26,9 +27,9 @@ class WindowPartitionFunction : public core::PartitionFunction {
   WindowPartitionFunction(
       const RowTypePtr& inputType,
       const column_index_t rowtimeIndex,
-      long size,
-      long step,
-      long offset,
+      int64_t size,
+      int64_t step,
+      int64_t offset,
       int windowType);
 
   std::optional<uint32_t> partition(
@@ -38,11 +39,11 @@ class WindowPartitionFunction : public core::PartitionFunction {
  private:
   RowTypePtr inputType_;
   column_index_t rowtimeIndex_;
-  long size_;
-  long step_;
-  long offset_;
+  int64_t size_;
+  int64_t step_;
+  int64_t offset_;
   int windowType_;
-  long sliceSize_;
+  int64_t sliceSize_;
 };
 
 class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
@@ -50,9 +51,9 @@ class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
   StreamWindowPartitionFunctionSpec(
       const RowTypePtr& inputType,
       column_index_t rowtimeIndex,
-      long size,
-      long step,
-      long offset,
+      int64_t size,
+      int64_t step,
+      int64_t offset,
       int windowType)
       : inputType_(std::move(inputType)),
         rowtimeIndex_(rowtimeIndex),
@@ -76,9 +77,9 @@ class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
  private:
   RowTypePtr inputType_;
   column_index_t rowtimeIndex_;
-  long size_;
-  long step_;
-  long offset_;
+  int64_t size_;
+  int64_t step_;
+  int64_t offset_;
   int windowType_;
 };
 

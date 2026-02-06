@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
@@ -36,7 +37,7 @@ class FunctionContext {
 
   virtual uint32_t currentKey() = 0;
 
-  virtual long currentProcessingTime() = 0;
+  virtual int64_t currentProcessingTime() = 0;
 
   virtual int64_t currentWatermark() = 0;
 
@@ -64,7 +65,7 @@ class WindowProcessFunction {
   WindowProcessFunction(
       GroupWindowAssignerPtr windowAssigner,
       exec::Operator* windowAggregator,
-      long allowedLateness)
+      int64_t allowedLateness)
       : windowAssigner_(windowAssigner),
         windowAggregator_(
             dynamic_cast<GroupWindowAggsHandler*>(windowAggregator)),
@@ -74,17 +75,19 @@ class WindowProcessFunction {
     ctx_ = std::move(ctx);
   }
 
-  virtual std::vector<W>
-  assignStateNamespace(uint32_t key, RowVectorPtr inputRow, long timestamp) = 0;
+  virtual std::vector<W> assignStateNamespace(
+      uint32_t key,
+      RowVectorPtr inputRow,
+      int64_t timestamp) = 0;
 
   virtual std::vector<W> assignActualWindows(
       RowVectorPtr inputRow,
-      long timestamp) = 0;
+      int64_t timestamp) = 0;
 
   // TODO: implement it when necessary.
   virtual void prepareAggregateAccumulatorForEmit(uint32_t key, W window) = 0;
 
-  virtual void cleanWindowIfNeeded(W window, long currentTime) = 0;
+  virtual void cleanWindowIfNeeded(W window, int64_t currentTime) = 0;
 
   // TODO: implement it when necessary.
   virtual void close() {}
@@ -101,7 +104,7 @@ class WindowProcessFunction {
              ctx_->getShiftTimeZone()) <= ctx_->currentWatermark()));
   }
 
-  bool isCleanupTime(W window, long time) {
+  bool isCleanupTime(W window, int64_t time) {
     return time ==
         TimeWindowUtil::toEpochMillsForTimer(
                TimeWindowUtil::cleanupTime(
@@ -114,7 +117,7 @@ class WindowProcessFunction {
   GroupWindowAssignerPtr windowAssigner_;
   // TODO: windowAggregator may need state
   GroupWindowAggsHandler* windowAggregator_;
-  long allowedLateness_;
+  int64_t allowedLateness_;
   std::shared_ptr<FunctionContext<W>> ctx_;
 };
 
@@ -129,20 +132,20 @@ class MergingWindowProcessFunction : public WindowProcessFunction<TimeWindow> {
   MergingWindowProcessFunction(
       std::shared_ptr<MergingWindowAssigner> windowAssigner,
       exec::Operator* windowAggregator,
-      long allowedLateness);
+      int64_t allowedLateness);
 
   void open(std::shared_ptr<FunctionContext<TimeWindow>> ctx) override;
 
   std::vector<TimeWindow> assignStateNamespace(
       uint32_t key,
       RowVectorPtr inputRow,
-      long timestamp) override;
+      int64_t timestamp) override;
 
   std::vector<TimeWindow> assignActualWindows(
       RowVectorPtr inputRow,
-      long timestamp) override;
+      int64_t timestamp) override;
 
-  void cleanWindowIfNeeded(TimeWindow window, long currentTime) override;
+  void cleanWindowIfNeeded(TimeWindow window, int64_t currentTime) override;
 
   void prepareAggregateAccumulatorForEmit(uint32_t key, TimeWindow window)
       override;

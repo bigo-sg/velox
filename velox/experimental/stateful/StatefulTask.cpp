@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulTask.h"
+#include <cstdint>
 #include "velox/exec/OperatorStats.h"
 #include "velox/exec/OperatorUtils.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
@@ -167,11 +168,11 @@ void StatefulTask::snapshotState() {
 }
 
 std::vector<std::string> StatefulTask::notifyCheckpointComplete(
-    long checkpointId) {
+    int64_t checkpointId) {
   return operatorChain_->notifyCheckpointComplete(checkpointId);
 }
 
-void StatefulTask::notifyCheckpointAborted(long checkpointId) {
+void StatefulTask::notifyCheckpointAborted(int64_t checkpointId) {
   operatorChain_->notifyCheckpointAborted(checkpointId);
 }
 

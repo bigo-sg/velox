@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
+#include <cstdint>
 #include "velox/vector/DictionaryVector.h"
 
 namespace facebook::velox::stateful {
@@ -22,7 +23,7 @@ RowTimeDeduplicateRanker::RowTimeDeduplicateRanker(
     int32_t operatorId,
     exec::DriverCtx* driverCtx,
     const std::shared_ptr<const core::PlanNode>& rankNode,
-    long minRetentionTime,
+    int64_t minRetentionTime,
     int rowtimeIndex,
     bool generateUpdateBefore,
     bool generateInsert,

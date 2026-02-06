@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <velox/experimental/stateful/InternalPriorityQueue.h>
 #include <velox/experimental/stateful/TimerHeapInternalTimer.h>
@@ -28,19 +29,19 @@ class InternalTimerService {
   InternalTimerService(Triggerable<K, N>* triggerable)
       : triggerable_(triggerable) {}
 
-  void registerEventTimeTimer(K key, N ns, long time) {
+  void registerEventTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.add(
         std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void deleteEventTimeTimer(K key, N ns, long time) {
+  void deleteEventTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.remove(
         std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void registerProcessingTimeTimer(K key, N ns, long time) {}
+  void registerProcessingTimeTimer(K key, N ns, int64_t time) {}
 
-  void deleteProcessingTimeTimer(K key, N ns, long time) {
+  void deleteProcessingTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.remove(
         std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
@@ -53,7 +54,7 @@ class InternalTimerService {
     return 0; // or some other default value
   }
 
-  long currentProcessingTime() {
+  int64_t currentProcessingTime() {
     // TODO: Implement processing time logic if needed.
     return 0; // or some other default value
   }

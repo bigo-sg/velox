@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WatermarkAssigner.h"
+#include <cstdint>
 
 #include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Nulls.h"
@@ -23,9 +24,9 @@ namespace facebook::velox::stateful {
 WatermarkAssigner::WatermarkAssigner(
     std::unique_ptr<exec::Operator> op,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
-    const long idleTimeout,
+    const int64_t idleTimeout,
     const int rowtimeFieldIndex,
-    const long watermarkInterval)
+    const int64_t watermarkInterval)
     : StatefulOperator(std::move(op), std::move(targets)),
       idleTimeout_(idleTimeout),
       rowtimeFieldIndex_(rowtimeFieldIndex),

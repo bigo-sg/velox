@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/vector/FlatVector.h"
 
@@ -24,9 +25,9 @@ namespace facebook::velox::stateful {
 WindowPartitionFunction::WindowPartitionFunction(
     const RowTypePtr& inputType,
     const column_index_t rowtimeIndex,
-    long size,
-    long step,
-    long offset,
+    int64_t size,
+    int64_t step,
+    int64_t offset,
     int windowType)
     : inputType_(std::move(inputType)),
       rowtimeIndex_(rowtimeIndex),
@@ -56,9 +57,9 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
   for (auto i = 0; i < size; ++i) {
     auto child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
-    long timestamp = ts.getSeconds() * 1'000 + ts.getNanos() / 1'000'000;
+    int64_t timestamp = ts.getSeconds() * 1'000 + ts.getNanos() / 1'000'000;
     if (windowType_ == 0) { // Hopping window
-      long start = TimeWindowUtil::getWindowStartWithOffset(
+      int64_t start = TimeWindowUtil::getWindowStartWithOffset(
           timestamp, offset_, sliceSize_);
       partitions[i] = start + sliceSize_;
     } else if (windowType_ == 1) { // Windowed Slice Assigner
@@ -71,7 +72,7 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
   return std::nullopt;
 }
 
-long getTimestamp(
+int64_t getTimestamp(
     const RowVectorPtr& input,
     RowTypePtr inputType,
     const column_index_t rowtimeIndex) {

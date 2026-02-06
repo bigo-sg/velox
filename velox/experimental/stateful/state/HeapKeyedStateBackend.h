@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 
@@ -26,14 +27,14 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
   getOrCreateMapState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> getOrCreateListState(
-      StateDescriptor& stateDescriptor) override;
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+  getOrCreateListState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>>
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
-      Triggerable<uint32_t, long>* triggerable) override;
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
+      Triggerable<uint32_t, int64_t>* triggerable) override;
 
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
   getOrCreateGroupValueState(StateDescriptor& stateDescriptor) override;
@@ -49,13 +50,13 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       Triggerable<uint32_t, TimeWindow>* triggerable) override;
 
   void snapshot(
-      long checkpointId,
-      long timestamp,
+      int64_t checkpointId,
+      int64_t timestamp,
       CheckpointOptions checkpointOptions) override;
 
-  void notifyCheckpointComplete(long checkpointId) override;
+  void notifyCheckpointComplete(int64_t checkpointId) override;
 
-  void notifyCheckpointAborted(long checkpointId) override;
+  void notifyCheckpointAborted(int64_t checkpointId) override;
 
  private:
   std::map<std::string, StatePtr> keyValueStatesByName_;

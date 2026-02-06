@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WindowJoin.h"
+#include <cstdint>
 #include "velox/experimental/stateful/join/JoinRecordStateViews.h"
 #include "velox/expression/Expr.h"
 
@@ -84,7 +85,7 @@ void WindowJoin::processData(
     exec::Operator* input,
     KeySelector* keySelector,
     int windowEndIndex,
-    ListState<uint32_t, long, RowVectorPtr>* state) {
+    ListState<uint32_t, int64_t, RowVectorPtr>* state) {
   auto result = input->getOutput();
   if (result) {
     auto notFired = filterWindowFiredRows(result);
@@ -103,24 +104,24 @@ RowVectorPtr WindowJoin::filterWindowFiredRows(RowVectorPtr& input) {
   return input;
 }
 
-std::map<long, RowVectorPtr> WindowJoin::partitionWindowData(
+std::map<int64_t, RowVectorPtr> WindowJoin::partitionWindowData(
     RowVectorPtr& input,
     int windowEndIndex) {
-  std::map<long, RowVectorPtr> windowEndToData;
+  std::map<int64_t, RowVectorPtr> windowEndToData;
   // TODO: this is just a example,.
   auto row = input->childAt(windowEndIndex);
-  long windowEnd = row->asFlatVector<int64_t>()->valueAt(
+  int64_t windowEnd = row->asFlatVector<int64_t>()->valueAt(
       0); // Assuming first column is window end
   windowEndToData[windowEnd] = input;
   return windowEndToData;
 }
 
 void WindowJoin::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+    std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>> timer) {
   join(timer->key(), timer->ns());
 }
 
-void WindowJoin::join(uint32_t key, long window) {
+void WindowJoin::join(uint32_t key, int64_t window) {
   auto leftValues = leftWindowState_->get(key, window);
   auto rightValues = rightWindowState_->get(key, window);
   if (leftValues.empty() || rightValues.empty()) {

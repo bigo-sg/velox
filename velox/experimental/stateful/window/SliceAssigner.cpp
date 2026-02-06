@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
+#include <cstdint>
 
 #include <chrono>
 #include <iostream>
@@ -23,9 +24,9 @@ namespace facebook::velox::stateful {
 
 SliceAssigner::SliceAssigner(
     std::unique_ptr<KeySelector> keySelector,
-    long size,
-    long step,
-    long offset,
+    int64_t size,
+    int64_t step,
+    int64_t offset,
     int windowType,
     int rowtimeIndex)
     : keySelector_(std::move(keySelector)),
@@ -43,26 +44,27 @@ std::map<uint32_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
   if (rowtimeIndex_ < 0) {
     // TODO: using Processing Time Service
     auto now = std::chrono::system_clock::now();
-    long timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            now.time_since_epoch())
-                            .count();
+    int64_t timestamp_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch())
+            .count();
     return {{timestamp_ms, input}};
   }
   return keySelector_->partition(input);
 }
 
-long SliceAssigner::getLastWindowEnd(long sliceEnd) {
+int64_t SliceAssigner::getLastWindowEnd(int64_t sliceEnd) {
   if (windowType_ == 0) { // Hopping window
     return sliceEnd - sliceSize_ + size_;
   }
   return sliceEnd;
 }
 
-long SliceAssigner::getWindowStart(long windowEnd) {
+int64_t SliceAssigner::getWindowStart(int64_t windowEnd) {
   return windowEnd - size_;
 }
 
-long SliceAssigner::getSliceEndInterval() {
+int64_t SliceAssigner::getSliceEndInterval() {
   return sliceSize_;
 }
 

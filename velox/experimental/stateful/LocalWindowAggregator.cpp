@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
@@ -23,7 +24,7 @@ LocalWindowAggregator::LocalWindowAggregator(
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<KeySelector> sliceAssigner,
-    const long windowInterval,
+    const int64_t windowInterval,
     const bool useDayLightSaving,
     RowTypePtr outputType)
     : StatefulOperator(std::move(op), std::move(targets)),

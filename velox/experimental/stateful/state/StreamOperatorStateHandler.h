@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 
@@ -40,11 +41,11 @@ class StreamOperatorStateHandler {
         operatorId_, 0, CheckpointOptions::defaultOptions());
   }
 
-  void notifyCheckpointComplete(long checkpointId) {
+  void notifyCheckpointComplete(int64_t checkpointId) {
     keyedStateBackend_->notifyCheckpointComplete(checkpointId);
   }
 
-  void notifyCheckpointAborted(long checkpointId) {
+  void notifyCheckpointAborted(int64_t checkpointId) {
     keyedStateBackend_->notifyCheckpointAborted(checkpointId);
   }
 
@@ -54,12 +55,12 @@ class StreamOperatorStateHandler {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);
   }
 
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> getListState(
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>> getListState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateListState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> getValueState(
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> getValueState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
   }
@@ -79,8 +80,8 @@ class StreamOperatorStateHandler {
     return keyedStateBackend_->getOrCreateRankMapState(stateDescriptor);
   }
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
-      Triggerable<uint32_t, long>* triggerable) {
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
+      Triggerable<uint32_t, int64_t>* triggerable) {
     return keyedStateBackend_->createTimerService(triggerable);
   }
 

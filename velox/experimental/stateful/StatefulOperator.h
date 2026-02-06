@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
@@ -58,9 +59,9 @@ class StatefulOperator {
 
   void snapshotState();
 
-  std::vector<std::string> notifyCheckpointComplete(long checkpointId);
+  std::vector<std::string> notifyCheckpointComplete(int64_t checkpointId);
 
-  void notifyCheckpointAborted(long checkpointId);
+  void notifyCheckpointAborted(int64_t checkpointId);
 
   StreamOperatorStateHandlerPtr stateHandler() const {
     return stateHandler_;

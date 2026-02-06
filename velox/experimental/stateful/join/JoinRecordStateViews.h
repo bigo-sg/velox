@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 #include "velox/experimental/stateful/state/StateTtlConfig.h"
@@ -29,7 +30,7 @@ class JoinRecordStateViews {
       std::string stateName,
       // JoinInputSideSpec inputSideSpec,
       // InternalTypeInfo<RowData> recordType,
-      long retentionTime);
+      int64_t retentionTime);
 };
 
 // This class is relevant to Flink InputSideHasNoUniqueKey.

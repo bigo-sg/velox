@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/common/serialization/Serializable.h"
 
@@ -22,14 +23,14 @@ namespace facebook::velox::stateful {
 // This class is relevant to Flink org.apache.flink.api.common.State.
 class StateTtlConfig : public ISerializable {
  public:
-  StateTtlConfig(long retentionTime) : retentionTime_(retentionTime) {}
+  StateTtlConfig(int64_t retentionTime) : retentionTime_(retentionTime) {}
 
   folly::dynamic serialize() const override {
     return nullptr;
   }
 
  private:
-  long retentionTime_;
+  int64_t retentionTime_;
 };
 
 } // namespace facebook::velox::stateful

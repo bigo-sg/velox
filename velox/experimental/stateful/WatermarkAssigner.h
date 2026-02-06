@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/StatefulOperator.h"
 
@@ -28,9 +29,9 @@ class WatermarkAssigner : public StatefulOperator {
   WatermarkAssigner(
       std::unique_ptr<exec::Operator> op,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
-      const long idleTimeout,
+      const int64_t idleTimeout,
       const int rowtimeFieldIndex,
-      const long watermarkInterval);
+      const int64_t watermarkInterval);
 
   void addInput(RowVectorPtr input) override;
 
@@ -44,9 +45,9 @@ class WatermarkAssigner : public StatefulOperator {
   void advanceWatermark();
 
   RowVectorPtr input_;
-  const long idleTimeout_;
+  const int64_t idleTimeout_;
   const int rowtimeFieldIndex_;
-  const long watermarkInterval_;
+  const int64_t watermarkInterval_;
 
   int64_t currentWatermark = 0;
   int64_t lastWatermark = 0;

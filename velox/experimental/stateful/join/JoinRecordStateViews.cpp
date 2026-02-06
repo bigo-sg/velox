@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/join/JoinRecordStateViews.h"
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
@@ -23,7 +24,7 @@ JoinRecordStateViewPtr JoinRecordStateViews::create(
     std::string stateName,
     // JoinInputSideSpec inputSideSpec,
     // InternalTypeInfo<RowData> recordType,
-    long retentionTime) {
+    int64_t retentionTime) {
   StateTtlConfig ttlConfig(retentionTime);
   return std::make_unique<InputSideHasNoUniqueKey>(
       stateHandler, stateName, ttlConfig);

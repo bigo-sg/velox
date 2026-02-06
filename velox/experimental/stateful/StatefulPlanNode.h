@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/core/PlanNode.h"
 
@@ -66,9 +67,9 @@ class WatermarkAssignerNode : public core::PlanNode {
   WatermarkAssignerNode(
       const core::PlanNodeId& id,
       std::shared_ptr<const core::ProjectNode>& project,
-      long idleTimeout,
+      int64_t idleTimeout,
       int rowtimeFieldIndex,
-      long watermarkInterval)
+      int64_t watermarkInterval)
       : PlanNode(id),
         project_(std::move(project)),
         idleTimeout_(idleTimeout),
@@ -93,7 +94,7 @@ class WatermarkAssignerNode : public core::PlanNode {
     return project_;
   }
 
-  const long idleTimeout() const {
+  const int64_t idleTimeout() const {
     return idleTimeout_;
   }
 
@@ -101,7 +102,7 @@ class WatermarkAssignerNode : public core::PlanNode {
     return rowtimeFieldIndex_;
   }
 
-  const long watermarkInterval() const {
+  const int64_t watermarkInterval() const {
     return watermarkInterval_;
   }
 
@@ -109,9 +110,9 @@ class WatermarkAssignerNode : public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const std::shared_ptr<const core::ProjectNode> project_;
-  const long idleTimeout_;
+  const int64_t idleTimeout_;
   const int rowtimeFieldIndex_;
-  const long watermarkInterval_;
+  const int64_t watermarkInterval_;
 };
 
 class StreamJoinNode : public core::PlanNode {
@@ -333,12 +334,12 @@ class StreamWindowAggregationNode : public core::PlanNode {
       const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
       const std::shared_ptr<const core::PartitionFunctionSpec>&
           sliceAssignerSpec,
-      long windowInterval,
+      int64_t windowInterval,
       bool useDayLightSaving,
       bool isLocalAgg,
-      long size,
-      long step,
-      long offset,
+      int64_t size,
+      int64_t step,
+      int64_t offset,
       int windowType,
       const RowTypePtr& outputType,
       int rowtimeIndex)
@@ -379,7 +380,7 @@ class StreamWindowAggregationNode : public core::PlanNode {
     return sliceAssignerSpec_;
   }
 
-  long windowInterval() const {
+  int64_t windowInterval() const {
     return windowInterval_;
   }
 
@@ -391,15 +392,15 @@ class StreamWindowAggregationNode : public core::PlanNode {
     return isLocalAgg_;
   }
 
-  long size() const {
+  int64_t size() const {
     return size_;
   }
 
-  long step() const {
+  int64_t step() const {
     return step_;
   }
 
-  long offset() const {
+  int64_t offset() const {
     return offset_;
   }
 
@@ -428,12 +429,12 @@ class StreamWindowAggregationNode : public core::PlanNode {
   const std::shared_ptr<const core::AggregationNode> localAgg_;
   const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
   const std::shared_ptr<const core::PartitionFunctionSpec> sliceAssignerSpec_;
-  long windowInterval_ = 0;
+  int64_t windowInterval_ = 0;
   bool useDayLightSaving_ = false;
   bool isLocalAgg_;
-  long size_;
-  long step_;
-  long offset_;
+  int64_t size_;
+  int64_t step_;
+  int64_t offset_;
   int windowType_;
   const RowTypePtr outputType_;
   int rowtimeIndex_;
@@ -475,7 +476,7 @@ class GroupWindowAggregationNode : public core::PlanNode {
       const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
       const std::shared_ptr<const core::PartitionFunctionSpec>&
           sliceAssignerSpec,
-      long allowedLateness,
+      int64_t allowedLateness,
       bool produceUpdates,
       int rowtimeIndex,
       bool isEventTime,
@@ -510,7 +511,7 @@ class GroupWindowAggregationNode : public core::PlanNode {
     return sliceAssignerSpec_;
   }
 
-  long allowedLateness() const {
+  int64_t allowedLateness() const {
     return allowedLateness_;
   }
 
@@ -546,7 +547,7 @@ class GroupWindowAggregationNode : public core::PlanNode {
   const std::shared_ptr<const GroupWindowAggsHandlerNode> aggregation_;
   const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
   const std::shared_ptr<const core::PartitionFunctionSpec> sliceAssignerSpec_;
-  long allowedLateness_ = 0;
+  int64_t allowedLateness_ = 0;
   bool produceUpdates_;
   int rowtimeIndex_;
   bool isEventTime_;
@@ -602,7 +603,7 @@ class DeduplicateNode : public core::PlanNode {
   DeduplicateNode(
       const core::PlanNodeId& id,
       RowTypePtr outputType,
-      long minRetentionTime,
+      int64_t minRetentionTime,
       int rowtimeIndex,
       bool generateUpdateBefore,
       bool generateInsert,
@@ -629,7 +630,7 @@ class DeduplicateNode : public core::PlanNode {
     return rowtimeIndex_;
   }
 
-  long minRetentionTime() const {
+  int64_t minRetentionTime() const {
     return minRetentionTime_;
   }
 
@@ -653,7 +654,7 @@ class DeduplicateNode : public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const RowTypePtr outputType_;
-  long minRetentionTime_;
+  int64_t minRetentionTime_;
   int rowtimeIndex_;
   bool generateUpdateBefore_;
   bool generateInsert_;
@@ -670,7 +671,7 @@ class StreamTopNNode : public core::PlanNode {
       RowTypePtr outputType,
       bool generateUpdateBefore,
       bool outputRankNumber,
-      long cacheSize)
+      int64_t cacheSize)
       : core::PlanNode(id),
         topN_(std::move(topN)),
         sortKeySelectorSpec_(std::move(sortKeySelectorSpec)),
@@ -706,7 +707,7 @@ class StreamTopNNode : public core::PlanNode {
     return outputRankNumber_;
   }
 
-  long cacheSize() const {
+  int64_t cacheSize() const {
     return cacheSize_;
   }
 
@@ -722,7 +723,7 @@ class StreamTopNNode : public core::PlanNode {
   const RowTypePtr outputType_;
   bool generateUpdateBefore_;
   bool outputRankNumber_;
-  long cacheSize_;
+  int64_t cacheSize_;
 };
 
 class GroupAggsHandlerNode : public core::PlanNode {

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
@@ -41,7 +42,7 @@ class GroupWindowAggregator : public StatefulOperator,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
       std::unique_ptr<KeySelector> keySelector,
       std::unique_ptr<SliceAssigner> sliceAssigner,
-      long allowedLateness,
+      int64_t allowedLateness,
       bool produceUpdates,
       int rowtimeIndex,
       bool isEventTime,
@@ -78,32 +79,36 @@ class GroupWindowAggregator : public StatefulOperator,
     bool onElement(
         uint32_t key,
         RowVectorPtr row,
-        long timestamp,
+        int64_t timestamp,
         TimeWindow window) override;
 
-    bool onProcessingTime(TimeWindow window, long time) override;
+    bool onProcessingTime(TimeWindow window, int64_t time) override;
 
-    bool onEventTime(TimeWindow window, long time) override;
+    bool onEventTime(TimeWindow window, int64_t time) override;
 
     void onMerge(uint32_t key, TimeWindow window) override;
 
-    long getCurrentProcessingTime() override;
+    int64_t getCurrentProcessingTime() override;
 
     int64_t getCurrentWatermark() override;
 
     // TODO: support it
     // MetricGroup getMetricGroup()；
 
-    void registerProcessingTimeTimer(uint32_t key, TimeWindow window, long time)
+    void registerProcessingTimeTimer(
+        uint32_t key,
+        TimeWindow window,
+        int64_t time) override;
+
+    void registerEventTimeTimer(uint32_t key, TimeWindow window, int64_t time)
         override;
 
-    void registerEventTimeTimer(uint32_t key, TimeWindow window, long time)
-        override;
+    void deleteProcessingTimeTimer(
+        uint32_t key,
+        TimeWindow window,
+        int64_t time) override;
 
-    void deleteProcessingTimeTimer(uint32_t key, TimeWindow window, long time)
-        override;
-
-    void deleteEventTimeTimer(uint32_t key, TimeWindow window, long time)
+    void deleteEventTimeTimer(uint32_t key, TimeWindow window, int64_t time)
         override;
 
     int getShiftTimeZone();
@@ -130,7 +135,7 @@ class GroupWindowAggregator : public StatefulOperator,
   std::unique_ptr<WindowProcessFunction<TimeWindow>> windowFunction_;
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<SliceAssigner> sliceAssigner_;
-  const long allowedLateness_;
+  const int64_t allowedLateness_;
   const bool produceUpdates_;
   const int rowtimeIndex_ = 0;
   const bool isEventTime_;
@@ -157,7 +162,7 @@ class WindowContext : public FunctionContext<TimeWindow> {
       std::shared_ptr<StreamOperatorStateHandler> stateHandler,
       int shiftTimeZone,
       bool isEventTime,
-      long allowedLateness);
+      int64_t allowedLateness);
 
   StatePtr getPartitionedState(StateDescriptor& stateDescriptor) override;
 
@@ -165,7 +170,7 @@ class WindowContext : public FunctionContext<TimeWindow> {
     return currentKey_;
   }
 
-  long currentProcessingTime() override;
+  int64_t currentProcessingTime() override;
 
   int64_t currentWatermark() override;
 
@@ -200,7 +205,7 @@ class WindowContext : public FunctionContext<TimeWindow> {
   std::shared_ptr<StreamOperatorStateHandler> stateHandler_;
   int shiftTimeZone_;
   bool isEventTime_;
-  long allowedLateness_;
+  int64_t allowedLateness_;
   uint32_t currentKey_;
 };
 } // namespace facebook::velox::stateful

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <folly/container/EvictingCacheMap.h>
 #include <map>
@@ -63,7 +64,7 @@ class MergingFunction {
   MergingFunction(
       std::shared_ptr<DefaultAccMergingConsumer> accMergingConsumer,
       std::shared_ptr<FunctionContext<TimeWindow>> ctx,
-      long allowedLateness,
+      int64_t allowedLateness,
       bool isEventTime);
 
   void merge(
@@ -75,7 +76,7 @@ class MergingFunction {
  private:
   std::shared_ptr<DefaultAccMergingConsumer> accMergingConsumer_;
   std::shared_ptr<FunctionContext<TimeWindow>> ctx_;
-  long allowedLateness_;
+  int64_t allowedLateness_;
   bool isEventTime_;
 };
 

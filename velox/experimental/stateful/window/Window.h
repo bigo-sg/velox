@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <algorithm>
 #include <string>
@@ -23,7 +24,7 @@ namespace facebook::velox::stateful {
 // This class is relevant to Flink WindowBuffer.
 class Window {
  public:
-  virtual long maxTimestamp() = 0;
+  virtual int64_t maxTimestamp() = 0;
 
   virtual bool operator<(const Window& other) const = 0;
 
@@ -34,17 +35,17 @@ class TimeWindow : public Window {
  public:
   TimeWindow() : start_(-1), end_(-1) {}
 
-  TimeWindow(long start, long end) : start_(start), end_(end) {}
+  TimeWindow(int64_t start, int64_t end) : start_(start), end_(end) {}
 
-  long maxTimestamp() override {
+  int64_t maxTimestamp() override {
     return end_ - 1;
   }
 
-  long start() const {
+  int64_t start() const {
     return start_;
   }
 
-  long end() const {
+  int64_t end() const {
     return end_;
   }
 
@@ -79,8 +80,8 @@ class TimeWindow : public Window {
   }
 
  private:
-  long start_;
-  long end_;
+  int64_t start_;
+  int64_t end_;
 };
 
 } // namespace facebook::velox::stateful
@@ -90,7 +91,7 @@ template <>
 struct hash<facebook::velox::stateful::TimeWindow> {
   size_t operator()(const facebook::velox::stateful::TimeWindow& w) const {
     // TODO: verify it.
-    return hash<long>()(w.start()) ^ (hash<long>()(w.end()) << 1);
+    return hash<int64_t>()(w.start()) ^ (hash<int64_t>()(w.end()) << 1);
   }
 };
 } // namespace std

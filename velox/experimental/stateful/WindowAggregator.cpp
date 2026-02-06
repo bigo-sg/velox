@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WindowAggregator.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 #include <list>
@@ -26,7 +27,7 @@ WindowAggregator::WindowAggregator(
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
-    const long windowInterval,
+    const int64_t windowInterval,
     const bool useDayLightSaving)
     : StatefulOperator(std::move(globalAggerator), std::move(targets)),
       localAggerator_(std::move(localAggerator)),
@@ -73,7 +74,7 @@ void WindowAggregator::getOutput() {
               sliceEnd, currentProgress_, shiftTimeZone_)) {
         // the assigned slice has been triggered, which means current element is
         // late, but maybe not need to drop
-        long lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
+        int64_t lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
         if (TimeWindowUtil::isWindowFired(
                 lastWindowEnd, currentProgress_, shiftTimeZone_)) {
           // the last window has been triggered, so the element can be dropped
@@ -86,7 +87,7 @@ void WindowAggregator::getOutput() {
               key, sliceStateMergeTarget(sliceEnd), windowData);
           // we need to register a timer for the next unfired window,
           // because this may the first time we see elements under the key
-          long unfiredFirstWindow = sliceEnd;
+          int64_t unfiredFirstWindow = sliceEnd;
           while (TimeWindowUtil::isWindowFired(
               unfiredFirstWindow, currentProgress_, shiftTimeZone_)) {
             unfiredFirstWindow += windowInterval_;
@@ -150,13 +151,13 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
 }
 
 void WindowAggregator::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+    std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>> timer) {
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
   pushOutput(output);
 }
 
-long WindowAggregator::sliceStateMergeTarget(long sliceToMerge) {
+int64_t WindowAggregator::sliceStateMergeTarget(int64_t sliceToMerge) {
   // TODO: implement it
   return sliceToMerge;
 }

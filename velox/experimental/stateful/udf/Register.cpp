@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/udf/Register.h"
+#include <cstdint>
 #include "velox/experimental/stateful/udf/BigoUDF.h"
 #include "velox/experimental/stateful/udf/ExtractDateTime.h"
 #include "velox/experimental/stateful/udf/SplitIndex.h"

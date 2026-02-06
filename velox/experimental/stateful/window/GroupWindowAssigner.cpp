@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
-SessionWindowAssigner::SessionWindowAssigner(long gap, bool isEventTime)
+SessionWindowAssigner::SessionWindowAssigner(int64_t gap, bool isEventTime)
     : gap_(gap), isEventTime_(isEventTime) {}
 
 std::vector<TimeWindow> SessionWindowAssigner::assignWindows(
     RowVectorPtr element,
-    long timestamp) {
+    int64_t timestamp) {
   return {TimeWindow(timestamp, timestamp + gap_)};
 }
 

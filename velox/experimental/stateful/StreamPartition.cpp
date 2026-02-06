@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StreamPartition.h"
+#include <cstdint>
 #include "velox/experimental/stateful/StatefulTask.h"
 
 namespace facebook::velox::stateful {

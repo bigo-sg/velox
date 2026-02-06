@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
@@ -28,7 +29,7 @@ namespace facebook::velox::stateful {
 /// This class is related to XXXWindowAggProcessor in Flink.
 /// It's work includes both WindowAggOperator and XXXWindowAggOperator.
 class WindowAggregator : public StatefulOperator,
-                         public Triggerable<uint32_t, long> {
+                         public Triggerable<uint32_t, int64_t> {
  public:
   WindowAggregator(
       std::unique_ptr<exec::Operator> localAggerator,
@@ -36,7 +37,7 @@ class WindowAggregator : public StatefulOperator,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
       std::unique_ptr<KeySelector> keySelector,
       std::unique_ptr<SliceAssigner> sliceAssigner,
-      const long windowInterval,
+      const int64_t windowInterval,
       const bool useDayLightSaving);
 
   void initialize() override;
@@ -51,19 +52,19 @@ class WindowAggregator : public StatefulOperator,
     return "WindowAggregator";
   }
 
-  void onEventTime(
-      std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
+  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>>
+                       timer) override;
 
  private:
   void processWatermarkInternal(int64_t timestamp);
 
-  long sliceStateMergeTarget(long sliceToMerge);
+  int64_t sliceStateMergeTarget(int64_t sliceToMerge);
 
   std::unique_ptr<exec::Operator> localAggerator_;
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<SliceAssigner> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
-  const long windowInterval_;
+  const int64_t windowInterval_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   const bool isEventTime = true; // TODO: support processing time
@@ -71,7 +72,7 @@ class WindowAggregator : public StatefulOperator,
   RowVectorPtr input_;
   int64_t currentProgress_ = 0;
   int64_t nextTriggerWatermark_ = 0;
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> windowState_;
-  std::shared_ptr<InternalTimerService<uint32_t, long>> windowTimerService_;
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> windowState_;
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> windowTimerService_;
 };
 } // namespace facebook::velox::stateful

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
@@ -21,10 +22,10 @@ namespace facebook::velox::stateful {
 template <typename K, typename N>
 class TimerHeapInternalTimer {
  public:
-  TimerHeapInternalTimer(long timestamp, K key, N ns)
+  TimerHeapInternalTimer(int64_t timestamp, K key, N ns)
       : timestamp_(timestamp), key_(key), ns_(ns), keyGroupIndex_(0) {}
 
-  long timestamp() {
+  int64_t timestamp() {
     return timestamp_;
   }
 
@@ -46,7 +47,7 @@ class TimerHeapInternalTimer {
   }
 
  private:
-  long timestamp_;
+  int64_t timestamp_;
   K key_;
   N ns_;
   int keyGroupIndex_;

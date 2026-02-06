@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <rocksdb/db.h>
 #include <rocksdb/options.h>

@@ -13,11 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstdint>
 
-#include "velox/experimental/stateful/state/RocksDBKeyedStateBackend.h"
 #include <memory>
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
+#include "velox/experimental/stateful/state/RocksDBKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/RocksDBState.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/type/Type.h"
@@ -142,7 +143,7 @@ RocksDBKeyedStateBackend::getOrCreateValueState(
       pool);
 }
 
-std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>>
+std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
 RocksDBKeyedStateBackend::getOrCreateListState(
     StateDescriptor& stateDescriptor) {
   // TODO: implement this
@@ -177,10 +178,10 @@ RocksDBKeyedStateBackend::getOrCreateRankMapState(
   return nullptr;
 }
 
-std::shared_ptr<InternalTimerService<uint32_t, long>>
+std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
 RocksDBKeyedStateBackend::createTimerService(
-    Triggerable<uint32_t, long>* triggerable) {
-  return std::make_shared<InternalTimerService<uint32_t, long>>(triggerable);
+    Triggerable<uint32_t, int64_t>* triggerable) {
+  return std::make_shared<InternalTimerService<uint32_t, int64_t>>(triggerable);
 }
 
 std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
@@ -191,12 +192,12 @@ RocksDBKeyedStateBackend::createGroupWindowAggTimerService(
 }
 
 void RocksDBKeyedStateBackend::snapshot(
-    long checkpointId,
-    long timestamp,
+    int64_t checkpointId,
+    int64_t timestamp,
     CheckpointOptions checkpointOptions) {}
 
-void RocksDBKeyedStateBackend::notifyCheckpointComplete(long checkpointId) {}
+void RocksDBKeyedStateBackend::notifyCheckpointComplete(int64_t checkpointId) {}
 
-void RocksDBKeyedStateBackend::notifyCheckpointAborted(long checkpointId) {}
+void RocksDBKeyedStateBackend::notifyCheckpointAborted(int64_t checkpointId) {}
 
 } // namespace facebook::velox::stateful

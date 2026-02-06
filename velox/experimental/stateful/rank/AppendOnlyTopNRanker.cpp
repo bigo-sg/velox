@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
@@ -29,7 +30,7 @@ AppendOnlyTopNRanker::AppendOnlyTopNRanker(
     // RankRange rankRange,
     bool generateUpdateBefore,
     bool outputRankNumber,
-    long cacheSize)
+    int64_t cacheSize)
     : exec::Operator(
           driverCtx,
           rankNode->outputType(),

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/MergingWindowSet.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
 
@@ -127,7 +128,7 @@ void MergingWindowSet::close() {
 MergingFunction::MergingFunction(
     std::shared_ptr<DefaultAccMergingConsumer> accMergingConsumer,
     std::shared_ptr<FunctionContext<TimeWindow>> ctx,
-    long allowedLateness,
+    int64_t allowedLateness,
     bool isEventTime)
     : accMergingConsumer_(std::move(accMergingConsumer)),
       ctx_(ctx),
@@ -139,7 +140,7 @@ void MergingFunction::merge(
     std::set<TimeWindow>& mergedWindows,
     TimeWindow stateWindowResult,
     std::vector<TimeWindow>& stateWindowsToBeMerged) {
-  long mergeResultMaxTs = TimeWindowUtil::toEpochMillsForTimer(
+  int64_t mergeResultMaxTs = TimeWindowUtil::toEpochMillsForTimer(
       mergeResult.maxTimestamp(), ctx_->getShiftTimeZone());
   VELOX_CHECK(
       !(isEventTime_ &&

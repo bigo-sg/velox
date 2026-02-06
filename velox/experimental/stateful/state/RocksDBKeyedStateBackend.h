@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <set>
 #include <unordered_map>
@@ -42,10 +43,10 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
   getOrCreateMapState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> getOrCreateListState(
-      StateDescriptor& stateDescriptor) override;
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+  getOrCreateListState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>>
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) override;
 
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
@@ -57,8 +58,8 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
   getOrCreateRankMapState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
-      Triggerable<uint32_t, long>* triggerable) override;
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
+      Triggerable<uint32_t, int64_t>* triggerable) override;
 
   std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
   createGroupWindowAggTimerService(
@@ -66,15 +67,15 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
 
   // Deprecated, this maybe removed later
   void snapshot(
-      long checkpointId,
-      long timestamp,
+      int64_t checkpointId,
+      int64_t timestamp,
       CheckpointOptions checkpointOptions) override;
 
   // Deprecated, this maybe removed later
-  void notifyCheckpointComplete(long checkpointId) override;
+  void notifyCheckpointComplete(int64_t checkpointId) override;
 
   // Deprecated, this maybe removed later
-  void notifyCheckpointAborted(long checkpointId) override;
+  void notifyCheckpointAborted(int64_t checkpointId) override;
 
  private:
   rocksdb::DB* db_;

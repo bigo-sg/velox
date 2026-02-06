@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/window/Window.h"
@@ -29,7 +30,7 @@ class GroupWindowAssigner {
  public:
   virtual std::vector<W> assignWindows(
       RowVectorPtr element,
-      long timestamp) = 0;
+      int64_t timestamp) = 0;
   virtual bool isEventTime() = 0;
 };
 
@@ -46,9 +47,9 @@ using GroupWindowAssignerPtr = std::shared_ptr<GroupWindowAssigner<TimeWindow>>;
 
 class SessionWindowAssigner : public MergingWindowAssigner {
  public:
-  SessionWindowAssigner(long gap, bool isEventTime);
+  SessionWindowAssigner(int64_t gap, bool isEventTime);
 
-  std::vector<TimeWindow> assignWindows(RowVectorPtr element, long timestamp)
+  std::vector<TimeWindow> assignWindows(RowVectorPtr element, int64_t timestamp)
       override;
 
   void mergeWindows(
@@ -66,7 +67,7 @@ class SessionWindowAssigner : public MergingWindowAssigner {
       const TimeWindow& other,
       std::set<TimeWindow>& mergedWindow);
 
-  long gap_;
+  int64_t gap_;
   bool isEventTime_;
 };
 

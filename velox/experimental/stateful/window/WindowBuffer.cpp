@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/WindowBuffer.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
-
-#include <climits>
 
 namespace facebook::velox::stateful {
 
 void RecordsWindowBuffer::addElement(
     uint32_t key,
-    long sliceEnd,
+    int64_t sliceEnd,
     RowVectorPtr& element) {
   minSliceEnd_ = std::min(sliceEnd, minSliceEnd_);
   WindowKey windowKey(key, sliceEnd);
@@ -40,7 +39,7 @@ void RecordsWindowBuffer::addElement(
 }
 
 std::unordered_map<WindowKey, std::list<RowVectorPtr>>&
-RecordsWindowBuffer::advanceProgress(long progress) {
+RecordsWindowBuffer::advanceProgress(int64_t progress) {
   if (TimeWindowUtil::isWindowFired(minSliceEnd_, progress, shiftTimeZone_)) {
     // There should be some window to be fired, flush buffer to state first.
     return buffer_;

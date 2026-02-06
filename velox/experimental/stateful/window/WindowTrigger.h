@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
@@ -32,12 +33,12 @@ class WindowTrigger {
   virtual bool onElement(
       uint32_t key,
       RowVectorPtr element,
-      long timestamp,
+      int64_t timestamp,
       TimeWindow window) = 0;
 
-  virtual bool onProcessingTime(TimeWindow window, long time) = 0;
+  virtual bool onProcessingTime(TimeWindow window, int64_t time) = 0;
 
-  virtual bool onEventTime(TimeWindow window, long time) = 0;
+  virtual bool onEventTime(TimeWindow window, int64_t time) = 0;
 
   virtual bool canMerge() {
     return false;
@@ -51,7 +52,7 @@ class WindowTrigger {
 
   virtual void clear(uint32_t key, TimeWindow window) = 0;
 
-  virtual long triggerTime(TimeWindow window);
+  virtual int64_t triggerTime(TimeWindow window);
 
  protected:
   std::shared_ptr<TriggerContext> ctx_;
@@ -64,12 +65,12 @@ class AfterEndOfWindow : public WindowTrigger {
   bool onElement(
       uint32_t key,
       RowVectorPtr element,
-      long timestamp,
+      int64_t timestamp,
       TimeWindow window) override;
 
-  bool onProcessingTime(TimeWindow window, long time) override;
+  bool onProcessingTime(TimeWindow window, int64_t time) override;
 
-  bool onEventTime(TimeWindow window, long time) override;
+  bool onEventTime(TimeWindow window, int64_t time) override;
 
   void clear(uint32_t key, TimeWindow window) override;
 
@@ -88,33 +89,35 @@ class TriggerContext : public std::enable_shared_from_this<TriggerContext> {
   virtual bool onElement(
       uint32_t key,
       RowVectorPtr row,
-      long timestamp,
+      int64_t timestamp,
       TimeWindow window) = 0;
 
-  virtual bool onProcessingTime(TimeWindow window, long time) = 0;
+  virtual bool onProcessingTime(TimeWindow window, int64_t time) = 0;
 
-  virtual bool onEventTime(TimeWindow window, long time) = 0;
+  virtual bool onEventTime(TimeWindow window, int64_t time) = 0;
 
   virtual void onMerge(uint32_t key, TimeWindow window) = 0;
 
-  virtual long getCurrentProcessingTime() = 0;
+  virtual int64_t getCurrentProcessingTime() = 0;
 
   virtual int64_t getCurrentWatermark() = 0;
 
   // TODO: support it
   // MetricGroup getMetricGroup()；
 
-  virtual void
-  registerProcessingTimeTimer(uint32_t key, TimeWindow window, long time) = 0;
+  virtual void registerProcessingTimeTimer(
+      uint32_t key,
+      TimeWindow window,
+      int64_t time) = 0;
 
   virtual void
-  registerEventTimeTimer(uint32_t key, TimeWindow window, long time) = 0;
+  registerEventTimeTimer(uint32_t key, TimeWindow window, int64_t time) = 0;
 
   virtual void
-  deleteProcessingTimeTimer(uint32_t key, TimeWindow window, long time) = 0;
+  deleteProcessingTimeTimer(uint32_t key, TimeWindow window, int64_t time) = 0;
 
   virtual void
-  deleteEventTimeTimer(uint32_t key, TimeWindow window, long time) = 0;
+  deleteEventTimeTimer(uint32_t key, TimeWindow window, int64_t time) = 0;
 
   virtual int getShiftTimeZone() = 0;
 

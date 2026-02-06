@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/core/PlanNode.h"
 #include "velox/exec/Operator.h"
@@ -36,7 +37,7 @@ class AppendOnlyTopNRanker : public exec::Operator,
       // RankRange rankRange,
       bool generateUpdateBefore,
       bool outputRankNumber,
-      long cacheSize);
+      int64_t cacheSize);
 
   bool needsInput() const override {
     VELOX_NYI();
