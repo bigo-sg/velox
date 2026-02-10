@@ -19,6 +19,7 @@
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/CombinedWatermarkStatus.h"
+#include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
 
@@ -41,9 +42,9 @@ class StatefulOperator {
 
   virtual bool isFinished();
 
-  virtual void addInput(RowVectorPtr input);
+  virtual void addInput(StreamElementPtr input);
 
-  virtual void getOutput();
+  virtual void advance();
 
   bool sourceEmpty();
 
@@ -84,6 +85,10 @@ class StatefulOperator {
     return operator_->operatorType();
   }
 
+  std::string getPlanNodeId() const {
+    return operator_->planNodeId();
+  }
+
   std::unique_ptr<exec::Operator>& op() {
     return operator_;
   }
@@ -93,7 +98,7 @@ class StatefulOperator {
   }
 
  protected:
-  void pushOutput(RowVectorPtr output);
+  void pushOutput(StreamElementPtr output);
   void emitWatermark(int64_t timestamp);
 
   virtual int numInputs() const {

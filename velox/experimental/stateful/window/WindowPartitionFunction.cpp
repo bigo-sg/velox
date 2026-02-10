@@ -53,7 +53,7 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
   }
   const auto size = input.size();
   partitions.resize(size);
-  // TODO: suuport more window types. support time zone.
+  // TODO: support more window types. Support time zone.
   for (auto i = 0; i < size; ++i) {
     auto child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);

@@ -27,7 +27,7 @@ class CheckpointOptions {
   }
 
  private:
-  int64_t chekcpointId = 0;
+  int64_t checkpointId = 0;
   int64_t timestamp = 0;
   bool isSavepoint = false;
 };

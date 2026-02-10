@@ -69,12 +69,13 @@ void GroupWindowAggregator::initialize() {
   windowFunction_->open(windowContext_);
 }
 
-void GroupWindowAggregator::addInput(RowVectorPtr input) {
+void GroupWindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
-  input_ = input;
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void GroupWindowAggregator::getOutput() {
+void GroupWindowAggregator::advance() {
   if (!input_) {
     return;
   }
@@ -133,7 +134,8 @@ void GroupWindowAggregator::onEventTime(
   }
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
-  pushOutput(output);
+  pushOutput(
+      std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
 }
 
 void GroupWindowAggregator::close() {
@@ -167,13 +169,14 @@ void GroupWindowAggregator::emitWindowResult(uint32_t key, TimeWindow window) {
   RowVectorPtr acc = windowAggregator_->getAccumulators();
   RowVectorPtr aggResult = windowAggregator_->getValue(window);
   if (produceUpdates_) {
-    // TODO: suppport it.
+    // TODO: support it.
   } else {
     // TODO: use recordCounter_
     // if (!recordCounter_.recordCountIsZero(acc)) {
     if (acc) {
-      // Send INSERT.
-      pushOutput(aggResult);
+      // send INSERT
+      pushOutput(std::make_shared<StreamRecord>(
+          getPlanNodeId(), std::move(aggResult)));
     }
     // if the counter is zero, no need to send accumulate
     // there is no possible skip `if` branch when `produceUpdates` is false
@@ -231,6 +234,7 @@ int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
 void GroupWindowAggregator::WindowTriggerContext::registerProcessingTimeTimer(
     uint32_t key,
     TimeWindow window,
+
     int64_t time) {
   internalTimerService_->registerProcessingTimeTimer(key, window, time);
 }

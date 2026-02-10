@@ -18,6 +18,7 @@
 
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/window/WindowBuffer.h"
 
 namespace facebook::velox::stateful {
@@ -35,9 +36,9 @@ class LocalWindowAggregator : public StatefulOperator {
       const bool useDayLightSaving,
       RowTypePtr outputType);
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   void close() override;
 

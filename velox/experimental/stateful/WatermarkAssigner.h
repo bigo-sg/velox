@@ -17,12 +17,14 @@
 #include <cstdint>
 
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StreamElement.h"
 
 namespace facebook::velox::stateful {
 
 /// It is related to
 /// org.apache.flink.table.runtime.operators.wmassigners.WatermarkAssignerOperator
-/// in Flink. It extracts timestamp from each row and generate periodic
+/// in Flink. It extracts timestamp from each row and generates periodic
 /// watermark.
 class WatermarkAssigner : public StatefulOperator {
  public:
@@ -33,9 +35,9 @@ class WatermarkAssigner : public StatefulOperator {
       const int rowtimeFieldIndex,
       const int64_t watermarkInterval);
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   std::string name() const override {
     return "WatermarkAssigner";
