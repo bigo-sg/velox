@@ -65,30 +65,27 @@ class StreamRecord : public StreamElement {
   StreamRecord(std::string nodeId, RowVectorPtr record)
       : StreamElement(nodeId),
         record_(std::move(record)),
-        timestamp_(-1),
-        hasTimestamp_(false),
+        timestamp_vector_(nullptr),
         key_(-1) {}
 
-  StreamRecord(std::string nodeId, RowVectorPtr record, int64_t timestamp)
+  StreamRecord(std::string nodeId, RowVectorPtr record, const RowVectorPtr& timestamp_vector)
       : StreamElement(nodeId),
         record_(std::move(record)),
-        timestamp_(timestamp),
-        hasTimestamp_(true),
+        timestamp_vector_(std::move(timestamp_vector)),
         key_(-1) {}
 
   StreamRecord(std::string nodeId, int key, RowVectorPtr record)
       : StreamElement(nodeId),
         record_(std::move(record)),
-        timestamp_(-1),
-        hasTimestamp_(false),
+        timestamp_vector_(nullptr),
         key_(key) {}
 
   const RowVectorPtr& record() const {
     return record_;
   }
 
-  int64_t timestamp() const {
-    return timestamp_;
+  const RowVectorPtr& timestampVector() const {
+    return timestamp_vector_;
   }
 
   int key() const {
@@ -104,13 +101,12 @@ class StreamRecord : public StreamElement {
   }
 
   bool hasTimestamp() const {
-    return hasTimestamp_;
+    return timestamp_vector_ != nullptr;
   }
-
  private:
   const RowVectorPtr record_;
-  const int64_t timestamp_;
-  bool hasTimestamp_ = false;
+  // Different rows may have different timestamps
+  const RowVectorPtr timestamp_vector_;
   const int key_;
 };
 } // namespace facebook::velox::stateful
