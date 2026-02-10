@@ -49,12 +49,13 @@ void WindowAggregator::initializeState() {
   windowTimerService_ = stateHandler()->createTimerService(this);
 }
 
-void WindowAggregator::addInput(RowVectorPtr input) {
+void WindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
-  input_ = input;
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void WindowAggregator::getOutput() {
+void WindowAggregator::advance() {
   if (!input_) {
     return;
   }
@@ -77,6 +78,7 @@ void WindowAggregator::getOutput() {
         // the assigned slice has been triggered, which means current element is
         // late, but maybe not need to drop
         int64_t lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
+
         if (TimeWindowUtil::isWindowFired(
                 lastWindowEnd, currentProgress_, shiftTimeZone_)) {
           // the last window has been triggered, so the element can be dropped
@@ -119,7 +121,7 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
         if (datas.empty()) {
           continue;
         }
-        // TODO: agg should output no matter how many rows in datas.
+        // TODO: agg should output no matter how many rows in data.
         localAggerator_->addInput(
             TimeWindowUtil::mergeVectors(datas, op()->pool()));
         RowVectorPtr localAcc = localAggerator_->getOutput();
@@ -156,7 +158,8 @@ void WindowAggregator::onEventTime(
     std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>> timer) {
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
-  pushOutput(output);
+  pushOutput(
+      std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
 }
 
 int64_t WindowAggregator::sliceStateMergeTarget(int64_t sliceToMerge) {

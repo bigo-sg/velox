@@ -93,7 +93,7 @@ class RocksDBKeyedStateBackendParameters : public KeyedStateBackendParameters {
   /// or not.
   std::set<std::string> states_;
   /// The map between state and operators, it's used to justify the relationship
-  /// between the state and the operator. In Flink, the state is binded to
+  /// between the state and the operator. In Flink, the state is bound to
   /// operator one-to-one.
   std::unordered_map<std::string, std::string> stateOperators_;
   std::unordered_map<std::string, int64_t> columnFamilyHandles_;

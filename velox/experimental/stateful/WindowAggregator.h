@@ -19,6 +19,7 @@
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
@@ -27,7 +28,7 @@
 namespace facebook::velox::stateful {
 
 /// This class is related to XXXWindowAggProcessor in Flink.
-/// It's work includes both WindowAggOperator and XXXWindowAggOperator.
+/// Its work includes both WindowAggOperator and XXXWindowAggOperator.
 class WindowAggregator : public StatefulOperator,
                          public Triggerable<uint32_t, int64_t> {
  public:
@@ -44,9 +45,9 @@ class WindowAggregator : public StatefulOperator,
 
   void initializeState() override;
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   void close() override;
 

@@ -132,7 +132,7 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
       exec::TaskState::kRunning,
       "Task has already finished processing.");
 
-  operatorChain_->getOutput();
+  operatorChain_->advance();
   if (pendings_.empty()) {
     if (operatorChain_->isFinished()) {
       finish();

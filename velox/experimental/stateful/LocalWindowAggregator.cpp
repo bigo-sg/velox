@@ -36,12 +36,13 @@ LocalWindowAggregator::LocalWindowAggregator(
   windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
 }
 
-void LocalWindowAggregator::addInput(RowVectorPtr input) {
+void LocalWindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
-  input_ = input;
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void LocalWindowAggregator::getOutput() {
+void LocalWindowAggregator::advance() {
   if (!input_) {
     return;
   }
@@ -74,8 +75,9 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
         op()->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
         RowVectorPtr output = op()->getOutput();
         if (output) {
-          pushOutput(
-              addWindowEndToVector(std::move(output), windowKey.window()));
+          pushOutput(std::make_shared<StreamRecord>(
+              getPlanNodeId(),
+              addWindowEndToVector(std::move(output), windowKey.window())));
         }
       }
       nextTriggerWatermark_ = TimeWindowUtil::getNextTriggerWatermark(

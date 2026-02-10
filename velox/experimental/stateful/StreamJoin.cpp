@@ -49,7 +49,7 @@ bool StreamJoin::isFinished() {
   return leftInput_->isFinished() && rightInput_->isFinished();
 }
 
-void StreamJoin::addInput(RowVectorPtr input) {
+void StreamJoin::addInput(StreamElementPtr input) {
   VELOX_NYI();
 }
 
@@ -61,7 +61,7 @@ void StreamJoin::close() {
   rightRecordStateView_->close();
 }
 
-void StreamJoin::getOutput() {
+void StreamJoin::advance() {
   // TODO: use nested loop join logic to produce output now.
   // But it's not equal to Flink's streaming join.
   auto leftResult = leftInput_->getOutput();
@@ -71,7 +71,8 @@ void StreamJoin::getOutput() {
       leftRecordStateView_->addRecord(key, data);
       auto result = join(key, data, rightRecordStateView_, true);
       if (result) {
-        pushOutput(result);
+        pushOutput(
+            std::make_shared<StreamRecord>(getPlanNodeId(), std::move(result)));
       }
     }
   }
@@ -83,7 +84,8 @@ void StreamJoin::getOutput() {
       rightRecordStateView_->addRecord(key, data);
       auto result = join(key, data, leftRecordStateView_, false);
       if (result) {
-        pushOutput(result);
+        pushOutput(
+            std::make_shared<StreamRecord>(getPlanNodeId(), std::move(result)));
       }
     }
   }

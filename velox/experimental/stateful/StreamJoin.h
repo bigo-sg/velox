@@ -19,6 +19,7 @@
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 
 namespace facebook::velox::stateful {
@@ -39,9 +40,9 @@ class StreamJoin : public StatefulOperator {
 
   bool isFinished() override;
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   void close() override;
 

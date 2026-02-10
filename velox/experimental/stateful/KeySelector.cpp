@@ -32,7 +32,7 @@ std::map<uint32_t, RowVectorPtr> KeySelector::partition(
   }
   prepareForInput(input);
 
-  // TODO: The partition function doesn't use max parallism.
+  // TODO: The partition function doesn't use max parallelism.
   std::vector<uint32_t> partitions(input->size());
   auto part = partitionFunction_->partition(*input, partitions);
   if (part) {
