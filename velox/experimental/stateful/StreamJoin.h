@@ -35,6 +35,8 @@ class StreamJoin : public StatefulOperator {
 
   void initialize() override;
 
+  void initializeState() override;
+
   bool isFinished() override;
 
   void addInput(RowVectorPtr input) override;

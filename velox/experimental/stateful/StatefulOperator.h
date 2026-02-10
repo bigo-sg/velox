@@ -53,7 +53,7 @@ class StatefulOperator {
 
   virtual void processWatermark(int64_t timestamp);
 
-  virtual void initializeState() {}
+  virtual void initializeState();
 
   void initializeStateBackend(StateBackend* stateBackend);
 

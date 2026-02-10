@@ -42,7 +42,9 @@ void WindowJoin::initialize() {
   StatefulOperator::initialize();
   leftInput_->initialize();
   rightInput_->initialize();
+}
 
+void WindowJoin::initializeState() {
   StateDescriptor leftStateDesc("left-records");
   leftWindowState_ = stateHandler()->getListState(leftStateDesc);
   StateDescriptor rightStateDesc("right-records");

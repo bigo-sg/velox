@@ -50,6 +50,8 @@ class GroupWindowAggregator : public StatefulOperator,
 
   void initialize() override;
 
+  void initializeState() override;
+
   void addInput(RowVectorPtr input) override;
 
   void getOutput() override;
