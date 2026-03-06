@@ -32,6 +32,8 @@ class StreamKeyedOperator : public StatefulOperator {
 
   void initialize() override;
 
+  void initializeState() override;
+
   bool isFinished() override;
 
   void addInput(StreamElementPtr input) override;

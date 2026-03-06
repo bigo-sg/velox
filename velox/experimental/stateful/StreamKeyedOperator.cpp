@@ -29,6 +29,9 @@ StreamKeyedOperator::StreamKeyedOperator(
 
 void StreamKeyedOperator::initialize() {
   StatefulOperator::initialize();
+}
+
+void StreamKeyedOperator::initializeState() {
   processor_->open(stateHandler().get());
 }
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulTask.h"
+#include <experimental/stateful/state/StateBackend.h>
 #include <cstdint>
 #include "velox/exec/OperatorStats.h"
 #include "velox/exec/OperatorUtils.h"
@@ -54,14 +55,12 @@ StatefulTask::~StatefulTask() {}
 
 void StatefulTask::init() {
   initOperators();
-  // initStateBackend();
-  // operatorChain_->initializeState(statebackend_.get());
   operatorChain_->initialize();
 }
 
 void StatefulTask::initStateBackend(
     const std::shared_ptr<const KeyedStateBackendParameters> parameters) {
-  if (parameters->getBackendType() == StateBackendType::ROCKSDB) {
+  if (parameters && parameters->getBackendType() == StateBackendType::ROCKSDB) {
     const std::shared_ptr<const RocksDBKeyedStateBackendParameters>
         rocksdbStateParameters =
             std::dynamic_pointer_cast<const RocksDBKeyedStateBackendParameters>(
@@ -69,8 +68,16 @@ void StatefulTask::initStateBackend(
     statebackend_ =
         std::make_unique<RocksDBStateBackend>(rocksdbStateParameters);
   } else {
-    statebackend_ = std::make_unique<HashMapStateBackend>(parameters);
+    if (!parameters) {
+      statebackend_ = std::make_unique<HashMapStateBackend>(std::make_shared<const KeyedStateBackendParameters>(
+          StateBackendType::HEAP, 
+          operatorChain_->op()->operatorCtx()->driverCtx()->task->taskId(),
+          std::to_string(operatorChain_->op()->operatorId())));
+    } else {
+      statebackend_ = std::make_unique<HashMapStateBackend>(parameters);
+    }
   }
+  operatorChain_->initializeStateBackend(statebackend_.get());
 }
 
 void StatefulTask::initOperators() {
@@ -158,7 +165,6 @@ void StatefulTask::notifyWatermark(int64_t watermark) {
 void StatefulTask::initializeState(
     const std::shared_ptr<const KeyedStateBackendParameters> parameters) {
   initStateBackend(parameters);
-  operatorChain_->initializeStateBackend(statebackend_.get());
   operatorChain_->initializeState();
 }
 

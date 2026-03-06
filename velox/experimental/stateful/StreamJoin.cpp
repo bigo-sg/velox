@@ -15,9 +15,6 @@
  */
 #include "velox/experimental/stateful/StreamJoin.h"
 #include "velox/experimental/stateful/join/JoinRecordStateViews.h"
-#include "velox/expression/Expr.h"
-
-#include <iostream>
 
 namespace facebook::velox::stateful {
 
@@ -39,6 +36,9 @@ void StreamJoin::initialize() {
   StatefulOperator::initialize();
   leftInput_->initialize();
   rightInput_->initialize();
+}
+
+void StreamJoin::initializeState() {
   leftRecordStateView_ =
       JoinRecordStateViews::create(stateHandler().get(), "left-records", 0);
   rightRecordStateView_ =

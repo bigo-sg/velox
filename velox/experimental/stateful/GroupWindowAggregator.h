@@ -49,6 +49,9 @@ class GroupWindowAggregator : public StatefulOperator,
       int shiftTimeZone = 0);
 
   void initialize() override;
+
+  void initializeState() override;
+
   void addInput(StreamElementPtr input) override;
   void advance() override;
 

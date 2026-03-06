@@ -41,7 +41,9 @@ WindowAggregator::WindowAggregator(
 void WindowAggregator::initialize() {
   StatefulOperator::initialize();
   localAggerator_->initialize();
+}
 
+void WindowAggregator::initializeState() {
   StateDescriptor stateDesc("window-aggs");
   windowState_ = stateHandler()->getValueState(stateDesc);
   windowTimerService_ = stateHandler()->createTimerService(this);

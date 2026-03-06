@@ -29,6 +29,12 @@ void StatefulOperator::initialize() {
       std::make_unique<CombinedWatermarkStatus>(numInputs());
 }
 
+void StatefulOperator::initializeState() {
+  for (auto& target : targets_) {
+    target->initializeState();
+  }
+}
+
 bool StatefulOperator::isFinished() {
   return operator_->isFinished();
 }

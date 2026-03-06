@@ -43,6 +43,8 @@ class WindowAggregator : public StatefulOperator,
 
   void initialize() override;
 
+  void initializeState() override;
+
   void addInput(StreamElementPtr input) override;
 
   void advance() override;
