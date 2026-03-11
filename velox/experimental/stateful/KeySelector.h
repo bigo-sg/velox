@@ -15,10 +15,10 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/StatefulPlanNode.h"
-#include "velox/vector/ComplexVector.h"
 #include <climits>
 #include <map>
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 

@@ -14,18 +14,17 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
+#include <functional>
 
 #include "velox/vector/ComplexVector.h"
-#include <climits>
-#include <map>
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink WindowBuffer.
+// This class is relevant to Flink WindowBuffer.
 class WindowKey {
  public:
-  WindowKey(uint32_t key, int64_t window)
-      : key_(key), window_(window) {}
+  WindowKey(uint32_t key, int64_t window) : key_(key), window_(window) {}
 
   int64_t window() const {
     return window_;
@@ -47,11 +46,11 @@ class WindowKey {
 } // namespace facebook::velox::stateful
 
 namespace std {
-template<>
+template <>
 struct hash<facebook::velox::stateful::WindowKey> {
   size_t operator()(const facebook::velox::stateful::WindowKey& key) const {
     // TODO: RowVector should have a hash function.
     return std::hash<int64_t>()(key.window()) ^ std::hash<uint32_t>()(key.key());
   }
 };
-}
+} // namespace std

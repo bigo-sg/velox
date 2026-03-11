@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamPartition.h"
-
-#include <iostream>
+#include <cstdint>
+#include "velox/experimental/stateful/StatefulTask.h"
 
 namespace facebook::velox::stateful {
 
@@ -25,8 +24,7 @@ StreamPartition::StreamPartition(
     const core::PartitionFunctionSpec& partitionFunctionSpec,
     int numPartitions)
     : StatefulOperator(std::move(op), {}),
-      partitionFunction_(
-        std::move(partitionFunctionSpec.create(
+      partitionFunction_(std::move(partitionFunctionSpec.create(
           numPartitions_,
           /*localExchange=*/false))),
       numPartitions_(numPartitions) {
@@ -38,21 +36,22 @@ bool StreamPartition::isFinished() {
   return false;
 }
 
-void StreamPartition::addInput(RowVectorPtr input) {
+void StreamPartition::addInput(StreamElementPtr input) {
   VELOX_CHECK_NULL(input_);
-  input_ = std::move(input);
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void StreamPartition::getOutput() {
+void StreamPartition::advance() {
   prepareForInput(input_);
 
   if (numPartitions_ == 1) {
-    pushToTask(std::make_shared<StreamRecord>(op()->planNodeId(), 0, input_));
+    pushToTask(std::make_shared<StreamRecord>(getPlanNodeId(), 0, input_));
     input_.reset();
     return;
   }
 
-  // TODO: The partition function doesn't use max parallism.
+  // TODO: The partition function doesn't use max parallelism.
   partitionFunction_->partition(*input_, partitions_);
   const auto numInput = input_->size();
   std::vector<vector_size_t> maxIndex(numPartitions_, 0);
@@ -76,13 +75,15 @@ void StreamPartition::getOutput() {
       continue;
     }
     auto partitionData = wrapChildren(input_, partitionSize, indexBuffers_[i]);
-    pushToTask(std::make_shared<StreamRecord>(op()->planNodeId(), i, partitionData));
+    pushToTask(
+        std::make_shared<StreamRecord>(getPlanNodeId(), i, partitionData));
   }
   input_.reset();
 }
 
 void StreamPartition::pushToTask(StreamElementPtr output) {
-  auto task = std::static_pointer_cast<StatefulTask>(op()->operatorCtx()->driverCtx()->task);
+  auto task = std::static_pointer_cast<StatefulTask>(
+      op()->operatorCtx()->driverCtx()->task);
   task->addOutput(std::move(output));
 }
 

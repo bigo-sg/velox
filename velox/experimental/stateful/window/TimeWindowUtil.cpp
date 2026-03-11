@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
-
-#include <climits>
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
@@ -26,7 +25,7 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
     int shiftTimezone,
     bool useDayLightSaving) {
   if (currentWatermark == INT64_MAX) {
-      return currentWatermark;
+    return currentWatermark;
   }
 
   int64_t triggerWatermark;
@@ -35,8 +34,10 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
     // TODO: support time zone
     //int64_t utcWindowStart =
     //          getWindowStartWithOffset(
-    //                  toUtcTimestampMills(currentWatermark, shiftTimezone), 0L, interval);
-    //triggerWatermark = toEpochMillsForTimer(utcWindowStart + interval - 1, shiftTimezone);
+    //                  toUtcTimestampMills(currentWatermark, shiftTimezone),
+    //                  0L, interval);
+    // triggerWatermark = toEpochMillsForTimer(utcWindowStart + interval - 1,
+    // shiftTimezone);
   } else {
     int64_t start = getWindowStartWithOffset(currentWatermark, 0L, interval);
     triggerWatermark = start + interval - 1;
@@ -50,13 +51,16 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
 }
 
 // static
-int64_t TimeWindowUtil::getWindowStartWithOffset(int64_t timestamp, int64_t offset, int64_t windowSize) {
+int64_t TimeWindowUtil::getWindowStartWithOffset(
+    int64_t timestamp,
+    int64_t offset,
+    int64_t windowSize) {
   int64_t remainder = (timestamp - offset) % windowSize;
   // handle both positive and negative cases
   if (remainder < 0) {
-      return timestamp - (remainder + windowSize);
+    return timestamp - (remainder + windowSize);
   } else {
-      return timestamp - remainder;
+    return timestamp - remainder;
   }
 }
 
@@ -67,17 +71,23 @@ int64_t TimeWindowUtil::getCurrentProcessingTime() {
 
 // static
 bool TimeWindowUtil::isWindowFired(
-    int64_t windowEnd, int64_t currentProgress, int shiftTimeZone) {
+    int64_t windowEnd,
+    int64_t currentProgress,
+    int shiftTimeZone) {
   if (windowEnd == INT64_MAX) {
     return false;
   }
   // TODO: support time zone
-  int64_t windowTriggerTime = toEpochMillsForTimer(windowEnd - 1, shiftTimeZone);
+  int64_t windowTriggerTime =
+      toEpochMillsForTimer(windowEnd - 1, shiftTimeZone);
   return currentProgress >= windowTriggerTime;
 }
 
 // static
-int64_t TimeWindowUtil::cleanupTime(int64_t maxTimestamp, int64_t allowedLateness, bool isEventTime) {
+int64_t TimeWindowUtil::cleanupTime(
+    int64_t maxTimestamp,
+    int64_t allowedLateness,
+    bool isEventTime) {
   if (isEventTime) {
     int64_t cleanupTime = std::max(0L, maxTimestamp + allowedLateness);
     return cleanupTime >= maxTimestamp ? cleanupTime : INT64_MAX;
@@ -87,7 +97,9 @@ int64_t TimeWindowUtil::cleanupTime(int64_t maxTimestamp, int64_t allowedLatenes
 }
 
 // static
-int64_t TimeWindowUtil::toEpochMillsForTimer(int64_t timestamp, int shiftTimeZone) {
+int64_t TimeWindowUtil::toEpochMillsForTimer(
+    int64_t timestamp,
+    int shiftTimeZone) {
   // TODO: support time zone
   return timestamp;
 }
@@ -108,10 +120,8 @@ RowVectorPtr TimeWindowUtil::mergeVectors(
     totalRows += data->size();
   }
 
-  auto merged = BaseVector::create<RowVector>(
-      datas.front()->type(),
-      totalRows,
-      pool);
+  auto merged =
+      BaseVector::create<RowVector>(datas.front()->type(), totalRows, pool);
 
   size_t offset = 0;
   for (auto& data : datas) {

@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink CheckpointOptions.
+// This class is relevant to Flink CheckpointOptions.
 class CheckpointOptions {
  public:
   static CheckpointOptions defaultOptions() {
@@ -26,8 +27,8 @@ class CheckpointOptions {
   }
 
  private:
-  long chekcpointId = 0;
-  long timestamp = 0;
+  int64_t checkpointId = 0;
+  int64_t timestamp = 0;
   bool isSavepoint = false;
 };
 

@@ -22,31 +22,73 @@ namespace facebook::velox::stateful {
 
 class KeyedStateBackendParameters;
 
-// This class is relevent to flink org.apache.flink.runtime.state.StateBackend.
+// This class is relevant to Flink org.apache.flink.runtime.state.StateBackend.
 class StateBackend : public ISerializable {
  public:
+  StateBackend(
+      const std::shared_ptr<const KeyedStateBackendParameters> parameters)
+      : parameters_(parameters) {}
   virtual std::string getName() const = 0;
 
-  virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
-      KeyedStateBackendParameters parameters) = 0;
+  virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() = 0;
+
+ protected:
+  const std::shared_ptr<const KeyedStateBackendParameters> parameters_;
 };
 
-class KeyedStateBackendParameters {
- public:
-  KeyedStateBackendParameters(const std::string& jobId, int operatorId)
-      : jobId_(jobId), operatorId_(operatorId) {}
+enum class StateBackendType { HEAP, ROCKSDB };
 
-  std::string getJobId() {
+class KeyedStateBackendParameters : public ISerializable {
+ public:
+  KeyedStateBackendParameters(
+      const StateBackendType backendType,
+      const std::string& jobId,
+      const std::string operatorId)
+      : backendType_(backendType), jobId_(jobId), operatorId_(operatorId) {}
+
+  const std::string& getJobId() const {
     return jobId_;
   }
 
-  int getOperatorIdentifier() {
+  const std::string& getOperatorIdentifier() const {
     return operatorId_;
   }
 
+  StateBackendType getBackendType() const {
+    return backendType_;
+  }
+
+  folly::dynamic serialize() const override {
+    folly::dynamic obj;
+    obj["jobId"] = jobId_;
+    obj["operatorId"] = operatorId_;
+    obj["stateBackendType"] = static_cast<int32_t>(backendType_);
+    return obj;
+  }
+
+  static std::shared_ptr<const KeyedStateBackendParameters> create(
+      const folly::dynamic& obj,
+      void* context) {
+    if (!obj.count("stateBackendType")) {
+      return nullptr;
+    }
+    const std::string jobId = obj["jobId"].asString();
+    const std::string operatorId = obj["operatorId"].asString();
+    const StateBackendType backendType =
+        static_cast<StateBackendType>(obj["stateBackendType"].asInt());
+    return std::make_shared<const KeyedStateBackendParameters>(
+        backendType, jobId, operatorId);
+  }
+
+  static void registerSerDe() {
+    auto& registry = DeserializationWithContextRegistryForSharedPtr();
+    registry.Register("KeyedStateBackendParameters", create);
+  }
+
  private:
+  const StateBackendType backendType_;
   const std::string jobId_;
-  int operatorId_;
+  const std::string operatorId_;
 };
 
 } // namespace facebook::velox::stateful

@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
-#include <velox/core/PlanNode.h>
+#include "velox/core/PlanNode.h"
 
 namespace facebook::velox::stateful {
-
 
 /// Partition data according to the timestamp field in RowVector.
 /// This is used to partition data for window processing.

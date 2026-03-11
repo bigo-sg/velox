@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
-#include "velox/experimental/stateful/state/Snapshotable.h"
+#include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/state/CheckpointListener.h"
+#include "velox/experimental/stateful/state/Snapshotable.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/InternalKeyContext.h"
@@ -27,30 +29,31 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink org.apache.flink.runtime.state.KeyedStateBackend.
+// This class is relevant to Flink
+// org.apache.flink.runtime.state.KeyedStateBackend.
 class KeyedStateBackend : public Snapshotable, public CheckpointListener {
  public:
   virtual std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
-      getOrCreateMapState(StateDescriptor& stateDescriptor) = 0;
+  getOrCreateMapState(StateDescriptor& stateDescriptor) = 0;
 
-  virtual std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>>
-      getOrCreateListState(StateDescriptor& stateDescriptor) = 0;
+  virtual std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+  getOrCreateListState(StateDescriptor& stateDescriptor) = 0;
 
-  virtual std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>>
-      getOrCreateValueState(StateDescriptor& stateDescriptor) = 0;
+  virtual std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+  getOrCreateValueState(StateDescriptor& stateDescriptor) = 0;
 
   virtual std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
-      getOrCreateGroupValueState(StateDescriptor& stateDescriptor) = 0;
+  getOrCreateGroupValueState(StateDescriptor& stateDescriptor) = 0;
 
   virtual std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
-      getOrCreateGroupMapState(StateDescriptor& stateDescriptor) = 0;
+  getOrCreateGroupMapState(StateDescriptor& stateDescriptor) = 0;
 
   virtual std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
-      getOrCreateRankMapState(StateDescriptor& stateDescriptor) = 0;
+  getOrCreateRankMapState(StateDescriptor& stateDescriptor) = 0;
 
   // TODO: Flink create PriorityQueue.
-  virtual std::shared_ptr<InternalTimerService<uint32_t, long>>
-      createTimerService(Triggerable<uint32_t, long>* triggerable) = 0;
+  virtual std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
+  createTimerService(Triggerable<uint32_t, int64_t>* triggerable) = 0;
 
   virtual std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
       createGroupWindowAggTimerService(Triggerable<uint32_t, TimeWindow>* triggerable) = 0;

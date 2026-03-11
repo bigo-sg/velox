@@ -14,20 +14,22 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/functions/KeyedProcessFunction.h"
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink RowTimeDeduplicateFunction.
-class RowTimeDeduplicateRanker : public exec::Operator, public KeyedProcessFunction {
+/// This class is relevant to Flink RowTimeDeduplicateFunction.
+class RowTimeDeduplicateRanker : public exec::Operator,
+                                 public KeyedProcessFunction {
  public:
   RowTimeDeduplicateRanker(
       int32_t operatorId,
       exec::DriverCtx* driverCtx,
       const std::shared_ptr<const core::PlanNode>& rankNode,
-      long minRetentionTime,
+      int64_t minRetentionTime,
       int rowtimeIndex,
       bool generateUpdateBefore,
       bool generateInsert,
@@ -60,8 +62,8 @@ class RowTimeDeduplicateRanker : public exec::Operator, public KeyedProcessFunct
   void close() override;
 
  private:
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> state_;
-  long minRetentionTime_;
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> state_;
+  int64_t minRetentionTime_;
   int rowtimeIndex_;
   bool generateUpdateBefore_;
   bool generateInsert_;

@@ -53,9 +53,9 @@ struct StateMapEntry {
 };
 
 /**
- * This class is relevant to flink org.apache.flink.runtime.state.heap.StateMap.
+ * This class is relevant to Flink org.apache.flink.runtime.state.heap.StateMap.
  * remove namespace first.
- * TODO: It is a simplified implementation, not equal to flink.
+ * TODO: It is a simplified implementation, not equal to Flink.
  * @param <K> type of key
  * @param <N> type of namespace
  * @param <S> type of state

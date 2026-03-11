@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Exceptions.h"
@@ -49,11 +50,9 @@ class Window {
 
 class TimeWindow : public Window {
  public:
-  TimeWindow()
-      : start_(-1), end_(-1) {}
+  TimeWindow() : start_(-1), end_(-1) {}
 
-  TimeWindow(int64_t start, int64_t end)
-      : start_(start), end_(end) {}
+  TimeWindow(int64_t start, int64_t end) : start_(start), end_(end) {}
 
   int64_t maxTimestamp() override {
     return end_ - 1;
@@ -71,14 +70,15 @@ class TimeWindow : public Window {
     return start_ <= other.end() && end() >= other.start_;
   }
 
-  TimeWindow cover(const TimeWindow& other) const{
-    return TimeWindow(std::min(start_, other.start()), std::max(end_, other.end()));
+  TimeWindow cover(const TimeWindow& other) const {
+    return TimeWindow(
+        std::min(start_, other.start()), std::max(end_, other.end()));
   }
 
   bool operator<(const Window& other) const override {
     const TimeWindow& otherTimeWindow = static_cast<const TimeWindow&>(other);
     return start_ < otherTimeWindow.start_ ||
-           (start_ == otherTimeWindow.start_ && end_ < otherTimeWindow.end_);
+        (start_ == otherTimeWindow.start_ && end_ < otherTimeWindow.end_);
   }
 
   bool operator==(const Window& other) const {
@@ -87,7 +87,8 @@ class TimeWindow : public Window {
   }
 
   std::string toString() const override {
-    return "Window[start=" + std::to_string(start_) + ", end=" + std::to_string(end_) + "]";
+    return "Window[start=" + std::to_string(start_) +
+        ", end=" + std::to_string(end_) + "]";
   }
 
   // Add for checking whether the window is in state.
@@ -107,11 +108,11 @@ class TimeWindow : public Window {
 } // namespace facebook::velox::stateful
 
 namespace std {
-template<>
+template <>
 struct hash<facebook::velox::stateful::TimeWindow> {
   size_t operator()(const facebook::velox::stateful::TimeWindow& w) const {
     // TODO: verify it.
     return hash<int64_t>()(w.start()) ^ (hash<int64_t>()(w.end()) << 1);
   }
 };
-}
+} // namespace std

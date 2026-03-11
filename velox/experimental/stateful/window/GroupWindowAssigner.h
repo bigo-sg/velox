@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/window/Window.h"
@@ -23,11 +24,13 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink GroupWindowAssigner.
-template<typename W, typename = std::enable_if_t<std::is_base_of_v<Window, W>>>
+// This class is relevant to Flink GroupWindowAssigner.
+template <typename W, typename = std::enable_if_t<std::is_base_of_v<Window, W>>>
 class GroupWindowAssigner {
  public:
-  virtual std::vector<W> assignWindows(RowVectorPtr element, int64_t timestamp) = 0;
+  virtual std::vector<W> assignWindows(
+      RowVectorPtr element,
+      int64_t timestamp) = 0;
   virtual bool isEventTime() = 0;
 };
 
@@ -35,7 +38,9 @@ class MergeResultCollector;
 class MergingWindowAssigner : public GroupWindowAssigner<TimeWindow> {
  public:
   virtual void mergeWindows(
-    TimeWindow newWindow, std::set<TimeWindow>& sortedWindows, MergeResultCollector& callback) = 0;
+      TimeWindow newWindow,
+      std::set<TimeWindow>& sortedWindows,
+      MergeResultCollector& callback) = 0;
 };
 
 using GroupWindowAssignerPtr = std::shared_ptr<GroupWindowAssigner<TimeWindow>>;
@@ -44,10 +49,13 @@ class SessionWindowAssigner : public MergingWindowAssigner {
  public:
   SessionWindowAssigner(int64_t gap, bool isEventTime);
 
-  std::vector<TimeWindow> assignWindows(RowVectorPtr element, int64_t timestamp) override;
+  std::vector<TimeWindow> assignWindows(RowVectorPtr element, int64_t timestamp)
+      override;
 
   void mergeWindows(
-      TimeWindow newWindow, std::set<TimeWindow>& sortedWindows, MergeResultCollector& callback);
+      TimeWindow newWindow,
+      std::set<TimeWindow>& sortedWindows,
+      MergeResultCollector& callback);
 
   bool isEventTime() override {
     return isEventTime_;
@@ -55,7 +63,9 @@ class SessionWindowAssigner : public MergingWindowAssigner {
 
  private:
   TimeWindow mergeWindow(
-      const TimeWindow& curWindow, const TimeWindow& other, std::set<TimeWindow>& mergedWindow);
+      const TimeWindow& curWindow,
+      const TimeWindow& other,
+      std::set<TimeWindow>& mergedWindow);
 
   int64_t gap_;
   bool isEventTime_;

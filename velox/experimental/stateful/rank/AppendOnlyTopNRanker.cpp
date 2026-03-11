@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
@@ -29,21 +30,20 @@ AppendOnlyTopNRanker::AppendOnlyTopNRanker(
     // RankRange rankRange,
     bool generateUpdateBefore,
     bool outputRankNumber,
-    long cacheSize)
+    int64_t cacheSize)
     : exec::Operator(
-      driverCtx,
-      rankNode->outputType(),
-      operatorId,
-      rankNode->id(),
-      "AppendOnlyTopNRanker"),
+          driverCtx,
+          rankNode->outputType(),
+          operatorId,
+          rankNode->id(),
+          "AppendOnlyTopNRanker"),
       veloxRanker_(std::move(veloxRanker)),
       sortKeySelector_(std::move(sortKeySelector)),
       // rankType_(rankType),
       // rankRange_(rankRange),
       generateUpdateBefore_(generateUpdateBefore),
       outputRankNumber_(outputRankNumber),
-      cacheSize_(cacheSize) {
-}
+      cacheSize_(cacheSize) {}
 
 void AppendOnlyTopNRanker::initialize() {
   exec::Operator::initialize();
@@ -73,26 +73,28 @@ void AppendOnlyTopNRanker::open(StreamOperatorStateHandler* stateHandler) {
   dataState_ = stateHandler->getRankMapState(stateDesc);
 }
 
-RowVectorPtr AppendOnlyTopNRanker::processElements(uint32_t key, RowVectorPtr input) {
-  // TODO: not identically equal to flink, flink may generate output each row,
+RowVectorPtr AppendOnlyTopNRanker::processElements(
+    uint32_t key,
+    RowVectorPtr input) {
+  // TODO: not identically equal to Flink. Flink may generate output each row,
   // but we only generate output once a batch.
   std::list<RowVectorPtr> outputs;
 
   auto sortKeyToData = sortKeySelector_->partition(input);
   for (auto& [sortKey, data] : sortKeyToData) {
-      auto preResult = dataState_->get(key, State::VOID_NAMESPACE, sortKey);
-      if (preResult) {
-          preResult = TimeWindowUtil::mergeVectors({data, preResult}, pool());
-      } else {
-        preResult = data;
-      }
+    auto preResult = dataState_->get(key, State::VOID_NAMESPACE, sortKey);
+    if (preResult) {
+      preResult = TimeWindowUtil::mergeVectors({data, preResult}, pool());
+    } else {
+      preResult = data;
+    }
 
-      // TODO: velox ranker may not output every time.
-      veloxRanker_->addInput(preResult);
-      RowVectorPtr output = veloxRanker_->getOutput();
-      if (output) {
-        outputs.push_back(output);
-      }
+    // TODO: velox ranker may not output every time.
+    veloxRanker_->addInput(preResult);
+    RowVectorPtr output = veloxRanker_->getOutput();
+    if (output) {
+      outputs.push_back(output);
+    }
   }
   return TimeWindowUtil::mergeVectors(outputs, pool());
 }

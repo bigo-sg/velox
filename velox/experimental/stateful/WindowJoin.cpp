@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WindowJoin.h"
+#include <cstdint>
 #include "velox/experimental/stateful/join/JoinRecordStateViews.h"
 #include "velox/expression/Expr.h"
 
@@ -35,14 +36,15 @@ WindowJoin::WindowJoin(
       rightKeySelector_(std::move(rightKeySelector)),
       probe_(static_cast<exec::NestedLoopJoinProbe*>(op().get())),
       leftWindowEndIndex_(leftWindowEndIndex),
-      rightWindowEndIndex_(rightWindowEndIndex) {
-}
+      rightWindowEndIndex_(rightWindowEndIndex) {}
 
 void WindowJoin::initialize() {
   StatefulOperator::initialize();
   leftInput_->initialize();
   rightInput_->initialize();
+}
 
+void WindowJoin::initializeState() {
   StateDescriptor leftStateDesc("left-records");
   leftWindowState_ = stateHandler()->getListState(leftStateDesc);
   StateDescriptor rightStateDesc("right-records");
@@ -54,7 +56,7 @@ bool WindowJoin::isFinished() {
   return leftInput_->isFinished() && rightInput_->isFinished();
 }
 
-void WindowJoin::addInput(RowVectorPtr input) {
+void WindowJoin::addInput(StreamElementPtr input) {
   VELOX_NYI();
 }
 
@@ -66,9 +68,9 @@ void WindowJoin::close() {
   rightWindowState_->clear();
 }
 
-void WindowJoin::getOutput() {
+void WindowJoin::advance() {
   // TODO: use nested loop join logic to produce output now.
-  // But it's not equal to flink's streaming join.
+  // But it's not equal to Flink's streaming join.
   processData(
       leftInput_.get(),
       leftKeySelector_.get(),
@@ -85,7 +87,7 @@ void WindowJoin::processData(
     exec::Operator* input,
     KeySelector* keySelector,
     int windowEndIndex,
-    ListState<uint32_t, long, RowVectorPtr>* state) {
+    ListState<uint32_t, int64_t, RowVectorPtr>* state) {
   auto result = input->getOutput();
   if (result) {
     auto notFired = filterWindowFiredRows(result);
@@ -104,22 +106,24 @@ RowVectorPtr WindowJoin::filterWindowFiredRows(RowVectorPtr& input) {
   return input;
 }
 
-std::map<long, RowVectorPtr> WindowJoin::partitionWindowData(
+std::map<int64_t, RowVectorPtr> WindowJoin::partitionWindowData(
     RowVectorPtr& input,
     int windowEndIndex) {
-  std::map<long, RowVectorPtr> windowEndToData;
+  std::map<int64_t, RowVectorPtr> windowEndToData;
   // TODO: this is just a example,.
   auto row = input->childAt(windowEndIndex);
-  long windowEnd = row->asFlatVector<int64_t>()->valueAt(0); // Assuming first column is window end
+  int64_t windowEnd = row->asFlatVector<int64_t>()->valueAt(
+      0); // Assuming first column is window end
   windowEndToData[windowEnd] = input;
   return windowEndToData;
 }
 
-void WindowJoin::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowJoin::onEventTime(
+    std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>> timer) {
   join(timer->key(), timer->ns());
 }
 
-void WindowJoin::join(uint32_t key, long window) {
+void WindowJoin::join(uint32_t key, int64_t window) {
   auto leftValues = leftWindowState_->get(key, window);
   auto rightValues = rightWindowState_->get(key, window);
   if (leftValues.empty() || rightValues.empty()) {
@@ -132,16 +136,17 @@ void WindowJoin::join(uint32_t key, long window) {
   for (auto value : leftValues) {
     probe_->addInput(std::move(value));
     probe_->setBuildData(buildVector);
-  
+
     auto result = probe_->getOutput();
-    pushOutput(result);
+    pushOutput(
+        std::make_shared<StreamRecord>(getPlanNodeId(), std::move(result)));
   }
   // TODO: clear state
   leftWindowState_->remove(key, window);
   rightWindowState_->remove(key, window);
 }
 
-void WindowJoin::processWatermarkInternal(long timestamp) {
+void WindowJoin::processWatermarkInternal(int64_t timestamp) {
   timerService_->advanceWatermark(timestamp);
 }
 

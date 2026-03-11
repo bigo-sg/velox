@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
@@ -35,12 +36,13 @@ LocalWindowAggregator::LocalWindowAggregator(
   windowBuffer_ = std::make_shared<RecordsWindowBuffer>();
 }
 
-void LocalWindowAggregator::addInput(RowVectorPtr input) {
+void LocalWindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
-  input_ = input;
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void LocalWindowAggregator::getOutput() {
+void LocalWindowAggregator::advance() {
   if (!input_) {
     return;
   }
@@ -62,21 +64,26 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
   if (timestamp > currentWatermark_) {
     currentWatermark_ = timestamp;
     if (currentWatermark_ >= nextTriggerWatermark_) {
-      // we only need to call advanceProgress() when current watermark may trigger window
+      // we only need to call advanceProgress() when current watermark may
+      // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentWatermark_);
-      for (const auto&[windowKey, datas] : windowKeyToData) {
+      for (const auto& [windowKey, datas] : windowKeyToData) {
         if (datas.empty()) {
           continue;
         }
         op()->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
         RowVectorPtr output = op()->getOutput();
         if (output) {
-          pushOutput(addWindowEndToVector(std::move(output), windowKey.window()));
+          pushOutput(std::make_shared<StreamRecord>(
+              getPlanNodeId(),
+              addWindowEndToVector(std::move(output), windowKey.window())));
         }
       }
-      nextTriggerWatermark_ =
-          TimeWindowUtil::getNextTriggerWatermark(
-              currentWatermark_, windowInterval_, shiftTimeZone_, useDayLightSaving_);
+      nextTriggerWatermark_ = TimeWindowUtil::getNextTriggerWatermark(
+          currentWatermark_,
+          windowInterval_,
+          shiftTimeZone_,
+          useDayLightSaving_);
     }
   }
 }
@@ -90,7 +97,9 @@ void LocalWindowAggregator::close() {
   nextTriggerWatermark_ = 0;
 }
 
-RowVectorPtr LocalWindowAggregator::addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd) {
+RowVectorPtr LocalWindowAggregator::addWindowEndToVector(
+    RowVectorPtr vector,
+    int64_t sliceEnd) {
   auto newColumn = BaseVector::create(BIGINT(), vector->size(), vector->pool());
   auto windowEndCol = newColumn->as<FlatVector<int64_t>>();
 

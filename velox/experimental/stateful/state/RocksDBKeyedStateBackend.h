@@ -16,14 +16,30 @@
 #pragma once
 #include <cstdint>
 
+#include <set>
+#include <unordered_map>
+#include "rocksdb/db.h"
+#include "rocksdb/options.h"
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to Flink HeapKeyedStateBackend.
-class HeapKeyedStateBackend : public KeyedStateBackend {
+class RocksDBKeyedStateBackend : public KeyedStateBackend {
  public:
-  // TODO: use template to support different key type.
+  RocksDBKeyedStateBackend(
+      rocksdb::DB* db,
+      const rocksdb::ReadOptions* readOptions,
+      const rocksdb::WriteOptions* writeOptions,
+      const std::set<std::string>& states,
+      const std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>&
+          stateColumnFamilies,
+      const std::unordered_map<std::string, std::string>& stateOperators,
+      const std::unordered_map<std::string, TypePtr>& stateKeys,
+      const std::unordered_map<std::string, TypePtr>& stateNamespaces,
+      const std::unordered_map<std::string, TypePtr>& stateValues);
+
+  void checkValidState(const std::string& stateName);
+
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
   getOrCreateMapState(StateDescriptor& stateDescriptor) override;
 
@@ -32,9 +48,6 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
 
   std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) override;
-
-  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
-      Triggerable<uint32_t, int64_t>* triggerable) override;
 
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
   getOrCreateGroupValueState(StateDescriptor& stateDescriptor) override;
@@ -45,21 +58,36 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
   getOrCreateRankMapState(StateDescriptor& stateDescriptor) override;
 
-  virtual std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
+      Triggerable<uint32_t, int64_t>* triggerable) override;
+
+  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
   createGroupWindowAggTimerService(
       Triggerable<uint32_t, TimeWindow>* triggerable) override;
 
+  // Deprecated, this maybe removed later
   void snapshot(
       int64_t checkpointId,
       int64_t timestamp,
       CheckpointOptions checkpointOptions) override;
 
+  // Deprecated, this maybe removed later
   void notifyCheckpointComplete(int64_t checkpointId) override;
 
+  // Deprecated, this maybe removed later
   void notifyCheckpointAborted(int64_t checkpointId) override;
 
  private:
-  std::map<std::string, StatePtr> keyValueStatesByName_;
+  rocksdb::DB* db_;
+  const rocksdb::ReadOptions* readOptions_;
+  const rocksdb::WriteOptions* writeOptions_;
+  std::set<std::string> states_;
+  std::unordered_map<std::string, TypePtr> stateKeys_;
+  std::unordered_map<std::string, TypePtr> stateNamespaces_;
+  std::unordered_map<std::string, TypePtr> stateValues_;
+  std::unordered_map<std::string, std::string> stateOperators_;
+  std::unordered_map<std::string, rocksdb::ColumnFamilyHandle*>
+      stateColumnFamilies_;
 };
 
 } // namespace facebook::velox::stateful

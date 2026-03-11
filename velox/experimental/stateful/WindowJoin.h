@@ -14,76 +14,86 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/exec/NestedLoopJoinProbe.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
-#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StreamElement.h"
+#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 
-namespace facebook::velox::stateful {
+    namespace facebook::velox::stateful {
 
-class WindowJoin : public StatefulOperator, public Triggerable<uint32_t, long> {
- public:
-  WindowJoin(
-      std::unique_ptr<exec::Operator> leftInput,
-      std::unique_ptr<exec::Operator> rightInput,
-      std::unique_ptr<KeySelector> leftKeySelector,
-      std::unique_ptr<KeySelector> rightKeySelector,
-      std::unique_ptr<exec::Operator> probe,
-      std::vector<std::unique_ptr<StatefulOperator>> targets,
-      int leftWindowEndIndex,
-      int rightWindowEndIndex);
+  class WindowJoin : public StatefulOperator,
+                     public Triggerable<uint32_t, int64_t> {
+   public:
+    WindowJoin(
+        std::unique_ptr<exec::Operator> leftInput,
+        std::unique_ptr<exec::Operator> rightInput,
+        std::unique_ptr<KeySelector> leftKeySelector,
+        std::unique_ptr<KeySelector> rightKeySelector,
+        std::unique_ptr<exec::Operator> probe,
+        std::vector<std::unique_ptr<StatefulOperator>> targets,
+        int leftWindowEndIndex,
+        int rightWindowEndIndex);
 
-  void initialize() override;
+    void initialize() override;
 
-  bool isFinished() override;
+    void initializeState() override;
 
-  void addInput(RowVectorPtr input) override;
+    bool isFinished() override;
 
-  void getOutput() override;
+    void addInput(StreamElementPtr input) override;
 
-  void close() override;
+    void advance() override;
 
-  std::string name() const override {
-    return "WindowJoin";
-  }
+    void close() override;
 
-  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
+    std::string name() const override {
+      return "WindowJoin";
+    }
 
- protected:
-  int numInputs() const override {
-    return 2;
-  }
+    void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>>
+                         timer) override;
 
- private:
-  void join(uint32_t key, long windowEnd);
+   protected:
+    int numInputs() const override {
+      return 2;
+    }
 
-  void processWatermarkInternal(long timestamp) override;
+   private:
+    void join(uint32_t key, int64_t windowEnd);
 
-  void processData(
-      exec::Operator* input,
-      KeySelector* keySelector,
-      int windowEndIndex,
-      ListState<uint32_t, long, RowVectorPtr>* state);
+    void processWatermarkInternal(int64_t timestamp);
 
-  RowVectorPtr filterWindowFiredRows(RowVectorPtr& input);
+    void processData(
+        exec::Operator* input,
+        KeySelector* keySelector,
+        int windowEndIndex,
+        ListState<uint32_t, int64_t, RowVectorPtr>* state);
 
-  std::map<long, RowVectorPtr> partitionWindowData(RowVectorPtr& input, int windowEndIndex);
+    RowVectorPtr filterWindowFiredRows(RowVectorPtr& input);
 
-  const std::unique_ptr<exec::Operator> leftInput_;
-  const std::unique_ptr<exec::Operator> rightInput_;
-  const std::unique_ptr<KeySelector> leftKeySelector_;
-  const std::unique_ptr<KeySelector> rightKeySelector_;
-  exec::NestedLoopJoinProbe* probe_;
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> leftWindowState_;
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> rightWindowState_;
-  const int leftWindowEndIndex_;
-  const int rightWindowEndIndex_;
-  std::shared_ptr<InternalTimerService<uint32_t, long>> timerService_;
-};
+    std::map<int64_t, RowVectorPtr> partitionWindowData(
+        RowVectorPtr& input,
+        int windowEndIndex);
+
+    const std::unique_ptr<exec::Operator> leftInput_;
+    const std::unique_ptr<exec::Operator> rightInput_;
+    const std::unique_ptr<KeySelector> leftKeySelector_;
+    const std::unique_ptr<KeySelector> rightKeySelector_;
+    exec::NestedLoopJoinProbe* probe_;
+    std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+        leftWindowState_;
+    std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+        rightWindowState_;
+    const int leftWindowEndIndex_;
+    const int rightWindowEndIndex_;
+    std::shared_ptr<InternalTimerService<uint32_t, int64_t>> timerService_;
+  };
 
 } // namespace facebook::velox::stateful

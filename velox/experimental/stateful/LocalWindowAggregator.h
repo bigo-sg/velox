@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/window/WindowBuffer.h"
 
 namespace facebook::velox::stateful {
@@ -26,17 +28,17 @@ namespace facebook::velox::stateful {
 class LocalWindowAggregator : public StatefulOperator {
  public:
   LocalWindowAggregator(
-    std::unique_ptr<exec::Operator> op,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    std::unique_ptr<KeySelector> keySelector,
-    std::unique_ptr<KeySelector> sliceAssigner,
-    const long windowInterval,
-    const bool useDayLightSaving,
-    RowTypePtr outputType);
+      std::unique_ptr<exec::Operator> op,
+      std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::unique_ptr<KeySelector> keySelector,
+      std::unique_ptr<KeySelector> sliceAssigner,
+      const int64_t windowInterval,
+      const bool useDayLightSaving,
+      RowTypePtr outputType);
 
-  void addInput(RowVectorPtr input) override;
+  void addInput(StreamElementPtr input) override;
 
-  void getOutput() override;
+  void advance() override;
 
   void close() override;
 
@@ -45,19 +47,19 @@ class LocalWindowAggregator : public StatefulOperator {
   }
 
  private:
-  void processWatermarkInternal(long timestamp) override;
+  void processWatermarkInternal(int64_t timestamp);
   RowVectorPtr addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd);
 
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<KeySelector> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
-  const long windowInterval_;
+  const int64_t windowInterval_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   RowTypePtr outputType_;
 
   RowVectorPtr input_;
-  long currentWatermark_ = 0;
-  long nextTriggerWatermark_ = 0;
+  int64_t currentWatermark_ = 0;
+  int64_t nextTriggerWatermark_ = 0;
 };
 } // namespace facebook::velox::stateful

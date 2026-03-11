@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
 namespace {
-  const std::vector<core::PlanNodePtr> kEmptySources;
+const std::vector<core::PlanNodePtr> kEmptySources;
 }
 
 const std::vector<core::PlanNodePtr>& StatefulPlanNode::sources() const {
@@ -45,16 +46,18 @@ folly::dynamic StatefulPlanNode::serialize() const {
 }
 
 // static
-core::PlanNodePtr StatefulPlanNode::create(const folly::dynamic& obj, void* context) {
-  auto node = ISerializable::deserialize<core::PlanNode>(
-      obj["node"], context);
+core::PlanNodePtr StatefulPlanNode::create(
+    const folly::dynamic& obj,
+    void* context) {
+  auto node = ISerializable::deserialize<core::PlanNode>(obj["node"], context);
   auto targets = std::vector<core::PlanNodePtr>();
   if (obj.count("targets")) {
     targets = ISerializable::deserialize<std::vector<core::PlanNode>>(
         obj["targets"], context);
   }
 
-  return std::make_shared<const StatefulPlanNode>(std::move(node), std::move(targets));
+  return std::make_shared<const StatefulPlanNode>(
+      std::move(node), std::move(targets));
 }
 
 void StatefulPlanNode::registerSerDe() {
@@ -66,9 +69,12 @@ void StatefulPlanNode::registerSerDe() {
   registry.Register("StreamJoinNode", StreamJoinNode::create);
   registry.Register("StreamPartitionNode", StreamPartitionNode::create);
   registry.Register("StreamWindowJoinNode", StreamWindowJoinNode::create);
-  registry.Register("StreamWindowAggregationNode", StreamWindowAggregationNode::create);
-  registry.Register("GroupWindowAggsHandlerNode", GroupWindowAggsHandlerNode::create);
-  registry.Register("GroupWindowAggregationNode", GroupWindowAggregationNode::create);
+  registry.Register(
+      "StreamWindowAggregationNode", StreamWindowAggregationNode::create);
+  registry.Register(
+      "GroupWindowAggsHandlerNode", GroupWindowAggsHandlerNode::create);
+  registry.Register(
+      "GroupWindowAggregationNode", GroupWindowAggregationNode::create);
   registry.Register("StreamRankNode", StreamRankNode::create);
   registry.Register("DeduplicateNode", DeduplicateNode::create);
   registry.Register("StreamTopNNode", StreamTopNNode::create);
@@ -94,13 +100,15 @@ folly::dynamic WatermarkAssignerNode::serialize() const {
 }
 
 // static
-core::PlanNodePtr WatermarkAssignerNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr WatermarkAssignerNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
-  auto project = ISerializable::deserialize<core::ProjectNode>(
-      obj["project"], context);
+  auto project =
+      ISerializable::deserialize<core::ProjectNode>(obj["project"], context);
   auto idleTimeout = obj["idleTimeout"].asInt();
   int rowtimeFieldIndex = obj["rowtimeFieldIndex"].asInt();
-  long watermarkInterval = obj["watermarkInterval"].asInt();
+  int64_t watermarkInterval = obj["watermarkInterval"].asInt();
 
   return std::make_shared<const WatermarkAssignerNode>(
       planNodeId, project, idleTimeout, rowtimeFieldIndex, watermarkInterval);
@@ -123,16 +131,20 @@ folly::dynamic StreamJoinNode::serialize() const {
 }
 
 // static
-core::PlanNodePtr StreamJoinNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamJoinNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto sources = ISerializable::deserialize<std::vector<PlanNode>>(
       obj["sources"], context);
   VELOX_CHECK_EQ(2, sources.size());
 
-  auto leftPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["leftPartFuncSpec"], context);
-  auto rightPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["rightPartFuncSpec"], context);
+  auto leftPartFuncSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["leftPartFuncSpec"], context);
+  auto rightPartFuncSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["rightPartFuncSpec"], context);
   auto probe = ISerializable::deserialize<core::NestedLoopJoinNode>(
       obj["probe"], context);
 
@@ -160,12 +172,15 @@ folly::dynamic StreamPartitionNode::serialize() const {
 }
 
 // static
-core::PlanNodePtr StreamPartitionNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamPartitionNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto numPartitions = obj["numPartitions"].asInt();
   auto partition = ISerializable::deserialize<core::LocalPartitionNode>(
       obj["partition"], context);
-  return std::make_shared<const StreamPartitionNode>(planNodeId, partition, numPartitions);
+  return std::make_shared<const StreamPartitionNode>(
+      planNodeId, partition, numPartitions);
 }
 
 const std::vector<core::PlanNodePtr>& EmptyNode::sources() const {
@@ -203,16 +218,20 @@ folly::dynamic StreamWindowJoinNode::serialize() const {
 }
 
 // static
-core::PlanNodePtr StreamWindowJoinNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamWindowJoinNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto sources = ISerializable::deserialize<std::vector<PlanNode>>(
       obj["sources"], context);
   VELOX_CHECK_EQ(2, sources.size());
 
-  auto leftPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["leftPartFuncSpec"], context);
-  auto rightPartFuncSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["rightPartFuncSpec"], context);
+  auto leftPartFuncSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["leftPartFuncSpec"], context);
+  auto rightPartFuncSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["rightPartFuncSpec"], context);
   auto probe = ISerializable::deserialize<core::NestedLoopJoinNode>(
       obj["probe"], context);
 
@@ -230,7 +249,8 @@ core::PlanNodePtr StreamWindowJoinNode::create(const folly::dynamic& obj, void* 
       obj["rightWindowEndIndex"].asInt());
 }
 
-const std::vector<core::PlanNodePtr>& StreamWindowAggregationNode::sources() const {
+const std::vector<core::PlanNodePtr>& StreamWindowAggregationNode::sources()
+    const {
   return kEmptySources;
 }
 
@@ -265,14 +285,18 @@ void StreamWindowAggregationNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr StreamWindowAggregationNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamWindowAggregationNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto aggregation = ISerializable::deserialize<core::AggregationNode>(
       obj["aggregation"], context);
-  auto keySelectorSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["keySelectorSpec"], context);
-  auto sliceAssignerSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["sliceAssignerSpec"], context);
+  auto keySelectorSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["keySelectorSpec"], context);
+  auto sliceAssignerSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["sliceAssignerSpec"], context);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   std::shared_ptr<const core::AggregationNode> localAgg;
   if (obj.count("localAgg")) {
@@ -299,7 +323,8 @@ core::PlanNodePtr StreamWindowAggregationNode::create(const folly::dynamic& obj,
       obj["windowEndIndex"].asInt());
 }
 
-const std::vector<core::PlanNodePtr>& GroupWindowAggsHandlerNode::sources() const {
+const std::vector<core::PlanNodePtr>& GroupWindowAggsHandlerNode::sources()
+    const {
   return kEmptySources;
 }
 
@@ -314,15 +339,17 @@ void GroupWindowAggsHandlerNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr GroupWindowAggsHandlerNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr GroupWindowAggsHandlerNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const GroupWindowAggsHandlerNode>(
-      planNodeId,
-      outputType);
+      planNodeId, outputType);
 }
 
-const std::vector<core::PlanNodePtr>& GroupWindowAggregationNode::sources() const {
+const std::vector<core::PlanNodePtr>& GroupWindowAggregationNode::sources()
+    const {
   return kEmptySources;
 }
 
@@ -349,14 +376,18 @@ void GroupWindowAggregationNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr GroupWindowAggregationNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr GroupWindowAggregationNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto aggregation = ISerializable::deserialize<GroupWindowAggsHandlerNode>(
       obj["aggregation"], context);
-  auto keySelectorSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["keySelectorSpec"], context);
-  auto sliceAssignerSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["sliceAssignerSpec"], context);
+  auto keySelectorSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["keySelectorSpec"], context);
+  auto sliceAssignerSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["sliceAssignerSpec"], context);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const GroupWindowAggregationNode>(
       planNodeId,
@@ -390,18 +421,18 @@ void StreamRankNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr StreamRankNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamRankNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
-  auto ranker = ISerializable::deserialize<core::PlanNode>(
-      obj["ranker"], context);
-  auto keySelectorSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["keySelectorSpec"], context);
+  auto ranker =
+      ISerializable::deserialize<core::PlanNode>(obj["ranker"], context);
+  auto keySelectorSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["keySelectorSpec"], context);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const StreamRankNode>(
-      planNodeId,
-      ranker,
-      keySelectorSpec,
-      outputType);
+      planNodeId, ranker, keySelectorSpec, outputType);
 }
 
 const std::vector<core::PlanNodePtr>& DeduplicateNode::sources() const {
@@ -428,7 +459,9 @@ void DeduplicateNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr DeduplicateNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr DeduplicateNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const DeduplicateNode>(
@@ -463,12 +496,14 @@ void StreamTopNNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr StreamTopNNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr StreamTopNNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
-  auto topN = ISerializable::deserialize<core::PlanNode>(
-      obj["topN"], context);
-  auto sortKeySelectorSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["sortKeySelectorSpec"], context);
+  auto topN = ISerializable::deserialize<core::PlanNode>(obj["topN"], context);
+  auto sortKeySelectorSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["sortKeySelectorSpec"], context);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const StreamTopNNode>(
       planNodeId,
@@ -497,7 +532,9 @@ void GroupAggsHandlerNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr GroupAggsHandlerNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr GroupAggsHandlerNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const GroupAggsHandlerNode>(
@@ -526,18 +563,18 @@ void GroupAggregationNode::addDetails(std::stringstream& stream) const {
 }
 
 // static
-core::PlanNodePtr GroupAggregationNode::create(const folly::dynamic& obj, void* context) {
+core::PlanNodePtr GroupAggregationNode::create(
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto aggregation = ISerializable::deserialize<GroupAggsHandlerNode>(
       obj["aggregation"], context);
-  auto keySelectorSpec = ISerializable::deserialize<core::PartitionFunctionSpec>(
-      obj["keySelectorSpec"], context);
+  auto keySelectorSpec =
+      ISerializable::deserialize<core::PartitionFunctionSpec>(
+          obj["keySelectorSpec"], context);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const GroupAggregationNode>(
-      planNodeId,
-      aggregation,
-      keySelectorSpec,
-      outputType);
+      planNodeId, aggregation, keySelectorSpec, outputType);
 }
 
 } // namespace facebook::velox::stateful

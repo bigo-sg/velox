@@ -14,18 +14,21 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 
 namespace facebook::velox::stateful {
 
-/** 
- * This class is relevent to flink 
+/**
+ * This class is relevant to Flink
  * org.apache.flink.streaming.api.operators.StreamOperatorStateHandler.
  */
 class StreamOperatorStateHandler {
  public:
-  StreamOperatorStateHandler(int operatorId, KeyedStateBackendPtr keyedStateBackend)
+  StreamOperatorStateHandler(
+      int operatorId,
+      KeyedStateBackendPtr keyedStateBackend)
       : operatorId_(operatorId),
         keyedStateBackend_(std::move(keyedStateBackend)) {}
 
@@ -38,47 +41,47 @@ class StreamOperatorStateHandler {
         operatorId_, 0, CheckpointOptions::defaultOptions());
   }
 
-  void notifyCheckpointComplete(long checkpointId) {
+  void notifyCheckpointComplete(int64_t checkpointId) {
     keyedStateBackend_->notifyCheckpointComplete(checkpointId);
   }
 
-  void notifyCheckpointAborted(long checkpointId) {
+  void notifyCheckpointAborted(int64_t checkpointId) {
     keyedStateBackend_->notifyCheckpointAborted(checkpointId);
   }
 
-  // The type of state has to be specified as c++ not support template well.
+  // The type of state has to be specified as C++ does not support templates well.
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>> getMapState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);
   }
 
-  std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>> getListState(
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>> getListState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateListState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>> getValueState(
+  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> getValueState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> getGroupValueState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
+  getGroupValueState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateGroupValueState(stateDescriptor);
   }
 
-  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> getGroupMapState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
+  getGroupMapState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateGroupMapState(stateDescriptor);
   }
 
-  std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>> getRankMapState(
-      StateDescriptor& stateDescriptor) {
+  std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
+  getRankMapState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateRankMapState(stateDescriptor);
   }
 
-  std::shared_ptr<InternalTimerService<uint32_t, long>> createTimerService(
-      Triggerable<uint32_t, long>* triggerable) {
+  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
+      Triggerable<uint32_t, int64_t>* triggerable) {
     return keyedStateBackend_->createTimerService(triggerable);
   }
 

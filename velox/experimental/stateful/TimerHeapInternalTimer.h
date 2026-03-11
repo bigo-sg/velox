@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/common/base/BitUtil.h"
 #include <memory>
@@ -47,10 +48,10 @@ class TimerHeapInternalTimer {
   }
 
   bool operator==(const TimerHeapInternalTimer& other) const {
-    return timestamp_ == other.timestamp_ &&
-        key_ == other.key_ &&
+    return timestamp_ == other.timestamp_ && key_ == other.key_ &&
         ns_ == other.ns_;
   }
+
  private:
   int64_t timestamp_;
   K key_;

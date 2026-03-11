@@ -13,28 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
-#include <cstdint>
 
-#include "velox/functions/Macros.h"
+#include "velox/experimental/stateful/state/State.h"
 
-#include <algorithm>
-#include <string>
+namespace facebook::velox::stateful {
 
-namespace facebook::velox::stateful::udf {
+constexpr int State::VOID_NAMESPACE;
 
-template <typename T>
-struct CountCharFunction {
-  VELOX_DEFINE_FUNCTION_TYPES(T);
-
-  FOLLY_ALWAYS_INLINE bool call(
-      out_type<int64_t>& result,
-      const arg_type<Varchar>& input,
-      const arg_type<Varchar>& str) {
-    char character = str.data()[0];
-    result = std::count(input.begin(), input.end(), character);
-    return true;
-  }
-};
-
-} // namespace facebook::velox::stateful::udf
+} // namespace facebook::velox::stateful

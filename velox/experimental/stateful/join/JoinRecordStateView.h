@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink JoinRecordStateView.
+// This class is relevant to Flink JoinRecordStateView.
 class JoinRecordStateView {
  public:
   virtual void addRecord(uint32_t key, RowVectorPtr record) = 0;
@@ -31,13 +31,16 @@ class JoinRecordStateView {
 
 using JoinRecordStateViewPtr = std::unique_ptr<JoinRecordStateView>;
 
-// This class is relevent to flink OuterJoinRecordStateView.
+// This class is relevant to Flink OuterJoinRecordStateView.
 class OuterJoinRecordStateView : public JoinRecordStateView {
  public:
   virtual void addRecord(RowVectorPtr record, int numOfAssociations) = 0;
 
-  virtual void updateNumOfAssociations(RowVectorPtr record, int numOfAssociations) = 0;
+  virtual void updateNumOfAssociations(
+      RowVectorPtr record,
+      int numOfAssociations) = 0;
 
-  //Iterable<Tuple2<RowVectorPtr, Integer>> getRecordsAndNumOfAssociations() = 0;
+  // Iterable<Tuple2<RowVectorPtr, Integer>> getRecordsAndNumOfAssociations() =
+  // 0;
 };
 } // namespace facebook::velox::stateful

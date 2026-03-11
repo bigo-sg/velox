@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include "velox/experimental/stateful/join/JoinRecordStateView.h"
 #include "velox/experimental/stateful/state/StateTtlConfig.h"
@@ -21,7 +22,7 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink JoinRecordStateViews.
+// This class is relevant to Flink JoinRecordStateViews.
 class JoinRecordStateViews {
  public:
   static JoinRecordStateViewPtr create(
@@ -29,11 +30,10 @@ class JoinRecordStateViews {
       std::string stateName,
       // JoinInputSideSpec inputSideSpec,
       // InternalTypeInfo<RowData> recordType,
-      long retentionTime);
-
+      int64_t retentionTime);
 };
 
-// This class is relevent to flink InputSideHasNoUniqueKey.
+// This class is relevant to Flink InputSideHasNoUniqueKey.
 class InputSideHasNoUniqueKey : public JoinRecordStateView {
  public:
   InputSideHasNoUniqueKey(

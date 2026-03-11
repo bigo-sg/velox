@@ -19,7 +19,7 @@
 
 namespace facebook::velox::stateful {
 
-/// This class is relevent to flink KeyedProcessFunction.
+/// This class is relevant to Flink KeyedProcessFunction.
 class KeyedProcessFunction {
  public:
   virtual void open(StreamOperatorStateHandler* stateHandler) = 0;

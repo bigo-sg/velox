@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
+#include <cstdint>
 #include "velox/experimental/stateful/state/HeapListState.h"
 #include "velox/experimental/stateful/state/HeapMapState.h"
 #include "velox/experimental/stateful/state/HeapValueState.h"
@@ -21,53 +22,52 @@
 namespace facebook::velox::stateful {
 
 std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
-    HeapKeyedStateBackend::getOrCreateMapState(StateDescriptor& stateDescriptor) {
+HeapKeyedStateBackend::getOrCreateMapState(StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
-    return std::dynamic_pointer_cast<MapState<uint32_t, int, RowVectorPtr, int>>(
-        stateIte->second);
+    return std::dynamic_pointer_cast<
+        MapState<uint32_t, int, RowVectorPtr, int>>(stateIte->second);
   }
-  auto state =
-     std::make_shared<HeapMapState<uint32_t, int, RowVectorPtr, int>>(
-         stateDescriptor.keyGroupNumber());
+  auto state = std::make_shared<HeapMapState<uint32_t, int, RowVectorPtr, int>>(
+      stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
 }
 
-std::shared_ptr<ListState<uint32_t, long, RowVectorPtr>>
-    HeapKeyedStateBackend::getOrCreateListState(StateDescriptor& stateDescriptor) {
+std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+HeapKeyedStateBackend::getOrCreateListState(StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
-    return std::dynamic_pointer_cast<ListState<uint32_t, long, RowVectorPtr>>(
-        stateIte->second);
+    return std::dynamic_pointer_cast<
+        ListState<uint32_t, int64_t, RowVectorPtr>>(stateIte->second);
   }
-  auto state =
-      std::make_shared<HeapListState<uint32_t, long, RowVectorPtr>>(
-          stateDescriptor.keyGroupNumber());
+  auto state = std::make_shared<HeapListState<uint32_t, int64_t, RowVectorPtr>>(
+      stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
 }
 
-std::shared_ptr<ValueState<uint32_t, long, RowVectorPtr>>
-    HeapKeyedStateBackend::getOrCreateValueState(StateDescriptor& stateDescriptor) {
+std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+HeapKeyedStateBackend::getOrCreateValueState(StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
-    return std::dynamic_pointer_cast<ValueState<uint32_t, long, RowVectorPtr>>(
-        stateIte->second);
+    return std::dynamic_pointer_cast<
+        ValueState<uint32_t, int64_t, RowVectorPtr>>(stateIte->second);
   }
   auto state =
-      std::make_shared<HeapValueState<uint32_t, long, RowVectorPtr>>(
+      std::make_shared<HeapValueState<uint32_t, int64_t, RowVectorPtr>>(
           stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
 }
 
 std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
-    HeapKeyedStateBackend::getOrCreateGroupValueState(StateDescriptor& stateDescriptor) {
+HeapKeyedStateBackend::getOrCreateGroupValueState(
+    StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
-    return std::dynamic_pointer_cast<ValueState<uint32_t, TimeWindow, RowVectorPtr>>(
-        stateIte->second);
+    return std::dynamic_pointer_cast<
+        ValueState<uint32_t, TimeWindow, RowVectorPtr>>(stateIte->second);
   }
   auto state =
       std::make_shared<HeapValueState<uint32_t, TimeWindow, RowVectorPtr>>(
@@ -77,56 +77,60 @@ std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
 }
 
 std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
-    HeapKeyedStateBackend::getOrCreateGroupMapState(StateDescriptor& stateDescriptor) {
+HeapKeyedStateBackend::getOrCreateGroupMapState(
+    StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
-    return std::dynamic_pointer_cast<MapState<uint32_t, int, TimeWindow, TimeWindow>>(
-        stateIte->second);
+    return std::dynamic_pointer_cast<
+        MapState<uint32_t, int, TimeWindow, TimeWindow>>(stateIte->second);
   }
   auto state =
-     std::make_shared<HeapMapState<uint32_t, int, TimeWindow, TimeWindow>>(
-         stateDescriptor.keyGroupNumber());
+      std::make_shared<HeapMapState<uint32_t, int, TimeWindow, TimeWindow>>(
+          stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
 }
 
 std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
-    HeapKeyedStateBackend::getOrCreateRankMapState(StateDescriptor& stateDescriptor) {
+HeapKeyedStateBackend::getOrCreateRankMapState(
+    StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
-    return std::dynamic_pointer_cast<MapState<uint32_t, int, uint32_t, RowVectorPtr>>(
-        stateIte->second);
+    return std::dynamic_pointer_cast<
+        MapState<uint32_t, int, uint32_t, RowVectorPtr>>(stateIte->second);
   }
   auto state =
-     std::make_shared<HeapMapState<uint32_t, int, uint32_t, RowVectorPtr>>(
-         stateDescriptor.keyGroupNumber());
+      std::make_shared<HeapMapState<uint32_t, int, uint32_t, RowVectorPtr>>(
+          stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
 }
 
-std::shared_ptr<InternalTimerService<uint32_t, long>>
-    HeapKeyedStateBackend::createTimerService(Triggerable<uint32_t, long>* triggerable) {
-  return std::make_shared<InternalTimerService<uint32_t, long>>(triggerable);
+std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
+HeapKeyedStateBackend::createTimerService(
+    Triggerable<uint32_t, int64_t>* triggerable) {
+  return std::make_shared<InternalTimerService<uint32_t, int64_t>>(triggerable);
 }
 
 std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
-    HeapKeyedStateBackend::createGroupWindowAggTimerService(
-        Triggerable<uint32_t, TimeWindow>* triggerable) {
-  return std::make_shared<InternalTimerService<uint32_t, TimeWindow>>(triggerable);
+HeapKeyedStateBackend::createGroupWindowAggTimerService(
+    Triggerable<uint32_t, TimeWindow>* triggerable) {
+  return std::make_shared<InternalTimerService<uint32_t, TimeWindow>>(
+      triggerable);
 }
 
 void HeapKeyedStateBackend::snapshot(
-    long checkpointId,
-    long timestamp,
+    int64_t checkpointId,
+    int64_t timestamp,
     CheckpointOptions checkpointOptions) {
   // TODO: implement snapshot logic.
 }
 
-void HeapKeyedStateBackend::notifyCheckpointComplete(long checkpointId) {
+void HeapKeyedStateBackend::notifyCheckpointComplete(int64_t checkpointId) {
   // TODO: implement checkpoint complete logic.
 }
 
-void HeapKeyedStateBackend::notifyCheckpointAborted(long checkpointId) {
+void HeapKeyedStateBackend::notifyCheckpointAborted(int64_t checkpointId) {
   // TODO: implement checkpoint abort logic.
 }
 } // namespace facebook::velox::stateful

@@ -16,27 +16,41 @@
 #pragma once
 
 #include <string>
+#include "velox/common/memory/MemoryPool.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to flink org.apache.flink.api.common.StateDescriptor.
+// This class is relevant to Flink org.apache.flink.api.common.StateDescriptor.
 class StateDescriptor {
  public:
-  StateDescriptor(const std::string& name) : name_(name) {}
+  StateDescriptor(
+      const std::string& name,
+      const std::string& operatorId = "",
+      memory::MemoryPool* pool = nullptr)
+      : name_(name), operatorId_(operatorId), pool_(pool) {}
 
   const std::string name() const {
     return name_;
   }
 
-  int keyGroupNumber() const {
+  int32_t keyGroupNumber() const {
     return keyGroupNumber_;
   }
 
- protected:
+  const std::string operatorId() const {
+    return operatorId_;
+  }
 
+  memory::MemoryPool* memoryPool() {
+    return pool_;
+  }
+
+ protected:
  private:
   const std::string name_;
-  int keyGroupNumber_ = 1024;
+  const std::string operatorId_;
+  memory::MemoryPool* pool_;
+  int32_t keyGroupNumber_ = 1024;
 };
 
 } // namespace facebook::velox::stateful

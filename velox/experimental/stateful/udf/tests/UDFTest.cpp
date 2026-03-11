@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstdint>
 #include "velox/experimental/stateful/udf/Register.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 #include "velox/parse/TypeResolver.h"
@@ -26,7 +27,7 @@ class UDFTest : public functions::test::FunctionBaseTest {
  protected:
   static void SetUpTestCase() {
     parse::registerTypeResolver();
-    stateful::udf::registerFunctions("");
+    // stateful::udf::registerFunctions("");
     memory::MemoryManager::testingSetInstance({});
   }
 };

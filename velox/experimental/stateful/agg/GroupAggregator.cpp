@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/agg/GroupAggregator.h"
+#include <cstdint>
 
 namespace facebook::velox::stateful {
 
@@ -22,18 +23,17 @@ GroupAggregator::GroupAggregator(
     exec::DriverCtx* driverCtx,
     const std::shared_ptr<const core::PlanNode>& aggNode,
     std::unique_ptr<AggsHandleFunction> aggsFunction,
-    long stateRetentionTime,
+    int64_t stateRetentionTime,
     bool generateUpdateBefore)
     : exec::Operator(
-      driverCtx,
-      aggNode->outputType(),
-      operatorId,
-      aggNode->id(),
-      "GroupAggregator"),
+          driverCtx,
+          aggNode->outputType(),
+          operatorId,
+          aggNode->id(),
+          "GroupAggregator"),
       aggsFunction_(std::move(aggsFunction)),
       stateRetentionTime_(stateRetentionTime),
-      generateUpdateBefore_(generateUpdateBefore) {
-}
+      generateUpdateBefore_(generateUpdateBefore) {}
 
 void GroupAggregator::open(StreamOperatorStateHandler* stateHandler) {
   StateDescriptor stateDesc("deduplicate-state");
@@ -45,8 +45,10 @@ void GroupAggregator::open(StreamOperatorStateHandler* stateHandler) {
   accState_ = stateHandler->getValueState(stateDesc);
 }
 
-RowVectorPtr GroupAggregator::processElements(uint32_t key, RowVectorPtr input) {
-  // TODO: not identically equal to flink.
+RowVectorPtr GroupAggregator::processElements(
+    uint32_t key,
+    RowVectorPtr input) {
+  // TODO: not identically equal to Flink.
   bool firstRow;
   RowVectorPtr accumulators = accState_->value(key, State::VOID_NAMESPACE);
   if (!accumulators) {

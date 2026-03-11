@@ -13,11 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StatefulTask.h"
-#include "velox/exec/OperatorUtils.h"
+#include <experimental/stateful/state/StateBackend.h>
+#include <cstdint>
 #include "velox/exec/OperatorStats.h"
+#include "velox/exec/OperatorUtils.h"
+#include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/state/HashMapStateBackend.h"
+#include "velox/experimental/stateful/state/RocksDBStateBackend.h"
 
 namespace facebook::velox::stateful {
 
@@ -27,10 +30,8 @@ std::shared_ptr<StatefulTask> StatefulTask::create(
     core::PlanFragment planFragment,
     std::shared_ptr<core::QueryCtx> queryCtx) {
   VELOX_CHECK_NOT_NULL(planFragment.planNode);
-  auto task = std::shared_ptr<StatefulTask>(new StatefulTask(
-      taskId,
-      std::move(planFragment),
-      std::move(queryCtx)));
+  auto task = std::shared_ptr<StatefulTask>(
+      new StatefulTask(taskId, std::move(planFragment), std::move(queryCtx)));
   task->initTaskPool();
   task->addToTaskList();
   return task;
@@ -48,21 +49,35 @@ StatefulTask::StatefulTask(
           exec::Task::ExecutionMode::kSerial,
           nullptr,
           0,
-          nullptr) {
-}
+          nullptr) {}
 
-StatefulTask::~StatefulTask() {
-}
+StatefulTask::~StatefulTask() {}
 
 void StatefulTask::init() {
   initOperators();
-  initStateBackend();
-  operatorChain_->initializeState(statebackend_.get());
   operatorChain_->initialize();
 }
 
-void StatefulTask::initStateBackend() {
-  statebackend_ = std::make_unique<HashMapStateBackend>();
+void StatefulTask::initStateBackend(
+    const std::shared_ptr<const KeyedStateBackendParameters> parameters) {
+  if (parameters && parameters->getBackendType() == StateBackendType::ROCKSDB) {
+    const std::shared_ptr<const RocksDBKeyedStateBackendParameters>
+        rocksdbStateParameters =
+            std::dynamic_pointer_cast<const RocksDBKeyedStateBackendParameters>(
+                parameters);
+    statebackend_ =
+        std::make_unique<RocksDBStateBackend>(rocksdbStateParameters);
+  } else {
+    if (!parameters) {
+      statebackend_ = std::make_unique<HashMapStateBackend>(std::make_shared<const KeyedStateBackendParameters>(
+          StateBackendType::HEAP, 
+          operatorChain_->op()->operatorCtx()->driverCtx()->task->taskId(),
+          std::to_string(operatorChain_->op()->operatorId())));
+    } else {
+      statebackend_ = std::make_unique<HashMapStateBackend>(parameters);
+    }
+  }
+  operatorChain_->initializeStateBackend(statebackend_.get());
 }
 
 void StatefulTask::initOperators() {
@@ -71,17 +86,20 @@ void StatefulTask::initOperators() {
   VELOX_CHECK_NULL(operatorChain_);
   auto driverCtx = std::make_unique<exec::DriverCtx>(self, 0, 0, -1, 0);
   driver = exec::Driver::testingCreate(std::move(driverCtx));
-  operatorChain_ =
-      std::move(StatefulPlanner::plan(planFragment(), driver->driverCtx(), statebackend_.get()));
+  operatorChain_ = std::move(StatefulPlanner::plan(
+      planFragment(), driver->driverCtx(), statebackend_.get()));
 }
 
-void statefulTaskStatus(exec::TaskStats& taskStats, const std::unique_ptr<StatefulOperator>& statefulOp) {
+void statefulTaskStatus(
+    exec::TaskStats& taskStats,
+    const std::unique_ptr<StatefulOperator>& statefulOp) {
   auto statsCopy = statefulOp->op()->stats(false);
   exec::aggregateOperatorRuntimeStats(statsCopy.runtimeStats);
   exec::PipelineStats pipelineStats(false, false);
   pipelineStats.operatorStats.emplace_back(statsCopy);
   taskStats.pipelineStats.emplace_back(pipelineStats);
-  std::vector<std::unique_ptr<StatefulOperator>>& targets = statefulOp->targets();
+  std::vector<std::unique_ptr<StatefulOperator>>& targets =
+      statefulOp->targets();
   for (const auto& target : targets) {
     statefulTaskStatus(taskStats, target);
   }
@@ -95,24 +113,26 @@ exec::TaskStats StatefulTask::statefulTaskStats() {
 
 StreamElementPtr StatefulTask::next(int32_t& retCode) {
   retCode = 0;
-
   if (!pendings_.empty()) {
-    return std::move(popOutput());
+    return popOutput();
   } else if (state() == exec::TaskState::kFinished) {
     // If the task is already finished, return null and 1 for retCode.
     retCode = 1;
     return nullptr;
   }
 
-  // Run operators one by one. If an operator has output, run its downstream operators.
-  // If the last operator has output, return the output.
-  // If source operator has no output, check whether it is finished.
-  // If source is finished, return null and 1 for rerCode, else return null and 0 for retCode.
+  // Run operators one by one. If an operator has output, run its downstream
+  // operators. If the last operator has output, return the output. If source
+  // operator has no output, check whether it is finished. If source is
+  // finished, return null and 1 for rerCode, else return null and 0 for
+  // retCode.
   // TODO: only support operators in a sequence mode.
   VELOX_CHECK_EQ(
-      state(), exec::TaskState::kRunning, "Task has already finished processing.");
+      state(),
+      exec::TaskState::kRunning,
+      "Task has already finished processing.");
 
-  operatorChain_->getOutput();
+  operatorChain_->advance();
   if (pendings_.empty()) {
     if (operatorChain_->isFinished()) {
       finish();
@@ -127,20 +147,25 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
       return nullptr;
     }
   }
-  return std::move(popOutput());
+  return popOutput();
 }
 
 void StatefulTask::addOutput(StreamElementPtr output) {
   pendings_.push_back(std::move(output));
 }
 
-void StatefulTask::notifyWatermark(long watermark, int index) {
+void StatefulTask::notifyWatermark(int64_t watermark, int index) {
   operatorChain_->processWatermark(watermark, index);
 }
 
-void StatefulTask::initializeState() {
-  // TODO: need to be call in flink operator's setup.
-  //operatorChain_->initializeState();
+void StatefulTask::notifyWatermark(int64_t watermark) {
+  operatorChain_->processWatermark(watermark);
+}
+
+void StatefulTask::initializeState(
+    const std::shared_ptr<const KeyedStateBackendParameters> parameters) {
+  initStateBackend(parameters);
+  operatorChain_->initializeState();
 }
 
 void StatefulTask::snapshotState() {
@@ -148,11 +173,12 @@ void StatefulTask::snapshotState() {
   operatorChain_->snapshotState();
 }
 
-std::vector<std::string> StatefulTask::notifyCheckpointComplete(long checkpointId) {
+std::vector<std::string> StatefulTask::notifyCheckpointComplete(
+    int64_t checkpointId) {
   return operatorChain_->notifyCheckpointComplete(checkpointId);
 }
 
-void StatefulTask::notifyCheckpointAborted(long checkpointId) {
+void StatefulTask::notifyCheckpointAborted(int64_t checkpointId) {
   operatorChain_->notifyCheckpointAborted(checkpointId);
 }
 
@@ -165,8 +191,9 @@ StreamElementPtr StatefulTask::popOutput() {
 void StatefulTask::finish() {
   VELOX_CHECK(
       pendings_.empty(),
-      "Outputs have {} not been consumed before finishing the task.",
-      pendings_.size());
+      "Outputs have {} not been consumed before finishing the task. {} {}",
+      pendings_.size(),
+      operatorChain_->detail());
   operatorChain_->close();
   // TODO: update operator stats
 

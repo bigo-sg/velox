@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
 #include <velox/experimental/stateful/window/TimeWindowUtil.h>
 #include <velox/experimental/stateful/ProcessingTimeService.h>
@@ -26,8 +27,8 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink InternalTimerServiceImpl.
-template<typename K, typename N>
+// This class is relevant to Flink InternalTimerServiceImpl.
+template <typename K, typename N>
 class InternalTimerService {
  public:
   InternalTimerService(Triggerable<K, N>* triggerable)

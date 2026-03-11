@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 #pragma once
-
+#include <cstdint>
+#include <list>
+#include <memory>
+#include <unordered_map>
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
 #include <climits>
@@ -22,26 +25,30 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink WindowBuffer.
+/// This class is relevant to Flink WindowBuffer.
 class WindowBuffer {
  public:
-  // TODO: we use hash key of RowVector as key, but flink use RowVector as key.
-  // This is not equal to flink, should check it.
-  virtual void addElement(uint32_t key, int64_t window, RowVectorPtr& element) = 0;
+  // TODO: we use hash key of RowVector as key, but Flink uses RowVector as key.
+  // This is not equal to Flink, should check it.
+  virtual void
+  addElement(uint32_t key, int64_t window, RowVectorPtr& element) = 0;
 
-  virtual std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(int64_t progress) = 0;
+  virtual std::unordered_map<WindowKey, std::list<RowVectorPtr>>&
+  advanceProgress(int64_t progress) = 0;
 
   virtual void clear() = 0;
 };
 
 using WindowBufferPtr = std::shared_ptr<WindowBuffer>;
 
-// This class is relevent to flink RecordsWindowBuffer.
+/// This class is relevant to Flink RecordsWindowBuffer.
 class RecordsWindowBuffer : public WindowBuffer {
  public:
-  void addElement(uint32_t key, int64_t sliceEnd, RowVectorPtr& element) override;
+  void addElement(uint32_t key, int64_t sliceEnd, RowVectorPtr& element)
+      override;
 
-  std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(int64_t progress) override;
+  std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(
+      int64_t progress) override;
 
   void clear() override {
     buffer_.clear();

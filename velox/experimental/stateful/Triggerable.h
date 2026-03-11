@@ -22,8 +22,8 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink Triggerable.
-template<typename K, typename N>
+// This class is relevant to Flink Triggerable.
+template <typename K, typename N>
 class Triggerable {
  public:
   Triggerable() {

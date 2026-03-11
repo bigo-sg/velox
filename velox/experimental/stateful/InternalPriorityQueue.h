@@ -19,8 +19,8 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevent to flink InternalPriorityQueue.
-template<typename T>
+// This class is relevant to Flink InternalPriorityQueue.
+template <typename T>
 class InternalPriorityQueue {
  public:
   virtual bool add(const T& toAdd) = 0;
@@ -250,6 +250,10 @@ class HeapPriorityQueue : public InternalPriorityQueue<T> {
       percolateDown(static_cast<size_t>(i));
     }
   }
+
+ private:
+  std::vector<T> queue_;
+  int size_ = 0;
 };
 
 } // namespace facebook::velox::stateful

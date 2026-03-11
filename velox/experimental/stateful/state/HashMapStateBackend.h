@@ -20,9 +20,13 @@
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to flink org.apache.flink.runtime.state.hashmap.HashMapStateBackend.
+// This class is relevant to flink
+// org.apache.flink.runtime.state.hashmap.HashMapStateBackend.
 class HashMapStateBackend : public StateBackend {
  public:
+  HashMapStateBackend(
+      const std::shared_ptr<const KeyedStateBackendParameters> parameters);
+
   std::string getName() const {
     return "HashMapStateBackend";
   }
@@ -31,8 +35,7 @@ class HashMapStateBackend : public StateBackend {
     return nullptr;
   }
 
-  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
-      KeyedStateBackendParameters parameters) override;
+  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() override;
 };
 
 } // namespace facebook::velox::stateful

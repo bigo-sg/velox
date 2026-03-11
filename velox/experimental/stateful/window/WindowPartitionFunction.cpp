@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
 
@@ -42,7 +43,6 @@ WindowPartitionFunction::WindowPartitionFunction(
 std::optional<uint32_t> WindowPartitionFunction::partition(
     const RowVector& input,
     std::vector<uint32_t>& partitions) {
-
   if (inputType_->childAt(rowtimeIndex_)->kind() == TypeKind::BIGINT) {
     // TODO: this is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
@@ -53,7 +53,7 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
   }
   const auto size = input.size();
   partitions.resize(size);
-  // TODO: suuport more window types. support time zone.
+  // TODO: support more window types. Support time zone.
   for (auto i = 0; i < size; ++i) {
     auto child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
@@ -74,13 +74,13 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
 int64_t getTimestamp(
     const RowVectorPtr& input,
     RowTypePtr inputType,
-    const column_index_t rowtimeIndex ) {
+    const column_index_t rowtimeIndex) {
   return 0;
 }
 
-std::unique_ptr<core::PartitionFunction> StreamWindowPartitionFunctionSpec::create(
-    int numPartitions,
-    bool localExchange) const {
+std::unique_ptr<core::PartitionFunction>
+StreamWindowPartitionFunctionSpec::create(int numPartitions, bool localExchange)
+    const {
   return std::make_unique<WindowPartitionFunction>(
       inputType_, rowtimeIndex_, size_, step_, offset_, windowType_);
 }

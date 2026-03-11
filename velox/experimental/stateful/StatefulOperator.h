@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 #pragma once
+#include <cstdint>
 
+#include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/CombinedWatermarkStatus.h"
+#include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
 
@@ -26,8 +29,11 @@ class StatefulOperator {
  public:
   StatefulOperator(
       std::unique_ptr<exec::Operator> op,
-      std::vector<std::unique_ptr<StatefulOperator>> targets)
-      : operator_(std::move(op)),
+      std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::shared_ptr<const KeyedStateBackendParameters>
+          keyedStateBackendParameters = nullptr)
+      : keyedStateBackendParameters_(keyedStateBackendParameters),
+        operator_(std::move(op)),
         targets_(std::move(targets)) {
     sink = operator_->operatorType() == "TableWrite";
   }
@@ -36,26 +42,34 @@ class StatefulOperator {
 
   virtual bool isFinished();
 
-  virtual void addInput(RowVectorPtr input);
+  virtual void addInput(StreamElementPtr input);
 
-  virtual void getOutput();
+  virtual void advance();
 
   bool sourceEmpty();
 
   virtual void close();
 
-  void processWatermark(long timestamp, int index);
+  virtual void processWatermark(int64_t timestamp, int index);
 
-  void initializeState(StateBackend* stateBackend);
+  virtual void processWatermark(int64_t timestamp);
+
+  virtual void initializeState();
+
+  void initializeStateBackend(StateBackend* stateBackend);
 
   void snapshotState();
 
-  std::vector<std::string> notifyCheckpointComplete(long checkpointId);
+  std::vector<std::string> notifyCheckpointComplete(int64_t checkpointId);
 
-  void notifyCheckpointAborted(long checkpointId);
+  void notifyCheckpointAborted(int64_t checkpointId);
 
   StreamOperatorStateHandlerPtr stateHandler() const {
     return stateHandler_;
+  }
+
+  memory::MemoryPool* memoryPool() {
+    return operator_->pool();
   }
 
   const std::string detail() const {
@@ -71,6 +85,10 @@ class StatefulOperator {
     return operator_->operatorType();
   }
 
+  std::string getPlanNodeId() const {
+    return operator_->planNodeId();
+  }
+
   std::unique_ptr<exec::Operator>& op() {
     return operator_;
   }
@@ -80,13 +98,15 @@ class StatefulOperator {
   }
 
  protected:
-  void pushOutput(RowVectorPtr output);
-  void pushWatermark(long timestamp, int index);
-  virtual void processWatermarkInternal(long timestamp) {}
+  void pushOutput(StreamElementPtr output);
+  void emitWatermark(int64_t timestamp);
 
   virtual int numInputs() const {
     return 1;
   }
+
+  std::shared_ptr<const KeyedStateBackendParameters>
+      keyedStateBackendParameters_;
 
  private:
   bool isSink() {
@@ -97,7 +117,7 @@ class StatefulOperator {
   std::vector<std::unique_ptr<StatefulOperator>> targets_;
   bool sink;
   bool sourceEmpty_ = true;
-  std::shared_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
+  std::unique_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
   StreamOperatorStateHandlerPtr stateHandler_;
 };
 

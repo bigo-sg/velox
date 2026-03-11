@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/MergingWindowSet.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
 
@@ -24,8 +25,7 @@ MergingWindowSet::MergingWindowSet(
     std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> mapping)
     : windowAssigner_(std::move(windowAssigner)),
       mapping_(std::move(mapping)),
-      cachedSortedWindows_(MAPPING_CACHE_SIZE) {
-}
+      cachedSortedWindows_(MAPPING_CACHE_SIZE) {}
 
 void MergingWindowSet::initializeCache(uint32_t key) {
   auto sortedWindowsItr = cachedSortedWindows_.find(key);
@@ -54,7 +54,8 @@ TimeWindow MergingWindowSet::addWindow(
 
   // perform the merge
   for (auto [mergeResult, mergedWindows] : collector.mergeResults()) {
-    // if our new window is in the merged windows make the merge result the result window
+    // if our new window is in the merged windows make the merge result the
+    // result window
     if (mergedWindows.erase(newWindow)) {
       isNewWindowMerged = true;
       resultWindow = mergeResult;
@@ -67,7 +68,8 @@ TimeWindow MergingWindowSet::addWindow(
 
     // pick any of the merged windows and choose that window's state window
     // as the state window for the merge result
-    TimeWindow mergedStateNamespace = mapping_->get(key, 0, *mergedWindows.begin());
+    TimeWindow mergedStateNamespace =
+        mapping_->get(key, 0, *mergedWindows.begin());
 
     // figure out the state windows that we are merging
     std::vector<TimeWindow> mergedStateWindows;
@@ -86,18 +88,19 @@ TimeWindow MergingWindowSet::addWindow(
     mapping_->put(key, 0, mergeResult, mergedStateNamespace);
     sortedWindows_.insert(mergeResult);
 
-    // don't merge the new window itself, it never had any state associated with it
-    // i.e. if we are only merging one pre-existing window into itself
+    // don't merge the new window itself, it never had any state associated with
+    // it i.e. if we are only merging one pre-existing window into itself
     // without extending the pre-existing window
-    if (!(mergedWindows.find(mergeResult) != mergedWindows.end() && mergedWindows.size() == 1)) {
+    if (!(mergedWindows.find(mergeResult) != mergedWindows.end() &&
+          mergedWindows.size() == 1)) {
       mergeFunction->merge(
           mergeResult, mergedWindows, mergedStateNamespace, mergedStateWindows);
     }
   }
 
   // the new window created a new, self-contained window without merging
-  if (collector.mergeResults().empty()
-      || (resultWindow == newWindow && !isNewWindowMerged)) {
+  if (collector.mergeResults().empty() ||
+      (resultWindow == newWindow && !isNewWindowMerged)) {
     mapping_->put(key, 0, resultWindow, resultWindow);
     sortedWindows_.insert(resultWindow);
   }
@@ -111,7 +114,9 @@ TimeWindow MergingWindowSet::getStateWindow(uint32_t key, TimeWindow window) {
 
 void MergingWindowSet::retireWindow(uint32_t key, TimeWindow window) {
   mapping_->remove(key, 0, window);
-  VELOX_CHECK(sortedWindows_.erase(window), "Window " + window.toString() + " is not in in-flight window set.");
+  VELOX_CHECK(
+      sortedWindows_.erase(window),
+      "Window " + window.toString() + " is not in in-flight window set.");
 }
 
 void MergingWindowSet::close() {
@@ -128,33 +133,32 @@ MergingFunction::MergingFunction(
     : accMergingConsumer_(std::move(accMergingConsumer)),
       ctx_(ctx),
       allowedLateness_(allowedLateness),
-      isEventTime_(isEventTime) {
-}
+      isEventTime_(isEventTime) {}
 
 void MergingFunction::merge(
     TimeWindow mergeResult,
     std::set<TimeWindow>& mergedWindows,
     TimeWindow stateWindowResult,
     std::vector<TimeWindow>& stateWindowsToBeMerged) {
-
-  int64_t mergeResultMaxTs =
-      TimeWindowUtil::toEpochMillsForTimer(mergeResult.maxTimestamp(), ctx_->getShiftTimeZone());
-  VELOX_CHECK(!(isEventTime_
-      && mergeResultMaxTs + allowedLateness_ <= ctx_->currentWatermark()),
-      std::string("The end timestamp of an "
-      "event-time window cannot become earlier than the current watermark "
-      "by merging. Current watermark: ")
-      + std::to_string(ctx_->currentWatermark())
-      + std::string(" window: ")
-      + mergeResult.toString());
-  VELOX_CHECK(!(!isEventTime_
-      && mergeResultMaxTs <= ctx_->currentProcessingTime()),
-      std::string("The end timestamp of a "
-      "processing-time window cannot become earlier than the current processing time "
-      "by merging. Current processing time: ")
-      + std::to_string(ctx_->currentProcessingTime())
-      + std::string(" window: ")
-      + mergeResult.toString());
+  int64_t mergeResultMaxTs = TimeWindowUtil::toEpochMillsForTimer(
+      mergeResult.maxTimestamp(), ctx_->getShiftTimeZone());
+  VELOX_CHECK(
+      !(isEventTime_ &&
+        mergeResultMaxTs + allowedLateness_ <= ctx_->currentWatermark()),
+      std::string(
+          "The end timestamp of an "
+          "event-time window cannot become earlier than the current watermark "
+          "by merging. Current watermark: ") +
+          std::to_string(ctx_->currentWatermark()) + std::string(" window: ") +
+          mergeResult.toString());
+  VELOX_CHECK(
+      !(!isEventTime_ && mergeResultMaxTs <= ctx_->currentProcessingTime()),
+      std::string(
+          "The end timestamp of a "
+          "processing-time window cannot become earlier than the current processing time "
+          "by merging. Current processing time: ") +
+          std::to_string(ctx_->currentProcessingTime()) +
+          std::string(" window: ") + mergeResult.toString());
 
   ctx_->onMerge(mergeResult, stateWindowsToBeMerged);
 

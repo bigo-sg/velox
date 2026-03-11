@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
+#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
@@ -43,22 +44,21 @@ GroupWindowAggregator::GroupWindowAggregator(
 
 void GroupWindowAggregator::initialize() {
   StatefulOperator::initialize();
+}
 
+void GroupWindowAggregator::initializeState() {
   StateDescriptor stateDesc("window-aggs");
   windowState_ = stateHandler()->getGroupValueState(stateDesc);
   windowTimerService_ = stateHandler()->createGroupWindowAggTimerService(this);
   trigger_ = std::make_shared<AfterEndOfWindow>();
   triggerContext_ = std::make_shared<WindowTriggerContext>(
-      trigger_,
-      windowTimerService_,
-      shiftTimeZone_);
+      trigger_, windowTimerService_, shiftTimeZone_);
   triggerContext_->open();
   // TODO: create windowFunction_ based on windowAssigner type
-  windowFunction_ =
-      std::make_unique<MergingWindowProcessFunction>(
-          std::dynamic_pointer_cast<MergingWindowAssigner>(windowAssigner_),
-          op().get(),
-          allowedLateness_);
+  windowFunction_ = std::make_unique<MergingWindowProcessFunction>(
+      std::dynamic_pointer_cast<MergingWindowAssigner>(windowAssigner_),
+      op().get(),
+      allowedLateness_);
   windowContext_ = std::make_shared<WindowContext>(
       windowAggregator_,
       windowState_,
@@ -71,12 +71,13 @@ void GroupWindowAggregator::initialize() {
   windowFunction_->open(windowContext_);
 }
 
-void GroupWindowAggregator::addInput(RowVectorPtr input) {
+void GroupWindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
-  input_ = input;
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
-void GroupWindowAggregator::getOutput() {
+void GroupWindowAggregator::advance() {
   if (!input_) {
     return;
   }
@@ -90,13 +91,13 @@ void GroupWindowAggregator::getOutput() {
     std::map<int64_t, RowVectorPtr> timestampToData = sliceAssigner_->assignSliceEnd(keyedData);
     for (const auto& [timestamp, data] : timestampToData) {
       // 4. Assign data to window
-      std::vector<TimeWindow> windows = 
+      std::vector<TimeWindow> windows =
           windowFunction_->assignStateNamespace(key, data, timestamp);
       for (const auto& window : windows) {
         auto acc = windowState_->value(key, window);
         if (!acc) {
           // If there is no accumulator for this window, create a new one
-          acc = windowAggregator_->createAccumulators();;
+          acc = windowAggregator_->createAccumulators();
         }
         windowAggregator_->setAccumulators(window, acc);
         windowAggregator_->accumulate(data);
@@ -107,7 +108,8 @@ void GroupWindowAggregator::getOutput() {
       std::vector<TimeWindow> actualWindows =
           windowFunction_->assignActualWindows(data, timestamp);
       for (const auto& window : actualWindows) {
-        bool triggerResult = triggerContext_->onElement(key, data, timestamp, window);
+        bool triggerResult =
+            triggerContext_->onElement(key, data, timestamp, window);
         if (triggerResult) {
           emitWindowResult(key, window);
         }
@@ -120,10 +122,11 @@ void GroupWindowAggregator::getOutput() {
   input_.reset();
 }
 
-void GroupWindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, TimeWindow>> timer) {
+void GroupWindowAggregator::onEventTime(
+    std::shared_ptr<TimerHeapInternalTimer<uint32_t, TimeWindow>> timer) {
   windowContext_->setCurrentKey(timer->key());
   if (triggerContext_->onEventTime(timer->ns(), timer->timestamp())) {
-    // fire
+    // Fire the window and emit result.
     emitWindowResult(timer->key(), timer->ns());
   }
 
@@ -132,7 +135,8 @@ void GroupWindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<u
   }
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
-  pushOutput(output);
+  pushOutput(
+      std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
 }
 
 void GroupWindowAggregator::close() {
@@ -142,13 +146,15 @@ void GroupWindowAggregator::close() {
   windowState_->clear();
 }
 
-void GroupWindowAggregator::registerCleanupTimer(uint32_t key, TimeWindow window) {
-  int64_t cleanupTime =
-      TimeWindowUtil::toEpochMillsForTimer(
-          TimeWindowUtil::cleanupTime(window.maxTimestamp(), allowedLateness_, isEventTime_),
-          shiftTimeZone_);
+void GroupWindowAggregator::registerCleanupTimer(
+    uint32_t key,
+    TimeWindow window) {
+  int64_t cleanupTime = TimeWindowUtil::toEpochMillsForTimer(
+      TimeWindowUtil::cleanupTime(
+          window.maxTimestamp(), allowedLateness_, isEventTime_),
+      shiftTimeZone_);
   if (cleanupTime == INT64_MAX) {
-    // don't set a GC timer for "end of time"
+    // Do not set a GC timer for "end of time".
     return;
   }
 
@@ -164,13 +170,14 @@ void GroupWindowAggregator::emitWindowResult(uint32_t key, TimeWindow window) {
   RowVectorPtr acc = windowAggregator_->getAccumulators();
   RowVectorPtr aggResult = windowAggregator_->getValue(window);
   if (produceUpdates_) {
-    // TODO: suppport it.
+    // TODO: support it.
   } else {
-    // TODO: use recordCounter_ 
-    //if (!recordCounter_.recordCountIsZero(acc)) {
+    // TODO: use recordCounter_
+    // if (!recordCounter_.recordCountIsZero(acc)) {
     if (acc) {
       // send INSERT
-      pushOutput(aggResult);
+      pushOutput(std::make_shared<StreamRecord>(
+          getPlanNodeId(), std::move(aggResult)));
     }
     // if the counter is zero, no need to send accumulate
     // there is no possible skip `if` branch when `produceUpdates` is false
@@ -179,7 +186,8 @@ void GroupWindowAggregator::emitWindowResult(uint32_t key, TimeWindow window) {
 
 GroupWindowAggregator::WindowTriggerContext::WindowTriggerContext(
     std::shared_ptr<WindowTrigger> trigger,
-    std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> internalTimerService,
+    std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+        internalTimerService,
     int shiftTimeZone)
     : trigger_(std::move(trigger)),
       internalTimerService_(std::move(internalTimerService)),
@@ -190,26 +198,33 @@ void GroupWindowAggregator::WindowTriggerContext::open() {
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onElement(
-    uint32_t key, RowVectorPtr row, int64_t timestamp, TimeWindow window) {
+    uint32_t key,
+    RowVectorPtr row,
+    int64_t timestamp,
+    TimeWindow window) {
   return trigger_->onElement(key, row, timestamp, window);
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onProcessingTime(
-    TimeWindow window, int64_t time) {
+    TimeWindow window,
+    int64_t time) {
   return trigger_->onProcessingTime(window, time);
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onEventTime(
-    TimeWindow window, int64_t time) {
+    TimeWindow window,
+    int64_t time) {
   return trigger_->onEventTime(window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::onMerge(
-    uint32_t key, TimeWindow window) {
+    uint32_t key,
+    TimeWindow window) {
   trigger_->onMerge(key, window, nullptr);
 }
 
-int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentProcessingTime() {
+int64_t
+GroupWindowAggregator::WindowTriggerContext::getCurrentProcessingTime() {
   return internalTimerService_->currentProcessingTime();
 }
 
@@ -218,22 +233,30 @@ int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
 }
 
 void GroupWindowAggregator::WindowTriggerContext::registerProcessingTimeTimer(
-    uint32_t key, TimeWindow window, int64_t time) {
+    uint32_t key,
+    TimeWindow window,
+    int64_t time) {
   internalTimerService_->registerProcessingTimeTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::registerEventTimeTimer(
-    uint32_t key, TimeWindow window, int64_t time) {
+    uint32_t key,
+    TimeWindow window,
+    int64_t time) {
   internalTimerService_->registerEventTimeTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteProcessingTimeTimer(
-    uint32_t key, TimeWindow window, int64_t time) {
+    uint32_t key,
+    TimeWindow window,
+    int64_t time) {
   internalTimerService_->deleteProcessingTimeTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteEventTimeTimer(
-    uint32_t key, TimeWindow window, int64_t time) {
+    uint32_t key,
+    TimeWindow window,
+    int64_t time) {
   internalTimerService_->deleteEventTimeTimer(key, window, time);
 }
 
@@ -241,7 +264,9 @@ int GroupWindowAggregator::WindowTriggerContext::getShiftTimeZone() {
   return shiftTimeZone_;
 }
 
-void GroupWindowAggregator::WindowTriggerContext::clear(uint32_t key, TimeWindow window) {
+void GroupWindowAggregator::WindowTriggerContext::clear(
+    uint32_t key,
+    TimeWindow window) {
   trigger_->clear(key, window);
 }
 
@@ -252,7 +277,7 @@ StatePtr GroupWindowAggregator::WindowTriggerContext::getPartitionedState(
 }
 
 void GroupWindowAggregator::WindowTriggerContext::mergePartitionedState(
-      StateDescriptor& stateDescriptor) {
+    StateDescriptor& stateDescriptor) {
   // TODO: implement this method when necessary.
   VELOX_NYI();
 }
@@ -273,8 +298,7 @@ WindowContext::WindowContext(
       stateHandler_(std::move(stateHandler)),
       shiftTimeZone_(shiftTimeZone),
       isEventTime_(isEventTime),
-      allowedLateness_(allowedLateness) {
-}
+      allowedLateness_(allowedLateness) {}
 
 StatePtr WindowContext::getPartitionedState(StateDescriptor& stateDescriptor) {
   return stateHandler_->getGroupMapState(stateDescriptor);
@@ -316,22 +340,25 @@ void WindowContext::clearTrigger(TimeWindow window) {
 }
 
 void WindowContext::deleteCleanupTimer(TimeWindow window) {
-  int64_t cleanupTime =
-      TimeWindowUtil::toEpochMillsForTimer(
-          TimeWindowUtil::cleanupTime(window.maxTimestamp(), allowedLateness_, isEventTime_),
-          shiftTimeZone_);
+  int64_t cleanupTime = TimeWindowUtil::toEpochMillsForTimer(
+      TimeWindowUtil::cleanupTime(
+          window.maxTimestamp(), allowedLateness_, isEventTime_),
+      shiftTimeZone_);
   if (cleanupTime == INT64_MAX) {
-      // no need to clean up because we didn't set one
-      return;
+    // no need to clean up because we didn't set one
+    return;
   }
   if (isEventTime_) {
-      triggerContext_->deleteEventTimeTimer(currentKey_, window, cleanupTime);
+    triggerContext_->deleteEventTimeTimer(currentKey_, window, cleanupTime);
   } else {
-      triggerContext_->deleteProcessingTimeTimer(currentKey_, window, cleanupTime);
+    triggerContext_->deleteProcessingTimeTimer(
+        currentKey_, window, cleanupTime);
   }
 }
 
-void WindowContext::onMerge(TimeWindow newWindow, std::vector<TimeWindow>& mergedWindows) {
+void WindowContext::onMerge(
+    TimeWindow newWindow,
+    std::vector<TimeWindow>& mergedWindows) {
   triggerContext_->onMerge(currentKey_, newWindow);
 }
 } // namespace facebook::velox::stateful

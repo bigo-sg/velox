@@ -23,8 +23,7 @@ KeySelector::KeySelector(
     int numPartitions)
     : partitionFunction_(std::move(partitionFunction)),
       pool_(pool),
-      numPartitions_(numPartitions) {
-}
+      numPartitions_(numPartitions) {}
 
 std::map<int64_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input) {
   if (numPartitions_ == 1) {
@@ -32,7 +31,7 @@ std::map<int64_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input
   }
   prepareForInput(input);
 
-  // TODO: The partition function doesn't use max parallism.
+  // TODO: The partition function doesn't use max parallelism.
   std::vector<uint32_t> partitions(input->size());
   auto part = partitionFunction_->partition(*input, partitions);
   if (part) {
@@ -88,8 +87,7 @@ void KeySelector::allocateIndexBuffers(
     const std::map<uint32_t, vector_size_t>& numOfKeys,
     std::map<uint32_t, BufferPtr>& keyToIndexBuffers,
     std::map<uint32_t, vector_size_t*>& keyToRawIndices) {
-
-  for (auto & [key, num] : numOfKeys) {
+  for (auto& [key, num] : numOfKeys) {
     keyToIndexBuffers[key] = allocateIndices(num, pool_);
     keyToRawIndices[key] = keyToIndexBuffers[key]->asMutable<vector_size_t>();
   }

@@ -15,6 +15,8 @@
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
+#include <cstdint>
+#include <chrono>
 #include <numeric>
 
 namespace facebook::velox::stateful {

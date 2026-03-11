@@ -29,6 +29,9 @@ StreamKeyedOperator::StreamKeyedOperator(
 
 void StreamKeyedOperator::initialize() {
   StatefulOperator::initialize();
+}
+
+void StreamKeyedOperator::initializeState() {
   processor_->open(stateHandler().get());
 }
 
@@ -36,21 +39,23 @@ bool StreamKeyedOperator::isFinished() {
   return false;
 }
 
-void StreamKeyedOperator::addInput(RowVectorPtr input) {
+void StreamKeyedOperator::addInput(StreamElementPtr input) {
   VELOX_CHECK_NULL(input_);
-  input_ = std::move(input);
+  auto record = std::static_pointer_cast<StreamRecord>(input);
+  input_ = record->record();
 }
 
 void StreamKeyedOperator::close() {
   StatefulOperator::close();
 }
 
-void StreamKeyedOperator::getOutput() {
+void StreamKeyedOperator::advance() {
   auto keyToData = keySelector_->partition(input_);
-  for (auto & [key, data] : keyToData) {
+  for (auto& [key, data] : keyToData) {
     auto result = processor_->processElements(key, data);
     if (result) {
-      pushOutput(result);
+      pushOutput(
+          std::make_shared<StreamRecord>(getPlanNodeId(), std::move(result)));
     }
   }
   input_.reset();
