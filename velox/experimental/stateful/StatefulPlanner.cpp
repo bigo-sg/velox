@@ -264,134 +264,32 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
     return std::make_unique<LocalWindowAggregator>(
         std::move(op),
         std::move(targets),
-        watermarkAssignerNode->idleTimeout(),
-        watermarkAssignerNode->rowtimeFieldIndex(),
-        watermarkAssignerNode->watermarkInterval());
-  } else if (auto partitionNode =
-      std::dynamic_pointer_cast<const StreamPartitionNode>(statefulNode->node())) {
-    VELOX_CHECK(targets.size() == 0, "StreamPartitionNode should have no targets");
-    int numPartitions = partitionNode->numPartitions();
-    return std::make_unique<StreamPartition>(
-        std::move(op),
-        partitionNode->partition()->partitionFunctionSpec(),
-        numPartitions);
-  } else if (
-      auto joinNode =
-          std::dynamic_pointer_cast<const StreamJoinNode>(statefulNode->node())) {
-    VELOX_CHECK(joinNode->sources().size() == 2, "StreamJoinNode should have 2 sources");
-    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
-    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
-    std::unique_ptr<KeySelector> leftKeySelector =
-        std::make_unique<KeySelector>(
-            std::move(joinNode->leftPartFuncSpec()->create(INT_MAX, false)),
-            op->pool(),
-            joinNode->numPartitions());
-    std::unique_ptr<KeySelector> rightKeySelector =
-        std::make_unique<KeySelector>(
-            std::move(joinNode->rightPartFuncSpec()->create(INT_MAX, false)),
-            op->pool(),
-            joinNode->numPartitions());
-    return std::make_unique<StreamJoin>(
-        std::move(left),
-        std::move(right),
-        std::move(leftKeySelector),
-        std::move(rightKeySelector),
-        std::move(op),
-        std::move(targets));
-  } else if (
-      auto joinNode =
-          std::dynamic_pointer_cast<const StreamWindowJoinNode>(statefulNode->node())) {
-    VELOX_CHECK(joinNode->sources().size() == 2, "StreamWindowJoinNode should have 2 sources");
-    std::unique_ptr<exec::Operator> left = std::move(nodeToOperator(joinNode->sources()[0], ctx));
-    std::unique_ptr<exec::Operator> right = std::move(nodeToOperator(joinNode->sources()[1], ctx));
-    std::unique_ptr<KeySelector> leftKeySelector =
-        std::make_unique<KeySelector>(
-            std::move(joinNode->leftPartFuncSpec()->create(INT_MAX, false)),
-            op->pool(),
-            joinNode->numPartitions());
-    std::unique_ptr<KeySelector> rightKeySelector =
-        std::make_unique<KeySelector>(
-            std::move(joinNode->rightPartFuncSpec()->create(INT_MAX, false)),
-            op->pool(),
-            joinNode->numPartitions());
-    return std::make_unique<WindowJoin>(
-        std::move(left),
-        std::move(right),
-        std::move(leftKeySelector),
-        std::move(rightKeySelector),
-        std::move(op),
-        std::move(targets),
-        joinNode->leftWindowEndIndex(),
-        joinNode->rightWindowEndIndex());
-  } else if (
-      auto windowAggNode =
-          std::dynamic_pointer_cast<const StreamWindowAggregationNode>(statefulNode->node())) {
-    std::unique_ptr<KeySelector> keySelector =
-        std::make_unique<KeySelector>(
-            std::move(windowAggNode->keySelectorSpec()->create(INT_MAX, true)),
-            op->pool());
-    std::unique_ptr<KeySelector> sliceAssigner =
-        std::make_unique<KeySelector>(
-            std::move(windowAggNode->sliceAssignerSpec()->create(INT_MAX, true)),
-            op->pool());
-    if (windowAggNode->isLocalAgg()) {
-      return std::make_unique<LocalWindowAggregator>(
-          std::move(op),
-          std::move(targets),
-          std::move(keySelector),
-          std::move(sliceAssigner),
-          windowAggNode->windowInterval(),
-          windowAggNode->useDayLightSaving(),
-          windowAggNode->outputType());
-    } else {
-      auto localAggregator = windowAggNode->isEventTime() ? nodeToOperator(windowAggNode->localAgg(), ctx) : nullptr;
-      std::unique_ptr<SliceAssigner> globalSliceAssigner =
-          std::make_unique<SliceAssigner>(
-              std::move(sliceAssigner),
-              windowAggNode->size(),
-              windowAggNode->step(),
-              windowAggNode->offset(),
-              Window::getType(windowAggNode->windowType()),
-              windowAggNode->rowtimeIndex());
-      return std::make_unique<WindowAggregator>(
-          windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
-          std::move(op),
-          std::move(targets),
-          std::move(keySelector),
-          std::move(globalSliceAssigner),
-          windowAggNode->windowInterval(),
-          windowAggNode->useDayLightSaving(),
-          windowAggNode->isEventTime(),
-          windowAggNode->windowStartIndex(),
-          windowAggNode->windowEndIndex());
-    }
-  } else if (
-      auto windowAggNode =
-          std::dynamic_pointer_cast<const GroupWindowAggregationNode>(statefulNode->node())) {
-    std::unique_ptr<KeySelector> keySelector =
-        std::make_unique<KeySelector>(
-            std::move(windowAggNode->keySelectorSpec()->create(INT_MAX, true)),
-            op->pool());
-    std::unique_ptr<KeySelector> sliceAssigner =
-        std::make_unique<KeySelector>(
-            std::move(windowAggNode->sliceAssignerSpec()->create(INT_MAX, true)),
-            op->pool());
-    std::unique_ptr<SliceAssigner> windowAssigner =
+        std::move(keySelector),
+        std::move(sliceAssigner),
+        windowAggNode->windowInterval(),
+        windowAggNode->useDayLightSaving(),
+        windowAggNode->outputType());
+  } else {
+    auto localAggregator = transformOperator(windowAggNode->localAgg());
+    std::unique_ptr<SliceAssigner> globalSliceAssigner =
         std::make_unique<SliceAssigner>(
             std::move(sliceAssigner),
-            0,
-            0,
-            0,
+            windowAggNode->size(),
+            windowAggNode->step(),
+            windowAggNode->offset(),
             Window::getType(windowAggNode->windowType()),
             windowAggNode->rowtimeIndex());
     return std::make_unique<WindowAggregator>(
-        std::move(localAggregator),
+        windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
         std::move(op),
         std::move(targets),
         std::move(keySelector),
         std::move(globalSliceAssigner),
         windowAggNode->windowInterval(),
-        windowAggNode->useDayLightSaving());
+        windowAggNode->useDayLightSaving(),
+        windowAggNode->isEventTime(),
+        windowAggNode->windowStartIndex(),
+        windowAggNode->windowEndIndex());
   }
 }
 
@@ -417,7 +315,7 @@ StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(
           0,
           0,
           0,
-          windowAggNode->windowType(),
+          Window::getType(windowAggNode->windowType()),
           windowAggNode->rowtimeIndex());
 
   return std::make_unique<GroupWindowAggregator>(
@@ -545,7 +443,7 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(
       return std::make_unique<exec::StreamingAggregation>(
           nextOperatorId(), ctx_, aggregationNode);
     } else {
-      return std::make_unique<exec::StreamingAggregation>(opId.fetch_add(1), ctx, aggregationNode);
+      return std::make_unique<exec::StreamingAggregation>(nextOperatorId(), ctx_, aggregationNode);
     }
   } else if (
       auto expandNode =

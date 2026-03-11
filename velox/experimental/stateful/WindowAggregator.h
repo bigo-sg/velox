@@ -94,6 +94,7 @@ class WindowAggregator : public StatefulOperator,
   RowVectorPtr input_;
   int64_t currentProgress_ = 0;
   int64_t nextTriggerWatermark_ = 0;
+  int64_t lastTriggeredProcessingTime_ = 0;
   std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> windowState_;
   std::shared_ptr<InternalTimerService<uint32_t, int64_t>> windowTimerService_;
 };

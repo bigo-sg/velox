@@ -112,7 +112,7 @@ void WindowAggregator::advance() {
 }
 
 void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
-  if (isEventTime && timestamp > currentProgress_) {
+  if (isEventTime_ && timestamp > currentProgress_) {
     currentProgress_ = timestamp;
     if (currentProgress_ >= nextTriggerWatermark_) {
       // we only need to call advanceProgress() when current watermark may
@@ -123,9 +123,9 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
           continue;
         }
         // TODO: agg should output no matter how many rows in data.
-        localAggerator_->addInput(
+        localAggregator_->addInput(
             TimeWindowUtil::mergeVectors(datas, op()->pool()));
-        RowVectorPtr localAcc = localAggerator_->getOutput();
+        RowVectorPtr localAcc = localAggregator_->getOutput();
         auto stateAcc =
             windowState_->value(windowKey.key(), windowKey.window());
         std::list<RowVectorPtr> allDatas;
@@ -233,7 +233,7 @@ void WindowAggregator::fireWindow(K key, long timerTimestamp, long windowEnd) {
     }
   }
   if (output) {
-    pushOutput(output);
+    pushOutput(std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
   }
 }
 

@@ -24,19 +24,6 @@ public:
         return currentKey_;
     }
 
-/**
- * This class is relevant to Flink org.apache.flink.runtime.state.heap.StateMap.
- * remove namespace first. It is a simplified implementation.
- * @param <K> type of key
- * @param <N> type of namespace
- * @param <S> type of state
- */
-template <typename K, typename N, typename S>
-class StateEntry {
- public:
-  StateEntry(K key, N ns, S state)
-      : key_(std::move(key)), namespace_(ns), state_(std::move(state)) {}
-
     void setCurrentKey(K key) {
         currentKey_ = key;
     }
