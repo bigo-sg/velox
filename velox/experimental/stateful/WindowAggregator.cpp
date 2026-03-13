@@ -102,7 +102,7 @@ void WindowAggregator::advance() {
               key, unfiredFirstWindow, unfiredFirstWindow - 1);
         }
       } else {
-	  // the assigned slice hasn't been triggered, accumulate into the assigned slice
+          // the assigned slice hasn't been triggered, accumulate into the assigned slice
           std::lock_guard<std::mutex> lock(*mtx_);
           windowBuffer_->addElement(key, sliceEnd, windowData);
       }

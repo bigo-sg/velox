@@ -109,13 +109,13 @@ HeapKeyedStateBackend::getOrCreateRankMapState(
 std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
 HeapKeyedStateBackend::createTimerService(
     Triggerable<uint32_t, int64_t>* triggerable) {
-  return std::make_shared<InternalTimerService<uint32_t, int64_t>>(triggerable);
+  return std::make_shared<InternalTimerServiceImpl<uint32_t, int64_t>>(triggerable);
 }
 
 std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
 HeapKeyedStateBackend::createGroupWindowAggTimerService(
     Triggerable<uint32_t, TimeWindow>* triggerable) {
-  return std::make_shared<InternalTimerService<uint32_t, TimeWindow>>(
+  return std::make_shared<InternalTimerServiceImpl<uint32_t, TimeWindow>>(
       triggerable);
 }
 
