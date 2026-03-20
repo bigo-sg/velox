@@ -36,6 +36,10 @@ class InternalTimerService {
   virtual void deleteEventTimeTimer(K key, N ns, int64_t time) {}
   virtual void registerProcessingTimeTimer(K key, N ns, int64_t time) {}
   virtual void deleteProcessingTimeTimer(K key, N ns, int64_t time) {}
+  virtual void registerProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
+  virtual void deleteProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
+  virtual void registerEventTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
+  virtual void deleteEventTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
   virtual int64_t currentWatermark() { return 0;}
   virtual int64_t currentProcessingTime() { return 0; }
   virtual void advanceWatermark(int64_t time) {}
@@ -145,7 +149,29 @@ class InternalTimerServiceImpl : public InternalTimerService<K, N> {
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>, HeapTimerComparator<K, N>, HeapTimerHasher<K, N>, HeapTimerEquals<K, N>> processingTimeTimersQueue_;
 };
 
-namespace {
+template <typename K, typename N>
+class StatefulTimerService : public InternalTimerService<K, N> {
+ public:
+  StatefulTimerService(const std::string& serviceId)
+      : serviceId_(serviceId) {}
+
+  void registerProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) override {
+    // TODO: Implement registerProcessingTimeTimers logic.
+  }
+
+  void deleteProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) override {
+    // TODO: Implement deleteProcessingTimeTimers logic.
+  }
+
+  void close() override {
+    // TODO: Implement close logic.
+  }
+private:
+  // JNIEnv* env_;
+  const std::string serviceId_;
+};
+
+// 将 timerServices 移出匿名命名空间，使所有翻译单元共享同一个实例
 template <typename K, typename N>
 std::unordered_map<std::string, std::shared_ptr<InternalTimerService<K, N>>>&
 timerServices() {
@@ -153,7 +179,6 @@ timerServices() {
       services;
   return services;
 }
-} // namespace
 
 /// Adds timer service instance to the registry using service ID as the key.
 /// Throws if timer service with the same ID is already present. Always returns

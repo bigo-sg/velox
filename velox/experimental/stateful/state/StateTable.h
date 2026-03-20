@@ -17,7 +17,6 @@
 
 #include "velox/experimental/stateful/state/StateMap.h"
 #include <vector>
-#include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/state/StateMap.h"
 
 namespace facebook::velox::stateful {

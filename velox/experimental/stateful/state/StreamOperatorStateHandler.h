@@ -80,14 +80,14 @@ class StreamOperatorStateHandler {
     return keyedStateBackend_->getOrCreateRankMapState(stateDescriptor);
   }
 
-  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
-      Triggerable<uint32_t, int64_t>* triggerable) {
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(
+      Triggerable<int64_t, int64_t>* triggerable) {
     return keyedStateBackend_->createTimerService(triggerable);
   }
 
   // TODO: should make it using template
-  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> createGroupWindowAggTimerService(
-    Triggerable<uint32_t, TimeWindow>* triggerable) {
+  std::shared_ptr<InternalTimerService<int64_t, TimeWindow>> createGroupWindowAggTimerService(
+    Triggerable<int64_t, TimeWindow>* triggerable) {
     return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
   }
 

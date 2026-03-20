@@ -52,11 +52,11 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   getOrCreateRankMapState(StateDescriptor& stateDescriptor) = 0;
 
   // TODO: Flink create PriorityQueue.
-  virtual std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
-  createTimerService(Triggerable<uint32_t, int64_t>* triggerable) = 0;
+  virtual std::shared_ptr<InternalTimerService<int64_t, int64_t>>
+  createTimerService(Triggerable<int64_t, int64_t>* triggerable) = 0;
 
-  virtual std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
-      createGroupWindowAggTimerService(Triggerable<uint32_t, TimeWindow>* triggerable) = 0;
+  virtual std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
+      createGroupWindowAggTimerService(Triggerable<int64_t, TimeWindow>* triggerable) = 0;
 
   void setCurrentKey(const uint32_t key) {
     keyContext_->setCurrentKey(key);

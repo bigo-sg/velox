@@ -178,15 +178,15 @@ RocksDBKeyedStateBackend::getOrCreateRankMapState(
   return nullptr;
 }
 
-std::shared_ptr<InternalTimerService<uint32_t, int64_t>>
+std::shared_ptr<InternalTimerService<int64_t, int64_t>>
 RocksDBKeyedStateBackend::createTimerService(
-    Triggerable<uint32_t, int64_t>* triggerable) {
-  return std::make_shared<InternalTimerServiceImpl<uint32_t, int64_t>>(triggerable);
+    Triggerable<int64_t, int64_t>* triggerable) {
+  return std::make_shared<InternalTimerServiceImpl<int64_t, int64_t>>(triggerable);
 }
 
-std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
 RocksDBKeyedStateBackend::createGroupWindowAggTimerService(
-    Triggerable<uint32_t, TimeWindow>* triggerable) {
+    Triggerable<int64_t, TimeWindow>* triggerable) {
   // TODO: implement this
   return nullptr;
 }

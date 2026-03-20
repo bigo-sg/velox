@@ -17,7 +17,6 @@
 #include <cstdint>
 
 #include <memory>
-#include <mutex>
 #include "velox/exec/Driver.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
@@ -34,7 +33,7 @@ namespace facebook::velox::stateful {
 /// This class is related to XXXWindowAggProcessor in Flink.
 /// Its work includes both WindowAggOperator and XXXWindowAggOperator.
 class WindowAggregator : public StatefulOperator,
-                         public Triggerable<uint32_t, int64_t> {
+                         public Triggerable<int64_t, int64_t> {
  public:
   WindowAggregator(
     std::unique_ptr<exec::Operator> localAggregator,
@@ -62,17 +61,17 @@ class WindowAggregator : public StatefulOperator,
     return "WindowAggregator";
   }
 
-  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>>
+  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                        timer) override;
 
-  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) override;
+  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) override;
 
  private:
   void processWatermarkInternal(int64_t timestamp);
 
   int64_t sliceStateMergeTarget(int64_t sliceToMerge);
 
-  void onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer);
+  void onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer);
 
   template<typename K>
   void fireWindow(K key, long timerTImestamp, long windowEnd);
@@ -96,7 +95,7 @@ class WindowAggregator : public StatefulOperator,
   int64_t nextTriggerWatermark_ = 0;
   int64_t lastTriggeredProcessingTime_ = 0;
   std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> windowState_;
-  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> windowTimerService_;
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> windowTimerService_;
 };
 
 } // namespace facebook::velox::stateful

@@ -19,6 +19,7 @@
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
+#include <experimental/stateful/InternalTimerService.h>
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
@@ -35,7 +36,7 @@ WindowAggregator::WindowAggregator(
     const bool isEventTime,
     const int windowStartIndex,
     const int windowEndIndex)
-    : StatefulOperator(std::move(globalAggregator), std::move(targets)), Triggerable<uint32_t, long>(),
+    : StatefulOperator(std::move(globalAggregator), std::move(targets)), Triggerable<int64_t, long>(),
       localAggregator_(std::move(localAggregator)),
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
@@ -71,14 +72,43 @@ void WindowAggregator::advance() {
     return;
   }
 
+  /// key -> [sliceEnd, timestmap]
+  /// key -> [sliceEnd, data]
+  std::unordered_map<int64_t, std::map<int64_t, int64_t>> keyToSliceEnds;
+  std::unordered_map<int64_t, std::map<int64_t, RowVectorPtr>> keyToSliceDatas;
   std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
     std::map<int64_t, RowVectorPtr> sliceEndToData = sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
-      auto windowData = data;
-      if (!isEventTime_) {
-        windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd);
+      if (isEventTime_) {
+        // we need to register a timer for the next unfired window,
+        // because this may the first time we see elements under the key
+        int64_t unfiredFirstWindow = sliceEnd;
+        while (TimeWindowUtil::isWindowFired(
+            unfiredFirstWindow, currentProgress_, shiftTimeZone_)) {
+          unfiredFirstWindow += windowInterval_;
+        }
+        keyToSliceEnds[key][unfiredFirstWindow] = unfiredFirstWindow - 1;
+      } else {
+        keyToSliceEnds[key][sliceEnd] = sliceEnd;
       }
+      keyToSliceDatas[key][sliceEnd] = data;
+    }
+  }
+
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> statefulTimerService =
+    stateful::getTimerService<int64_t, int64_t>("stateful-timer-service");
+
+  VELOX_CHECK(statefulTimerService, "Stateful timer service not found");
+  if (!isEventTime_) {
+    statefulTimerService->registerProcessingTimeTimers(keyToSliceEnds);
+  } else {
+    statefulTimerService->registerEventTimeTimers(keyToSliceEnds);
+  }
+
+  for (const auto& [key, sliceEndToData] : keyToSliceDatas) {
+    for (const auto& [sliceEnd, data] : sliceEndToData) {
+      auto windowData = data;
       if (isEventTime_ && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
         // the assigned slice has been triggered, which means current element is late,
         // but maybe not need to drop
@@ -91,15 +121,6 @@ void WindowAggregator::advance() {
           // TODO: addElement may have data output.
           windowBuffer_->addElement(
               key, sliceStateMergeTarget(sliceEnd), windowData);
-          // we need to register a timer for the next unfired window,
-          // because this may the first time we see elements under the key
-          int64_t unfiredFirstWindow = sliceEnd;
-          while (TimeWindowUtil::isWindowFired(
-              unfiredFirstWindow, currentProgress_, shiftTimeZone_)) {
-            unfiredFirstWindow += windowInterval_;
-          }
-          windowTimerService_->registerEventTimeTimer(
-              key, unfiredFirstWindow, unfiredFirstWindow - 1);
         }
       } else {
           // the assigned slice hasn't been triggered, accumulate into the assigned slice
@@ -205,7 +226,7 @@ RowVectorPtr addWindowTimestampToOutput(
   );
 }
 
-void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) {
   fireWindow(timer->key(), timer->timestamp(), timer->ns());
   clearWindow(timer->key(), timer->timestamp(), timer->ns());
 }
@@ -242,11 +263,11 @@ void WindowAggregator::clearWindow(K key, long timerTimestamp, long windowEnd) {
   windowState_->remove(key, windowEnd);
 }
 
-void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowAggregator::onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) {
   onTimer(timer);
 }
 
-void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, long>> timer) {
+void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) {
   if (timer->timestamp() > lastTriggeredProcessingTime_) {
     lastTriggeredProcessingTime_ = timer->timestamp();
     auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());

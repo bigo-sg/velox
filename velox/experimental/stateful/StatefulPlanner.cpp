@@ -270,7 +270,8 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
         windowAggNode->useDayLightSaving(),
         windowAggNode->outputType());
   } else {
-    auto localAggregator = transformOperator(windowAggNode->localAgg());
+    auto localAggregator =
+        windowAggNode->isEventTime() ? transformOperator(windowAggNode->localAgg()) : nullptr;
     std::unique_ptr<SliceAssigner> globalSliceAssigner =
         std::make_unique<SliceAssigner>(
             std::move(sliceAssigner),
