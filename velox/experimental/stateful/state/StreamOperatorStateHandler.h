@@ -60,7 +60,7 @@ class StreamOperatorStateHandler {
     return keyedStateBackend_->getOrCreateListState(stateDescriptor);
   }
 
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> getValueState(
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>> getValueState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateValueState(stateDescriptor);
   }

@@ -30,7 +30,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateListState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) override;
 
   std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(

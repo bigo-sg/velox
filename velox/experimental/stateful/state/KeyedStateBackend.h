@@ -39,7 +39,7 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   virtual std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateListState(StateDescriptor& stateDescriptor) = 0;
 
-  virtual std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+  virtual std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) = 0;
 
   virtual std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>

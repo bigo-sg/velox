@@ -61,6 +61,10 @@ class WindowAggregator : public StatefulOperator,
     return "WindowAggregator";
   }
 
+  void processWatermark(int64_t timestamp) override {
+    // processWatermarkInternal(timestamp);
+  }
+
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                        timer) override;
 
@@ -94,7 +98,7 @@ class WindowAggregator : public StatefulOperator,
   int64_t currentProgress_ = 0;
   int64_t nextTriggerWatermark_ = 0;
   int64_t lastTriggeredProcessingTime_ = 0;
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> windowState_;
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>> windowState_;
   std::shared_ptr<InternalTimerService<int64_t, int64_t>> windowTimerService_;
 };
 

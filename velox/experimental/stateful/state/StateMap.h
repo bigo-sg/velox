@@ -191,7 +191,7 @@ class StateMap {
           prev->next_ = e->next_;
         }
         ++modCount_;
-        if (tab == primaryTable_) {
+        if (&tab == &primaryTable_) {
           --primaryTableSize_;
         } else {
           --incrementalRehashTableSize_;
@@ -212,7 +212,7 @@ class StateMap {
     uint64_t index = hash & (table.size() - 1);
     std::shared_ptr<StateMapEntry<K, N, S>> newEntry = std::make_shared<StateMapEntry<K, N, S>>(key, ns, nullptr, hash, table[index], stateMapVersion_, stateMapVersion_);
     table[index] = newEntry;
-    if (table == primaryTable_) {
+    if (&table == &primaryTable_) {
       ++primaryTableSize_;
     } else {
       ++incrementalRehashTableSize_;

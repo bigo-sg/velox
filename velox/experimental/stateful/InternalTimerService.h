@@ -20,48 +20,29 @@
 #include "velox/experimental/stateful/InternalPriorityQueue.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
-#include "velox/common/base/Exceptions.h"
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 
 namespace facebook::velox::stateful {
 
+// This class is relevant to Flink InternalTimerServiceImpl.
 template <typename K, typename N>
 class InternalTimerService {
  public:
-  virtual void registerEventTimeTimer(K key, N ns, int64_t time) {}
-  virtual void deleteEventTimeTimer(K key, N ns, int64_t time) {}
-  virtual void registerProcessingTimeTimer(K key, N ns, int64_t time) {}
-  virtual void deleteProcessingTimeTimer(K key, N ns, int64_t time) {}
-  virtual void registerProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
-  virtual void deleteProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
-  virtual void registerEventTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
-  virtual void deleteEventTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) {}
-  virtual int64_t currentWatermark() { return 0;}
-  virtual int64_t currentProcessingTime() { return 0; }
-  virtual void advanceWatermark(int64_t time) {}
-  virtual void close() {}
-};
-
-// This class is relevant to Flink InternalTimerServiceImpl.
-template <typename K, typename N>
-class InternalTimerServiceImpl : public InternalTimerService<K, N> {
- public:
-  InternalTimerServiceImpl(Triggerable<K, N>* triggerable)
+  InternalTimerService(Triggerable<K, N>* triggerable)
       : triggerable_(triggerable), processingTimeService_(std::make_shared<SystemProcessingTimeService>()) {}
 
-  void registerEventTimeTimer(K key, N ns, int64_t time) override {
+  void registerEventTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void deleteEventTimeTimer(K key, N ns, int64_t time) override {
+  void deleteEventTimeTimer(K key, N ns, int64_t time) {
     eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  void registerProcessingTimeTimer(K key, N ns, int64_t time) override {
+  void registerProcessingTimeTimer(K key, N ns, int64_t time) {
     const std::shared_ptr<TimerHeapInternalTimer<K, N>>& oldHead = processingTimeTimersQueue_.empty() ? nullptr : processingTimeTimersQueue_.peek();
     if (processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns))) {
       int64_t nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<int64_t>::max() ;
@@ -76,11 +57,11 @@ class InternalTimerServiceImpl : public InternalTimerService<K, N> {
     }
   }
 
-  void deleteProcessingTimeTimer(K key, N ns, int64_t time) override {
+  void deleteProcessingTimeTimer(K key, N ns, int64_t time) {
     processingTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
   }
 
-  int64_t currentWatermark() override {
+  int64_t currentWatermark() {
     // TODO: Implement watermark logic if needed.
     const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
     if (timer != nullptr) {
@@ -89,12 +70,12 @@ class InternalTimerServiceImpl : public InternalTimerService<K, N> {
     return 0; // or some other default value
   }
 
-  int64_t currentProcessingTime() override {
+  int64_t currentProcessingTime() {
     // TODO: Implement processing time logic if needed.
     return 0; // or some other default value
   }
 
-  void advanceWatermark(int64_t time) override {
+  void advanceWatermark(int64_t time) {
     const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
     while (timer != nullptr && timer->timestamp() <= time) {
       auto timer = eventTimeTimersQueue_.poll();
@@ -102,7 +83,7 @@ class InternalTimerServiceImpl : public InternalTimerService<K, N> {
     }
   }
 
-  void close() override {
+  void close() {
     eventTimeTimersQueue_.clear();
     processingTimeTimersQueue_.clear();
     processingTimeService_->close();
@@ -148,81 +129,5 @@ class InternalTimerServiceImpl : public InternalTimerService<K, N> {
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>, HeapTimerComparator<K, N>, HeapTimerHasher<K, N>, HeapTimerEquals<K, N>> eventTimeTimersQueue_;
   HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>, HeapTimerComparator<K, N>, HeapTimerHasher<K, N>, HeapTimerEquals<K, N>> processingTimeTimersQueue_;
 };
-
-template <typename K, typename N>
-class StatefulTimerService : public InternalTimerService<K, N> {
- public:
-  StatefulTimerService(const std::string& serviceId)
-      : serviceId_(serviceId) {}
-
-  void registerProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) override {
-    // TODO: Implement registerProcessingTimeTimers logic.
-  }
-
-  void deleteProcessingTimeTimers(const std::unordered_map<K, std::map<N, int64_t>>& timers) override {
-    // TODO: Implement deleteProcessingTimeTimers logic.
-  }
-
-  void close() override {
-    // TODO: Implement close logic.
-  }
-private:
-  // JNIEnv* env_;
-  const std::string serviceId_;
-};
-
-// 将 timerServices 移出匿名命名空间，使所有翻译单元共享同一个实例
-template <typename K, typename N>
-std::unordered_map<std::string, std::shared_ptr<InternalTimerService<K, N>>>&
-timerServices() {
-  static std::unordered_map<std::string, std::shared_ptr<InternalTimerService<K, N>>>
-      services;
-  return services;
-}
-
-/// Adds timer service instance to the registry using service ID as the key.
-/// Throws if timer service with the same ID is already present. Always returns
-/// true. The return value makes it easy to use with FB_ANONYMOUS_VARIABLE.
-template <typename K, typename N>
-bool registerTimerService(
-    const std::string& serviceId,
-    std::shared_ptr<InternalTimerService<K, N>> service) {
-  bool ok = timerServices<K, N>().insert({serviceId, service}).second;
-  VELOX_CHECK(
-      ok,
-      "InternalTimerService with ID '{}' is already registered",
-      serviceId);
-  return true;
-}
-
-/// Removes the timer service with specified ID from the registry. Returns true
-/// if timer service was removed and false if timer service didn't exist.
-template <typename K, typename N>
-bool unregisterTimerService(const std::string& serviceId) {
-  auto count = timerServices<K, N>().erase(serviceId);
-  return count == 1;
-}
-
-/// Returns a timer service with specified ID. Throws if timer service doesn't
-/// exist.
-template <typename K, typename N>
-std::shared_ptr<InternalTimerService<K, N>> getTimerService(
-    const std::string& serviceId) {
-  auto& services = timerServices<K, N>();
-  auto it = services.find(serviceId);
-  VELOX_CHECK(
-      it != services.end(),
-      "InternalTimerService with ID '{}' not registered",
-      serviceId);
-  return it->second;
-}
-
-/// Returns a map of all (serviceId -> timerService) pairs currently
-/// registered.
-template <typename K, typename N>
-const std::unordered_map<std::string, std::shared_ptr<InternalTimerService<K, N>>>&
-getAllTimerServices() {
-  return timerServices<K, N>();
-}
 
 } // namespace facebook::velox::stateful
