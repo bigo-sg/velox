@@ -20,6 +20,7 @@
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/window/WindowBuffer.h"
+#include "velox/experimental/stateful/window/SliceAssigner.h"
 
 namespace facebook::velox::stateful {
 
@@ -31,7 +32,7 @@ class LocalWindowAggregator : public StatefulOperator {
       std::unique_ptr<exec::Operator> op,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
       std::unique_ptr<KeySelector> keySelector,
-      std::unique_ptr<KeySelector> sliceAssigner,
+      std::unique_ptr<SliceAssigner> sliceAssigner,
       const int64_t windowInterval,
       const bool useDayLightSaving,
       RowTypePtr outputType);
@@ -42,6 +43,10 @@ class LocalWindowAggregator : public StatefulOperator {
 
   void close() override;
 
+  void processWatermark(int64_t timestamp) override {
+    processWatermarkInternal(timestamp);
+  }
+
   std::string name() const override {
     return "LocalWindowAggregator";
   }
@@ -51,7 +56,7 @@ class LocalWindowAggregator : public StatefulOperator {
   RowVectorPtr addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd);
 
   std::unique_ptr<KeySelector> keySelector_;
-  std::unique_ptr<KeySelector> sliceAssigner_;
+  std::unique_ptr<SliceAssigner> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
   const int64_t windowInterval_;
   const bool useDayLightSaving_;

@@ -257,9 +257,11 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
 
   std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
       windowAggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
-  std::unique_ptr<KeySelector> sliceAssigner = std::make_unique<KeySelector>(
+  std::unique_ptr<KeySelector> keySelectorForSliceAssigner = std::make_unique<KeySelector>(
       windowAggNode->sliceAssignerSpec()->create(INT_MAX, true), op->pool());
-
+  std::unique_ptr<SliceAssigner> sliceAssigner =
+      std::make_unique<SliceAssigner>(std::move(keySelectorForSliceAssigner), windowAggNode->size(), windowAggNode->step(),
+      windowAggNode->offset(),Window::getType(windowAggNode->windowType()),windowAggNode->rowtimeIndex());
   if (windowAggNode->isLocalAgg()) {
     return std::make_unique<LocalWindowAggregator>(
         std::move(op),
@@ -272,20 +274,12 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
   } else {
     auto localAggregator =
         windowAggNode->isEventTime() ? transformOperator(windowAggNode->localAgg()) : nullptr;
-    std::unique_ptr<SliceAssigner> globalSliceAssigner =
-        std::make_unique<SliceAssigner>(
-            std::move(sliceAssigner),
-            windowAggNode->size(),
-            windowAggNode->step(),
-            windowAggNode->offset(),
-            Window::getType(windowAggNode->windowType()),
-            windowAggNode->rowtimeIndex());
     return std::make_unique<WindowAggregator>(
         windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
         std::move(op),
         std::move(targets),
         std::move(keySelector),
-        std::move(globalSliceAssigner),
+        std::move(sliceAssigner),
         windowAggNode->windowInterval(),
         windowAggNode->useDayLightSaving(),
         windowAggNode->isEventTime(),

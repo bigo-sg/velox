@@ -83,7 +83,7 @@ void WindowAggregator::advance() {
       if (isEventTime_ && TimeWindowUtil::isWindowFired(sliceEnd, currentProgress_, shiftTimeZone_)) {
         // the assigned slice has been triggered, which means current element is late,
         // but maybe not need to drop
-        long lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
+        int64_t lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
         if (TimeWindowUtil::isWindowFired(lastWindowEnd, currentProgress_, shiftTimeZone_)) {
             // the last window has been triggered, so the element can be dropped now
             // TODO: record dropped counter.
@@ -92,7 +92,12 @@ void WindowAggregator::advance() {
           // TODO: addElement may have data output.
           windowBuffer_->addElement(
               key, sliceStateMergeTarget(sliceEnd), windowData);
+          int64_t unfiredFirstWindow = sliceEnd;
+          while (TimeWindowUtil::isWindowFired(unfiredFirstWindow, currentProgress_, shiftTimeZone_)) {
+            unfiredFirstWindow += windowInterval_;
           }
+          windowTimerService_->registerEventTimeTimer(key, unfiredFirstWindow, unfiredFirstWindow - 1);
+        }
       } else {
         // the assigned slice hasn't been triggered, accumulate into the assigned slice
         std::lock_guard<std::mutex> lock(*mtx_);
