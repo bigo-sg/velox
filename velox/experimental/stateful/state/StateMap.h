@@ -36,7 +36,7 @@ class StateMap {
     tempTable_.resize(1024);
   }
 
-  S get(K key, N ns) {
+  S get(const K& key, const N& ns) {
     auto hash = (std::hash<K>{}(key) + std::hash<N>{}(ns)) % tempTable_.size();
     if (tempTable_[hash] != nullptr && tempTable_[hash]->getKey() == key &&
         tempTable_[hash]->getNamespace() == ns) {
@@ -45,13 +45,13 @@ class StateMap {
     return S(); // Return default state if not found
   }
 
-  void put(K key, N ns, S state) {
+  void put(const K& key, const N& ns, const S& state) {
     // TODO: add enlarge logic.
     auto hash = (std::hash<K>{}(key) + std::hash<N>{}(ns)) % tempTable_.size();
     tempTable_[hash] = std::make_shared<StateEntry<K, N, S>>(key, ns, state);
   }
 
-  void remove(K key, N ns) {
+  void remove(const K& key, const N& ns) {
     auto hash = (std::hash<K>{}(key) + std::hash<N>{}(ns)) % tempTable_.size();
     if (tempTable_[hash] != nullptr && tempTable_[hash]->getKey() == key &&
         tempTable_[hash]->getNamespace() == ns) {

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 
 namespace facebook::velox::stateful {
 
@@ -25,24 +26,37 @@ KeySelector::KeySelector(
       pool_(pool),
       numPartitions_(numPartitions) {}
 
-std::map<uint32_t, RowVectorPtr> KeySelector::partition(
+std::map<int64_t, RowVectorPtr> KeySelector::partition(
     const RowVectorPtr& input) {
   if (numPartitions_ == 1) {
-    return std::map<uint32_t, RowVectorPtr>{{0, input}};
+    return std::map<int64_t, RowVectorPtr>{{0, input}};
   }
   prepareForInput(input);
 
   // TODO: The partition function doesn't use max parallelism.
-  std::vector<uint32_t> partitions(input->size());
-  auto part = partitionFunction_->partition(*input, partitions);
-  if (part) {
+  std::vector<int64_t> partitions(input->size());
+  std::optional<int64_t> res;
+  auto windowPartitionFunction = dynamic_cast<WindowPartitionFunction*>(partitionFunction_.get());
+  if (windowPartitionFunction) {
+    res = windowPartitionFunction->partition(*input, partitions);
+  } else {
+    std::vector<uint32_t> tmpPartitions(input->size());
+    std::optional<uint32_t> tmpRes = partitionFunction_->partition(*input, tmpPartitions);
+    if (tmpRes) {
+      res = static_cast<int64_t>(*tmpRes);
+    }
+    for (vector_size_t i = 0; i < tmpPartitions.size(); ++i) {
+      partitions[i] = static_cast<int64_t>(tmpPartitions[i]);
+    }
+  }
+  if (res) {
     // TODO: this is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
     // to verify whether the judge condition is enough.
-    return std::map<uint32_t, RowVectorPtr>{{*part, input}};
+    return std::map<int64_t, RowVectorPtr>{{*res, input}};
   }
   const auto numInput = input->size();
-  std::map<uint32_t, vector_size_t> numOfKeys;
+  std::map<int64_t, vector_size_t> numOfKeys;
   for (auto i = 0; i < numInput; ++i) {
     if (numOfKeys.count(partitions[i]) == 0) {
       numOfKeys[partitions[i]] = 1;
@@ -51,8 +65,8 @@ std::map<uint32_t, RowVectorPtr> KeySelector::partition(
     }
   }
 
-  std::map<uint32_t, BufferPtr> keyToIndexBuffers;
-  std::map<uint32_t, vector_size_t*> keyToRawIndices;
+  std::map<int64_t, BufferPtr> keyToIndexBuffers;
+  std::map<int64_t, vector_size_t*> keyToRawIndices;
   allocateIndexBuffers(numOfKeys, keyToIndexBuffers, keyToRawIndices);
 
   numOfKeys.clear();
@@ -66,7 +80,7 @@ std::map<uint32_t, RowVectorPtr> KeySelector::partition(
     numOfKeys[partition] = index + 1;
   }
 
-  std::map<uint32_t, RowVectorPtr> results;
+  std::map<int64_t, RowVectorPtr> results;
   for (auto& [key, partitionSize] : numOfKeys) {
     auto partitionData =
         wrapChildren(input, partitionSize, keyToIndexBuffers[key]);
@@ -86,9 +100,9 @@ void KeySelector::prepareForInput(const RowVectorPtr& input) {
 }
 
 void KeySelector::allocateIndexBuffers(
-    const std::map<uint32_t, vector_size_t>& numOfKeys,
-    std::map<uint32_t, BufferPtr>& keyToIndexBuffers,
-    std::map<uint32_t, vector_size_t*>& keyToRawIndices) {
+    const std::map<int64_t, vector_size_t>& numOfKeys,
+    std::map<int64_t, BufferPtr>& keyToIndexBuffers,
+    std::map<int64_t, vector_size_t*>& keyToRawIndices) {
   for (auto& [key, num] : numOfKeys) {
     keyToIndexBuffers[key] = allocateIndices(num, pool_);
     keyToRawIndices[key] = keyToIndexBuffers[key]->asMutable<vector_size_t>();

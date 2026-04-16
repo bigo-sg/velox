@@ -31,15 +31,15 @@ class KeySelector {
       memory::MemoryPool* pool,
       int numPartitions = INT_MAX);
 
-  std::map<uint32_t, RowVectorPtr> partition(const RowVectorPtr& input);
+  std::map<int64_t, RowVectorPtr> partition(const RowVectorPtr& input);
 
  private:
   void prepareForInput(const RowVectorPtr& input);
 
   void allocateIndexBuffers(
-      const std::map<uint32_t, vector_size_t>& numOfKeys,
-      std::map<uint32_t, BufferPtr>& keyToIndexBuffers,
-      std::map<uint32_t, vector_size_t*>& keyToRawIndices);
+      const std::map<int64_t, vector_size_t>& numOfKeys,
+      std::map<int64_t, BufferPtr>& keyToIndexBuffers,
+      std::map<int64_t, vector_size_t*>& keyToRawIndices);
 
   RowVectorPtr wrapChildren(
       const RowVectorPtr& input,

@@ -58,8 +58,8 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
   getOrCreateRankMapState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
-      Triggerable<uint32_t, int64_t>* triggerable) override;
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(
+      Triggerable<int64_t, int64_t>* triggerable) override;
 
   std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
   createGroupWindowAggTimerService(

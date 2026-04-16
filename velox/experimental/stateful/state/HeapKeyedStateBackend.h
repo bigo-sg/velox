@@ -33,8 +33,8 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
-      Triggerable<uint32_t, int64_t>* triggerable) override;
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(
+      Triggerable<int64_t, int64_t>* triggerable) override;
 
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
   getOrCreateGroupValueState(StateDescriptor& stateDescriptor) override;

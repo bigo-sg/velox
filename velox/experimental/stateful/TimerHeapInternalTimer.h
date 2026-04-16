@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #pragma once
+#include "velox/common/base/BitUtil.h"
 #include <cstdint>
 
 namespace facebook::velox::stateful {
@@ -22,22 +23,22 @@ namespace facebook::velox::stateful {
 template <typename K, typename N>
 class TimerHeapInternalTimer {
  public:
-  TimerHeapInternalTimer(int64_t timestamp, K key, N ns)
+  TimerHeapInternalTimer(int64_t timestamp, const K& key, const N& ns)
       : timestamp_(timestamp), key_(key), ns_(ns), keyGroupIndex_(0) {}
 
-  int64_t timestamp() {
+  int64_t timestamp() const {
     return timestamp_;
   }
 
-  K key() {
+  const K& key() const {
     return key_;
   }
 
-  N ns() {
+  const N& ns() const {
     return ns_;
   }
 
-  int keyGroupIndex() {
+  int keyGroupIndex() const {
     return keyGroupIndex_;
   }
 
@@ -51,6 +52,44 @@ class TimerHeapInternalTimer {
   K key_;
   N ns_;
   int keyGroupIndex_;
+};
+
+// Hash/Equal/Comparator/PriorityFn functors operate on TimerHeapInternalTimer
+// values directly (no shared_ptr indirection), so they can be used with a
+// HeapPriorityQueue whose element type is TimerHeapInternalTimer<K, N>.
+template <typename K, typename N>
+struct HeapTimerHasher {
+  size_t operator()(const TimerHeapInternalTimer<K, N>& a) const {
+    return bits::hashMix(a.timestamp(), a.key());
+  }
+};
+
+template <typename K, typename N>
+struct HeapTimerEquals {
+  bool operator()(
+      const TimerHeapInternalTimer<K, N>& a,
+      const TimerHeapInternalTimer<K, N>& b) const {
+    return a == b;
+  }
+};
+
+template <typename K, typename N>
+struct HeapTimerComparator {
+  bool operator()(
+      const TimerHeapInternalTimer<K, N>& a,
+      const TimerHeapInternalTimer<K, N>& b) const {
+    return a.timestamp() < b.timestamp();
+  }
+};
+
+// Priority extractor used with HeapPriorityQueue (which is layered on
+// IndexedPriorityQueue). Returning timestamp as the priority yields a
+// min-heap whose head is the earliest pending timer.
+template <typename K, typename N>
+struct HeapTimerPriorityFn {
+  int64_t operator()(const TimerHeapInternalTimer<K, N>& timer) const {
+    return timer.timestamp();
+  }
 };
 
 } // namespace facebook::velox::stateful

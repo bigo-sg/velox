@@ -15,66 +15,84 @@
  */
 #pragma once
 #include <cstdint>
+#include <memory>
 
-#include <velox/experimental/stateful/InternalPriorityQueue.h>
-#include <velox/experimental/stateful/TimerHeapInternalTimer.h>
-#include <velox/experimental/stateful/Triggerable.h>
+#include "velox/experimental/stateful/EventTimeTimerService.h"
+#include "velox/experimental/stateful/ProcessingTimeScheduler.h"
+#include "velox/experimental/stateful/ProcessingTimeTimerService.h"
+#include "velox/experimental/stateful/Triggerable.h"
 
 namespace facebook::velox::stateful {
 
 // This class is relevant to Flink InternalTimerServiceImpl.
+//
+// External facade kept for backward compatibility: one instance per operator
+// composes an EventTimeTimerService and a ProcessingTimeTimerService and
+// delegates the corresponding calls.
+//
+// Layout:
+//   InternalTimerService           <- facade
+//   ├── EventTimeTimerService      <- event-time queue + advanceWatermark
+//   └── ProcessingTimeTimerService <- processing-time queue + scheduling
 template <typename K, typename N>
 class InternalTimerService {
  public:
-  InternalTimerService(Triggerable<K, N>* triggerable)
-      : triggerable_(triggerable) {}
+  explicit InternalTimerService(Triggerable<K, N>* triggerable)
+      : eventTimeService_(triggerable),
+        processingTimeService_(
+            triggerable,
+            std::make_unique<SystemProcessingTimeScheduler>()) {}
 
-  void registerEventTimeTimer(K key, N ns, int64_t time) {
-    eventTimeTimersQueue_.add(
-        std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  InternalTimerService(
+      Triggerable<K, N>* triggerable,
+      std::unique_ptr<ProcessingTimeScheduler> scheduler)
+      : eventTimeService_(triggerable),
+        processingTimeService_(triggerable, std::move(scheduler)) {}
+
+  void registerEventTimeTimer(const K& key, const N& ns, int64_t time) {
+    eventTimeService_.registerTimer(key, ns, time);
   }
 
-  void deleteEventTimeTimer(K key, N ns, int64_t time) {
-    eventTimeTimersQueue_.remove(
-        std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void deleteEventTimeTimer(const K& key, const N& ns, int64_t time) {
+    eventTimeService_.deleteTimer(key, ns, time);
   }
 
-  void registerProcessingTimeTimer(K key, N ns, int64_t time) {}
+  void registerProcessingTimeTimer(const K& key, const N& ns, int64_t time) {
+    processingTimeService_.registerTimer(key, ns, time);
+  }
 
-  void deleteProcessingTimeTimer(K key, N ns, int64_t time) {
-    eventTimeTimersQueue_.remove(
-        std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void deleteProcessingTimeTimer(const K& key, const N& ns, int64_t time) {
+    processingTimeService_.deleteTimer(key, ns, time);
   }
 
   int64_t currentWatermark() {
-    // TODO: Implement watermark logic if needed.
-    if (eventTimeTimersQueue_.peek() != nullptr) {
-      return eventTimeTimersQueue_.peek()->timestamp();
-    }
-    return 0; // or some other default value
+    return eventTimeService_.currentWatermark();
   }
 
   int64_t currentProcessingTime() {
-    // TODO: Implement processing time logic if needed.
-    return 0; // or some other default value
+    return processingTimeService_.currentProcessingTime();
   }
 
   void advanceWatermark(int64_t time) {
-    while (eventTimeTimersQueue_.peek() != nullptr &&
-           eventTimeTimersQueue_.peek()->timestamp() <= time) {
-      auto timer = eventTimeTimersQueue_.poll();
-      triggerable_->onEventTime(timer);
-    }
+    eventTimeService_.advanceWatermark(time);
   }
 
   void close() {
-    eventTimeTimersQueue_.clear();
+    eventTimeService_.close();
+    processingTimeService_.close();
+  }
+
+  EventTimeTimerService<K, N>& eventTimeTimerService() {
+    return eventTimeService_;
+  }
+
+  ProcessingTimeTimerService<K, N>& processingTimeTimerService() {
+    return processingTimeService_;
   }
 
  private:
-  Triggerable<K, N>* triggerable_;
-  HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>>
-      eventTimeTimersQueue_;
+  EventTimeTimerService<K, N> eventTimeService_;
+  ProcessingTimeTimerService<K, N> processingTimeService_;
 };
 
 } // namespace facebook::velox::stateful

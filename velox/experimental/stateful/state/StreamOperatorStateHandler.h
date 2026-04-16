@@ -80,8 +80,8 @@ class StreamOperatorStateHandler {
     return keyedStateBackend_->getOrCreateRankMapState(stateDescriptor);
   }
 
-  std::shared_ptr<InternalTimerService<uint32_t, int64_t>> createTimerService(
-      Triggerable<uint32_t, int64_t>* triggerable) {
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(
+      Triggerable<int64_t, int64_t>* triggerable) {
     return keyedStateBackend_->createTimerService(triggerable);
   }
 

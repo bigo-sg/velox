@@ -119,7 +119,7 @@ std::map<int64_t, RowVectorPtr> WindowJoin::partitionWindowData(
 }
 
 void WindowJoin::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>> timer) {
+    std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) {
   join(timer->key(), timer->ns());
 }
 

@@ -16,10 +16,18 @@
 #pragma once
 #include <cstdint>
 
+#include "velox/common/base/Exceptions.h"
 #include <algorithm>
 #include <string>
 
 namespace facebook::velox::stateful {
+
+enum class WindowType : int {
+  HOP = 0,
+  TUMBLE,
+  SESSION,
+  CUMULATIVE
+};
 
 // This class is relevant to Flink WindowBuffer.
 class Window {
@@ -29,6 +37,14 @@ class Window {
   virtual bool operator<(const Window& other) const = 0;
 
   virtual std::string toString() const = 0;
+
+  static WindowType getType(const int32_t t) {
+    if (t >= 0 && t <= 3) {
+      return static_cast<WindowType>(t);
+    } else {
+      VELOX_FAIL("Window type value {} is illegal, it is not between 0 and 3", t);
+    }
+  }
 };
 
 class TimeWindow : public Window {

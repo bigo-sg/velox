@@ -48,6 +48,8 @@ class TimeWindowUtil {
 
   static int64_t
   cleanupTime(int64_t maxTimestamp, int64_t allowedLateness_, bool isEventTime);
+
+  static int64_t getCurrentProcessingTime();
 };
 
 } // namespace facebook::velox::stateful

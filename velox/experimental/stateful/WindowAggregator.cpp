@@ -60,16 +60,14 @@ void WindowAggregator::advance() {
     return;
   }
 
-  std::map<uint32_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
+  std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<uint32_t, RowVectorPtr> sliceEndToData =
+    std::map<int64_t, RowVectorPtr> sliceEndToData =
         sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       auto windowData = data;
       if (!isEventTime) {
-        // TODO: support processing time
-        // windowTimerService_->registerProcessingTimeWindowTimer(sliceEnd,
-        // sliceEnd - 1);
+        windowTimerService_->registerProcessingTimeTimer(key, sliceEnd, sliceEnd);
       }
 
       if (isEventTime &&
@@ -155,7 +153,7 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
 }
 
 void WindowAggregator::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>> timer) {
+    std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) {
   auto output = windowState_->value(timer->key(), timer->ns());
   windowState_->remove(timer->key(), timer->ns());
   pushOutput(
@@ -167,11 +165,88 @@ int64_t WindowAggregator::sliceStateMergeTarget(int64_t sliceToMerge) {
   return sliceToMerge;
 }
 
+/// Add window_start / window_end timestamp to output
+RowVectorPtr addWindowTimestampToOutput(
+  const RowVectorPtr& output,
+  const std::string& fieldName,
+  const int64_t fieldValue,
+  const int32_t fieldIndex) {
+  /// TODO: implement it
+  VELOX_NYI();
+}
+
+void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) {
+  fireWindow(timer->key(), timer->timestamp(), timer->ns());
+  clearWindow(timer->key(), timer->timestamp(), timer->ns());
+}
+
+template<typename K>
+void WindowAggregator::fireWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd) {
+  RowVectorPtr output = windowState_->value(key, windowEnd);
+  if (!output) {
+    LOG(INFO) << "No output found for key: " << key << ", window end: " << windowEnd;
+    return;
+  } else {
+    if (windowStartIndex_ >= 0) {
+      output = addWindowTimestampToOutput(
+        output,
+        "window_start",
+        windowEnd - windowInterval_,
+        windowStartIndex_);
+    }
+    if (windowEndIndex_ >= 0) {
+      output = addWindowTimestampToOutput(
+        output,
+      "window_end",
+      windowEnd,
+      windowEndIndex_);
+    }
+  }
+  if (output) {
+    pushOutput(std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
+  }
+}
+
+template<typename K>
+void WindowAggregator::clearWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd) {
+  windowState_->remove(key, windowEnd);
+}
+
+void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) {
+  if (timer->timestamp() > lastTriggeredProcessingTime_) {
+    lastTriggeredProcessingTime_ = timer->timestamp();
+    auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());
+    for (auto& [windowKey, datas] : windowKeyToData) {
+      if (datas.empty()) {
+        continue;
+      }
+      // std::list<RowVectorPtr> allDatas(datas.begin(), datas.end());
+      auto stateAcc = windowState_->value(windowKey.key(), windowKey.window());
+      if (stateAcc) {
+        datas.push_back(stateAcc);
+      }
+      RowVectorPtr opInput = TimeWindowUtil::mergeVectors(datas, op()->pool());
+      op()->addInput(opInput);
+      auto newAcc = op()->getOutput();
+      if (newAcc) {
+        windowState_->update(windowKey.key(), windowKey.window(), newAcc);
+      }
+    }
+    if (!windowKeyToData.empty()) {
+      windowBuffer_->clear();
+    }
+  }
+  onTimer(timer);
+}
+
 void WindowAggregator::close() {
   processWatermarkInternal(INT_MAX);
   StatefulOperator::close();
-  localAggerator_->close();
+  if (localAggerator_) {
+    localAggerator_->close();
+  }
   input_.reset();
+  windowTimerService_->close();
   windowBuffer_->clear();
   windowState_->clear();
   currentProgress_ = 0;

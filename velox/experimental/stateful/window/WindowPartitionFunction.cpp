@@ -16,7 +16,7 @@
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 #include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
-#include "velox/vector/FlatVector.h"
+#include "velox/experimental/stateful/window/Window.h"
 
 #include <numeric>
 
@@ -28,21 +28,19 @@ WindowPartitionFunction::WindowPartitionFunction(
     int64_t size,
     int64_t step,
     int64_t offset,
-    int windowType)
+    WindowType windowType)
     : inputType_(std::move(inputType)),
       rowtimeIndex_(rowtimeIndex),
       size_(size),
       step_(step),
       offset_(offset),
       windowType_(windowType) {
-  // VELOX_CHECK_GT(inputType->size(), rowtimeIndex, "rowtimeIndex invalid: {}",
-  //    rowtimeIndex);
   sliceSize_ = std::gcd(size, step);
 }
 
-std::optional<uint32_t> WindowPartitionFunction::partition(
-    const RowVector& input,
-    std::vector<uint32_t>& partitions) {
+std::optional<int64_t> WindowPartitionFunction::partition(
+  const RowVector& input,
+  std::vector<int64_t>& partitions) {
   if (inputType_->childAt(rowtimeIndex_)->kind() == TypeKind::BIGINT) {
     // TODO: this is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
@@ -52,24 +50,29 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
     return ts;
   }
   const auto size = input.size();
+  partitions.clear();
   partitions.resize(size);
   // TODO: support more window types. Support time zone.
   for (auto i = 0; i < size; ++i) {
-    auto child = input.childAt(rowtimeIndex_);
+    const auto& child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
-    int64_t timestamp = ts.getSeconds() * 1'000 + ts.getNanos() / 1'000'000;
-    if (windowType_ == 0) { // Hopping window
-      int64_t start = TimeWindowUtil::getWindowStartWithOffset(
-          timestamp, offset_, sliceSize_);
+    int64_t timestamp = ts.toMillis();
+    if (windowType_ == WindowType::HOP) { // Hopping window
+      int64_t start = TimeWindowUtil::getWindowStartWithOffset(timestamp, offset_, sliceSize_);
       partitions[i] = start + sliceSize_;
-    } else if (windowType_ == 1) { // Windowed Slice Assigner
+    } else if (windowType_ == WindowType::TUMBLE) { // Windowed Slice Assigner
       partitions[i] = timestamp;
     } else {
-      VELOX_UNSUPPORTED("Unsupported window type: {}", windowType_);
+      VELOX_UNSUPPORTED("Unsupported window type: {}", static_cast<int32_t>(windowType_));
     }
   }
-
   return std::nullopt;
+}
+
+std::optional<uint32_t> WindowPartitionFunction::partition(
+  const RowVector& /* input */,
+  std::vector<uint32_t>& /* partitions */) {
+  VELOX_NYI();
 }
 
 int64_t getTimestamp(
@@ -98,7 +101,7 @@ folly::dynamic StreamWindowPartitionFunctionSpec::serialize() const {
   obj["size"] = size_;
   obj["step"] = step_;
   obj["offset"] = offset_;
-  obj["windowType"] = windowType_;
+  obj["windowType"] = static_cast<int32_t>(windowType_);
   return obj;
 }
 
@@ -110,7 +113,7 @@ core::PartitionFunctionSpecPtr StreamWindowPartitionFunctionSpec::deserialize(
   auto size = obj["size"].asInt();
   auto step = obj["step"].asInt();
   auto offset = obj["offset"].asInt();
-  auto windowType = obj["windowType"].asInt();
+  auto windowType = Window::getType(obj["windowType"].asInt());
 
   return std::make_shared<StreamWindowPartitionFunctionSpec>(
       ISerializable::deserialize<RowType>(obj["inputType"]),
