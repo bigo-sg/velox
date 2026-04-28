@@ -36,6 +36,10 @@ class WindowPartitionFunction : public core::PartitionFunction {
       const RowVector& input,
       std::vector<uint32_t>& partitions) override;
 
+  std::optional<int64_t> partition(
+     const RowVector& input,
+     std::vector<int64_t>& partitions) override;
+
  private:
   RowTypePtr inputType_;
   column_index_t rowtimeIndex_;

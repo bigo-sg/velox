@@ -139,6 +139,10 @@ class StateMap {
     removeEntry(key, ns);
   }
 
+  void clear() {
+
+  }
+
   size_t size() {
     return primaryTableSize_ + incrementalRehashTableSize_;
   }
@@ -147,14 +151,18 @@ class StateMap {
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> primaryTable_;
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> incrementalRehashTable_;
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> empty_;
-  int32_t highestRequiredSnapshotVersion_;
-  int32_t stateMapVersion_;
-  int32_t rehashIndex_;
-  uint64_t primaryTableSize_;
-  uint64_t incrementalRehashTableSize_;
-  uint64_t modCount_;
-  uint64_t threshold_;
-  N lastNamespace_;
+  int32_t highestRequiredSnapshotVersion_{0};
+  int32_t stateMapVersion_{0};
+  // Must be zero-initialized: selectActiveTable() compares this against
+  // (hash & (primaryTable_.size() - 1)) to decide which table holds an entry.
+  // An indeterminate value here can route lookups to the empty rehash table
+  // and cause an out-of-bounds read in get()/put(), leading to SIGSEGV.
+  int32_t rehashIndex_{0};
+  uint64_t primaryTableSize_{0};
+  uint64_t incrementalRehashTableSize_{0};
+  uint64_t modCount_{0};
+  uint64_t threshold_{0};
+  N lastNamespace_{};
   std::set<int32_t> snapshotVersions_;
 
   std::shared_ptr<StateMapEntry<K, N, S>> putEntry(K key, N ns) {

@@ -15,8 +15,6 @@
  */
 #include "velox/experimental/stateful/WatermarkAssigner.h"
 #include <cstdint>
-
-#include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Nulls.h"
 
 namespace facebook::velox::stateful {
@@ -42,7 +40,6 @@ void WatermarkAssigner::advance() {
   if (!input_) {
     return;
   }
-
   // Check for nulls using countNulls
   auto* rowtimeVector = input_->childAt(rowtimeFieldIndex_).get();
   const uint64_t* rawNulls = rowtimeVector->rawNulls();
@@ -54,13 +51,11 @@ void WatermarkAssigner::advance() {
           "RowTime field should not have nulls, but found {} nulls", nullCount);
     }
   }
-
   RowVectorPtr timestampVector = op()->getOutput();
-
   VELOX_CHECK(
       timestampVector->size() == input_->size(),
       "Timestamps are not equal to input.");
-
+  
   const int64_t* timestamps =
       timestampVector->childAt(0)->asFlatVector<int64_t>()->rawValues();
   const vector_size_t timestampSize = timestampVector->size();
@@ -68,15 +63,12 @@ void WatermarkAssigner::advance() {
 
   // Pre-compute threshold to avoid repeated subtraction in hot loop
   int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval_;
-
   for (vector_size_t i = 0; i < timestampSize; ++i) {
     const int64_t timestamp = timestamps[i];
-
     // Only update currentWatermark if timestamp is greater (avoid unnecessary
     // max call)
     if (timestamp > currentWatermark) {
       currentWatermark = timestamp;
-
       // Check if watermark threshold is crossed
       if (currentWatermark > nextWatermarkThreshold) {
         auto output = std::dynamic_pointer_cast<RowVector>(
@@ -110,6 +102,11 @@ void WatermarkAssigner::advanceWatermark() {
     // emit watermark
     emitWatermark(currentWatermark);
   }
+}
+
+void WatermarkAssigner::close() {
+  StatefulOperator::close();
+  input_.reset();
 }
 
 } // namespace facebook::velox::stateful

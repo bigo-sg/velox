@@ -15,6 +15,9 @@
  */
 #pragma once
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
@@ -24,6 +27,14 @@
 #include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
 
 namespace facebook::velox::stateful {
+
+class JniCaller {
+ public:
+  virtual void call(
+      const std::string& clazzName,
+      const std::string& methodName,
+      const std::string& arg) = 0;
+};
 
 class StatefulOperator {
  public:
@@ -97,6 +108,15 @@ class StatefulOperator {
     return targets_;
   }
 
+  /// Optional JNI / Java callback hook (e.g. Gluten); set from the embedding layer.
+  static void setJniCaller(const std::shared_ptr<JniCaller> caller) {
+    jniCaller_ = caller;
+  }
+
+  static std::shared_ptr<JniCaller>& jniCaller() {
+    return jniCaller_;
+  }
+
  protected:
   void pushOutput(StreamElementPtr output);
   void emitWatermark(int64_t timestamp);
@@ -119,6 +139,8 @@ class StatefulOperator {
   bool sourceEmpty_ = true;
   std::unique_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
   StreamOperatorStateHandlerPtr stateHandler_;
+
+  static std::shared_ptr<JniCaller> jniCaller_;
 };
 
 using StatefulOperatorPtr = std::unique_ptr<StatefulOperator>;

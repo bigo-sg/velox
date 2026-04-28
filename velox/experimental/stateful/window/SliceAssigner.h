@@ -16,6 +16,7 @@
 #pragma once
 #include <cstdint>
 
+#include "velox/core/PlanNode.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/window/Window.h"
 

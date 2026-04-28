@@ -2195,6 +2195,12 @@ class PartitionFunction {
   virtual std::optional<uint32_t> partition(
       const RowVector& input,
       std::vector<uint32_t>& partitions) = 0;
+
+  virtual std::optional<int64_t> partition(
+      const RowVector& input,
+      std::vector<int64_t>& partitions) {
+        return std::nullopt;
+    }
 };
 
 /// Factory class for creating PartitionFunction instances.

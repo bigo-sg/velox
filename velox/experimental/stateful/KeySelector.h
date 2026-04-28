@@ -17,8 +17,8 @@
 
 #include <climits>
 #include <map>
-#include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/vector/ComplexVector.h"
+#include "velox/core/PlanNode.h"
 
 namespace facebook::velox::stateful {
 
@@ -37,9 +37,9 @@ class KeySelector {
   void prepareForInput(const RowVectorPtr& input);
 
   void allocateIndexBuffers(
-      const std::map<uint32_t, vector_size_t>& numOfKeys,
-      std::map<uint32_t, BufferPtr>& keyToIndexBuffers,
-      std::map<uint32_t, vector_size_t*>& keyToRawIndices);
+      const std::map<int64_t, vector_size_t>& numOfKeys,
+      std::map<int64_t, BufferPtr>& keyToIndexBuffers,
+      std::map<int64_t, vector_size_t*>& keyToRawIndices);
 
   RowVectorPtr wrapChildren(
       const RowVectorPtr& input,

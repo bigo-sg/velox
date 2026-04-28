@@ -76,10 +76,11 @@ class InternalTimerService {
   }
 
   void advanceWatermark(int64_t time) {
-    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
+    std::shared_ptr<TimerHeapInternalTimer<K, N>> timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
     while (timer != nullptr && timer->timestamp() <= time) {
-      auto timer = eventTimeTimersQueue_.poll();
+      eventTimeTimersQueue_.poll();
       triggerable_->onEventTime(timer);
+      timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
     }
   }
 
@@ -111,6 +112,7 @@ class InternalTimerService {
         triggerable_->onProcessingTime(timer);
         timer = nullptr;
       }
+      triggerable_->processProcessingTimeByJni(time);
       if (!taskName.empty()) {
         processingTimeService_->unregister(taskName);
       }

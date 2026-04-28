@@ -40,9 +40,9 @@ WindowPartitionFunction::WindowPartitionFunction(
   sliceSize_ = std::gcd(size, step);
 }
 
-std::optional<uint32_t> WindowPartitionFunction::partition(
+std::optional<int64_t> WindowPartitionFunction::partition(
     const RowVector& input,
-    std::vector<uint32_t>& partitions) {
+    std::vector<int64_t>& partitions) {
   if (inputType_->childAt(rowtimeIndex_)->kind() == TypeKind::BIGINT) {
     // TODO: this is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
@@ -57,7 +57,7 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
   for (auto i = 0; i < size; ++i) {
     auto child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
-    int64_t timestamp = ts.getSeconds() * 1'000 + ts.getNanos() / 1'000'000;
+    int64_t timestamp = ts.toMillis();
     if (Window::getType(windowType_) == WindowType::HOP) { // Hopping window
       int64_t start = TimeWindowUtil::getWindowStartWithOffset(timestamp, offset_, sliceSize_);
       partitions[i] = start + sliceSize_;
@@ -67,7 +67,12 @@ std::optional<uint32_t> WindowPartitionFunction::partition(
       VELOX_UNSUPPORTED("Unsupported window type: {}", windowType_);
     }
   }
+  return std::nullopt;
+}
 
+std::optional<uint32_t> WindowPartitionFunction::partition(
+    const RowVector& input,
+    std::vector<uint32_t>& partitions) {
   return std::nullopt;
 }
 

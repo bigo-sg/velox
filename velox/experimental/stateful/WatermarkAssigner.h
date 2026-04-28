@@ -42,6 +42,8 @@ class WatermarkAssigner : public StatefulOperator {
     return "WatermarkAssigner";
   }
 
+  void close() override;
+
  private:
   void advanceWatermark();
 

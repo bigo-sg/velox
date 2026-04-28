@@ -36,12 +36,12 @@ class WindowAggregator : public StatefulOperator,
                          public Triggerable<int64_t, int64_t> {
  public:
   WindowAggregator(
-    std::unique_ptr<exec::Operator> localAggregator,
+    std::unique_ptr<exec::Operator> mergeOperator,
     std::unique_ptr<exec::Operator> globalAggregator,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
-    const long windowInterval,
+    const int64_t windowInterval,
     const bool useDayLightSaving,
     const bool isEventTime,
     const int windowStartIndex,
@@ -62,13 +62,15 @@ class WindowAggregator : public StatefulOperator,
   }
 
   void processWatermark(int64_t timestamp) override {
-    // processWatermarkInternal(timestamp);
+    processWatermarkInternal(timestamp);
   }
 
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                        timer) override;
 
   void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) override;
+
+  void processProcessingTimeByJni(int64_t timestamp) override;
 
  private:
   void processWatermarkInternal(int64_t timestamp);
@@ -78,10 +80,10 @@ class WindowAggregator : public StatefulOperator,
   void onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer);
 
   template<typename K>
-  void fireWindow(K key, long timerTImestamp, long windowEnd);
+  void fireWindow(K key, int64_t timerTImestamp, int64_t windowEnd);
 
   template<typename K>
-  void clearWindow(K key, long timerTimestamp, long windowEnd);
+  void clearWindow(K key, int64_t timerTimestamp, int64_t windowEnd);
 
   std::unique_ptr<exec::Operator> localAggregator_;
   std::unique_ptr<KeySelector> keySelector_;

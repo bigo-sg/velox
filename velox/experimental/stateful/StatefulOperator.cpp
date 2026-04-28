@@ -20,6 +20,8 @@
 
 namespace facebook::velox::stateful {
 
+std::shared_ptr<JniCaller> StatefulOperator::jniCaller_;
+
 void StatefulOperator::initialize() {
   operator_->initialize();
   for (auto& target : targets_) {

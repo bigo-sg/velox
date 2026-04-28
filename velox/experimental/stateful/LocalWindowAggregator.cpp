@@ -66,8 +66,9 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
       // we only need to call advanceProgress() when current watermark may
       // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentWatermark_);
+      int64_t windowTriggered = -1;
       for (const auto& [windowKey, datas] : windowKeyToData) {
-        if (datas.empty()) {
+        if (datas.empty() || currentWatermark_ < windowKey.window()) {
           continue;
         }
         op()->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
@@ -76,7 +77,13 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
           pushOutput(std::make_shared<StreamRecord>(
               getPlanNodeId(),
               addWindowEndToVector(std::move(output), windowKey.window())));
+          if (windowTriggered < windowKey.window()) {
+            windowTriggered = windowKey.window();
+          }
         }
+      }
+      if (windowTriggered >= 0) {
+        windowBuffer_->clear(windowTriggered);
       }
       nextTriggerWatermark_ = TimeWindowUtil::getNextTriggerWatermark(
           currentWatermark_,
@@ -85,10 +92,11 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
           useDayLightSaving_);
     }
   }
+  pushOutput(std::make_shared<Watermark>(getPlanNodeId(), timestamp));
 }
 
 void LocalWindowAggregator::close() {
-  processWatermarkInternal(INT_MAX);
+  // processWatermarkInternal(INT_MAX);
   StatefulOperator::close();
   input_.reset();
   windowBuffer_->clear();
@@ -101,7 +109,6 @@ RowVectorPtr LocalWindowAggregator::addWindowEndToVector(
     int64_t sliceEnd) {
   auto newColumn = BaseVector::create(BIGINT(), vector->size(), vector->pool());
   auto windowEndCol = newColumn->as<FlatVector<int64_t>>();
-
   for (int i = 0; i < vector->size(); ++i) {
     windowEndCol->set(i, sliceEnd);
   }

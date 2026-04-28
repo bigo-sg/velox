@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <list>
+#include <map>
 #include <memory>
-#include <unordered_map>
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
 #include <climits>
-#include <mutex>
 
 namespace facebook::velox::stateful {
 
@@ -33,10 +33,12 @@ class WindowBuffer {
   virtual void
   addElement(uint32_t key, int64_t window, RowVectorPtr& element) = 0;
 
-  virtual std::unordered_map<WindowKey, std::list<RowVectorPtr>>&
+  virtual std::map<WindowKey, std::list<RowVectorPtr>>&
   advanceProgress(int64_t progress) = 0;
 
   virtual void clear() = 0;
+
+  virtual void clear(int64_t window) = 0;
 
   virtual int size() = 0;
 };
@@ -49,22 +51,43 @@ class RecordsWindowBuffer : public WindowBuffer {
   void addElement(uint32_t key, int64_t sliceEnd, RowVectorPtr& element)
       override;
 
-  std::unordered_map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(
+  std::map<WindowKey, std::list<RowVectorPtr>>& advanceProgress(
       int64_t progress) override;
 
   void clear() override {
     buffer_.clear();
     minSliceEnd_ = INT64_MAX;
   }
+
+  void clear(int64_t window) override {
+    // Do not erase during a range-for over the same map; erasure
+    // invalidates iterators and causes undefined behavior / crashes.
+    for (auto it = buffer_.begin(); it != buffer_.end();) {
+      if (it->first.window() <= window) {
+        it = buffer_.erase(it);
+      } else {
+        break;
+      }
+    }
+    if (buffer_.empty()) {
+      minSliceEnd_ = INT64_MAX;
+    } else {
+      minSliceEnd_ = INT64_MAX;
+      for (const auto& entry : buffer_) {
+        minSliceEnd_ = std::min(minSliceEnd_, entry.first.window());
+      }
+    }
+  }
+
   int size() override {
     return buffer_.size();
   }
 
- private:
-  // TODO: use map to simplify.
-  std::unordered_map<WindowKey, std::list<RowVectorPtr>> buffer_;
+  private:
+  /// Ordered by WindowKey (window end, then partition key) for stable iteration.
+  std::map<WindowKey, std::list<RowVectorPtr>> buffer_;
   // This is used to return empty map when no window is fired.
-  std::unordered_map<WindowKey, std::list<RowVectorPtr>> empty_;
+  std::map<WindowKey, std::list<RowVectorPtr>> empty_;
   int64_t minSliceEnd_ = INT64_MAX;
   int shiftTimeZone_ = 0; // TODO: support time zone shift
 };

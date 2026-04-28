@@ -38,7 +38,7 @@ void RecordsWindowBuffer::addElement(
   }
 }
 
-std::unordered_map<WindowKey, std::list<RowVectorPtr>>&
+std::map<WindowKey, std::list<RowVectorPtr>>&
 RecordsWindowBuffer::advanceProgress(int64_t progress) {
   if (TimeWindowUtil::isWindowFired(minSliceEnd_, progress, shiftTimeZone_)) {
     // There should be some window to be fired, flush buffer to state first.
