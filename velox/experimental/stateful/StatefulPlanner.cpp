@@ -257,7 +257,7 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
   auto op = transformOperator(windowAggNode->aggregation());
 
   std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
-      windowAggNode->keySelectorSpec()->create(windowAggNode->isLocalAgg() ? parallelism_ : INT_MAX, true), op->pool());
+      windowAggNode->keySelectorSpec()->create(windowAggNode->isLocalAgg() ? parallelism_ : 0, true), op->pool());
   std::unique_ptr<KeySelector> keySelectorForSliceAssigner = std::make_unique<KeySelector>(
       windowAggNode->sliceAssignerSpec()->create(INT_MAX, true), op->pool());
   std::unique_ptr<SliceAssigner> sliceAssigner =

@@ -47,7 +47,7 @@ KeySelector::KeySelector(
       pool_(pool),
       numPartitions_(numPartitions) {
   windowPartitionFunction_ =
-      dynamic_cast<WindowPartitionFunction*>(partitionFunction_.get());
+    dynamic_cast<WindowPartitionFunction*>(partitionFunction_.get());
 }
 
 std::map<int64_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input) {
@@ -59,8 +59,7 @@ std::map<int64_t, RowVectorPtr> KeySelector::partition(const RowVectorPtr& input
     res = windowPartitionFunction_->partition(*input, partitions);
   } else {
     std::vector<uint32_t> tmpPartitions(numInput);
-    std::optional<uint32_t> tmpRes =
-        partitionFunction_->partition(*input, tmpPartitions);
+    std::optional<uint32_t> tmpRes = partitionFunction_->partition(*input, tmpPartitions);
     if (tmpRes) {
       res = static_cast<int64_t>(*tmpRes);
     }

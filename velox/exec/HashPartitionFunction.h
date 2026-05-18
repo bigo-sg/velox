@@ -59,7 +59,7 @@ class HashPartitionFunction : public core::PartitionFunction {
       const std::vector<VectorPtr>& constValues);
 
   const bool localExchange_;
-  const int numPartitions_;
+  int numPartitions_{0};
   const std::optional<HashBitRange> hashBitRange_ = std::nullopt;
   std::vector<std::unique_ptr<VectorHasher>> hashers_;
 
