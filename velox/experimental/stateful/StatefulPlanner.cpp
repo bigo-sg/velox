@@ -252,11 +252,12 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
       std::dynamic_pointer_cast<const StreamWindowAggregationNode>(
           planNode.node());
   VELOX_CHECK(windowAggNode, "Failed to cast to StreamWindowAggregationNode");
+  VELOX_CHECK(parallelism_ > 0, "Stateful task parallelism is not set");
 
   auto op = transformOperator(windowAggNode->aggregation());
 
   std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
-      windowAggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
+      windowAggNode->keySelectorSpec()->create(windowAggNode->isLocalAgg() ? parallelism_ : INT_MAX, true), op->pool());
   std::unique_ptr<KeySelector> keySelectorForSliceAssigner = std::make_unique<KeySelector>(
       windowAggNode->sliceAssignerSpec()->create(INT_MAX, true), op->pool());
   std::unique_ptr<SliceAssigner> sliceAssigner =
@@ -368,7 +369,20 @@ StatefulOperatorPtr StatefulPlanner::transformGenericOperator(
   std::vector<StatefulOperatorPtr> targets =
       transformStatefulOperators(planNode.targets());
   std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
-  return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
+  if (auto tableScanNodeWithWatermark =
+          std::dynamic_pointer_cast<const TableScanNodeWithWatermark>(planNode.node())) {
+    auto watermarkPushDownSpec = tableScanNodeWithWatermark->watermarkPushDownSpec();
+    auto watermarkProjectOp = std::make_unique<exec::FilterProject>(
+        nextOperatorId(), ctx_, nullptr, watermarkPushDownSpec->project());
+    std::unique_ptr<WatermarkGenerator> watermarkGenerator = std::make_unique<WatermarkGenerator>(
+        std::move(watermarkProjectOp),
+        watermarkPushDownSpec->idleTimeout(),
+        watermarkPushDownSpec->rowtimeFieldIndex(),
+        watermarkPushDownSpec->watermarkInterval());
+    return std::make_unique<StatefulOperator>(std::move(op), std::move(targets), std::move(watermarkGenerator));
+  } else {
+    return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
+  }
 }
 
 std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(

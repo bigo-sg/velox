@@ -20,13 +20,11 @@
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
-#include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
-#include "velox/experimental/stateful/join/JoinRecordStateView.h"
 
-    namespace facebook::velox::stateful {
+namespace facebook::velox::stateful {
 
   class WindowJoin : public StatefulOperator,
                      public Triggerable<int64_t, int64_t> {

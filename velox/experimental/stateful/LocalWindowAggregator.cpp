@@ -16,7 +16,6 @@
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 #include <cstdint>
-#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
 
@@ -50,10 +49,8 @@ void LocalWindowAggregator::advance() {
   std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
     std::map<int64_t, RowVectorPtr> sliceEndToData = sliceAssigner_->assignSliceEnd(data);
-    for (const auto& [sliceEnd, data] : sliceEndToData) {
-      // TODO: addElement may have data output.
-      auto windowData = data;
-      windowBuffer_->addElement(key, sliceEnd, windowData);
+    for (auto& [sliceEnd, data] : sliceEndToData) {
+      windowBuffer_->addElement(key, sliceEnd, data);
     }
   }
   input_.reset();
@@ -66,19 +63,27 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
       // we only need to call advanceProgress() when current watermark may
       // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentWatermark_);
+      auto* aggregator = op().get();
+      auto* aggPool = aggregator->pool();
       int64_t windowTriggered = -1;
       for (const auto& [windowKey, datas] : windowKeyToData) {
-        if (datas.empty() || currentWatermark_ < windowKey.window()) {
+        const int64_t window = windowKey.window();
+        if (datas.empty() || currentWatermark_ < window) {
           continue;
         }
-        op()->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
-        RowVectorPtr output = op()->getOutput();
+        RowVectorPtr mergedInput = (datas.size() == 1) ? datas.front() : TimeWindowUtil::mergeVectors(datas, aggPool);
+        if (!mergedInput) {
+          continue;
+        }
+        aggregator->addInput(mergedInput);
+        RowVectorPtr output = aggregator->getOutput();
         if (output) {
-          pushOutput(std::make_shared<StreamRecord>(
-              getPlanNodeId(),
-              addWindowEndToVector(std::move(output), windowKey.window())));
-          if (windowTriggered < windowKey.window()) {
-            windowTriggered = windowKey.window();
+          pushOutput(
+            std::make_shared<StreamRecord>(getPlanNodeId(),
+            windowKey.key(),
+            std::move(addWindowEndToVector(output, window))));
+          if (windowTriggered < window) {
+            windowTriggered = window;
           }
         }
       }

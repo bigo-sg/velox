@@ -65,6 +65,7 @@ void WindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
   auto record = std::static_pointer_cast<StreamRecord>(input);
   input_ = record->record();
+  // LOG(INFO) << "input_: " << input_->toString(0);
 }
 
 void WindowAggregator::advance() {
@@ -114,33 +115,45 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
       // we only need to call advanceProgress() when current watermark may
       // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentProgress_);
+      auto* globalAggregator = op().get();
+      auto* aggPool = globalAggregator->pool();
       for (const auto& [windowKey, datas] : windowKeyToData) {
         if (datas.empty()) {
           continue;
         }
-        // TODO: agg should output no matter how many rows in data.
-        auto mergedData = TimeWindowUtil::mergeVectors(datas, op()->pool());
-        localAggregator_->addInput(mergedData);
+        const auto key = windowKey.key();
+        const auto window = windowKey.window();
+        RowVectorPtr localInput =
+            (datas.size() == 1) ? datas.front()
+                                : TimeWindowUtil::mergeVectors(datas, aggPool);
+        if (localInput) {
+          localAggregator_->addInput(localInput);
+        }
         RowVectorPtr localAcc = localAggregator_->getOutput();
-        auto stateAcc =
-            windowState_->value(windowKey.key(), windowKey.window());
-        std::list<RowVectorPtr> allDatas;
+        RowVectorPtr stateAcc = windowState_->value(key, window);
+
         if (!localAcc && !stateAcc) {
           continue;
-        } else {
-          if (localAcc) {
-            allDatas.push_back(localAcc);
-          }
-          if (stateAcc) {
-            allDatas.push_back(stateAcc);
-          }
-          op()->addInput(TimeWindowUtil::mergeVectors(allDatas, op()->pool()));
-          auto newAcc = op()->getOutput();
-          if (newAcc) {
-            windowState_->update(windowKey.key(), windowKey.window(), newAcc);
-          }
         }
-        windowTimerService_->registerEventTimeTimer(windowKey.key(), windowKey.window(), windowKey.window() - 1);
+
+        // Fast path: avoid building temporary list/merge when only one side
+        // exists.
+        if (!stateAcc) {
+          globalAggregator->addInput(localAcc);
+        } else if (!localAcc) {
+          globalAggregator->addInput(stateAcc);
+        } else {
+          std::list<RowVectorPtr> allDatas;
+          allDatas.push_back(localAcc);
+          allDatas.push_back(stateAcc);
+          globalAggregator->addInput(TimeWindowUtil::mergeVectors(allDatas, aggPool));
+        }
+
+        auto newAcc = globalAggregator->getOutput();
+        if (newAcc) {
+          windowState_->update(key, window, newAcc);
+        }
+        windowTimerService_->registerEventTimeTimer(key, window, window - 1);
       }
       if (!windowKeyToData.empty()) {
         windowBuffer_->clear();
@@ -235,7 +248,7 @@ void WindowAggregator::fireWindow(K key, int64_t timerTimestamp, int64_t windowE
     }
   }
   if (output) {
-    pushOutput(std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
+    pushOutput(std::make_shared<StreamRecord>(getPlanNodeId(), key, std::move(output)));
   }
 }
 
@@ -294,11 +307,20 @@ void WindowAggregator::close() {
     windowTimerService_->close();
   }
   input_.reset();
-  windowBuffer_->clear();
-  windowState_->clear();
+  if (windowBuffer_) {
+    windowBuffer_->clear();
+  }
+  if (windowState_) {
+    windowState_->clear();
+  }
   if (localAggregator_) {
     localAggregator_->close();
+    // Release aggregator-owned memory pool immediately on close instead of
+    // waiting for WindowAggregator destruction.
+    localAggregator_.reset();
   }
+  windowTimerService_.reset();
+  windowState_.reset();
   currentProgress_ = 0;
   nextTriggerWatermark_ = 0;
 }

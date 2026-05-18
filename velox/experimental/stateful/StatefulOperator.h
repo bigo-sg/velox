@@ -25,6 +25,7 @@
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
+#include "velox/experimental/stateful/WatermarkGenerator.h"
 
 namespace facebook::velox::stateful {
 
@@ -41,11 +42,13 @@ class StatefulOperator {
   StatefulOperator(
       std::unique_ptr<exec::Operator> op,
       std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::unique_ptr<WatermarkGenerator> watermarkGenerator = nullptr,
       std::shared_ptr<const KeyedStateBackendParameters>
           keyedStateBackendParameters = nullptr)
       : keyedStateBackendParameters_(keyedStateBackendParameters),
         operator_(std::move(op)),
-        targets_(std::move(targets)) {
+        targets_(std::move(targets)),
+        watermarkGenerator_(std::move(watermarkGenerator)) {
     sink = operator_->operatorType() == "TableWrite";
   }
 
@@ -139,7 +142,7 @@ class StatefulOperator {
   bool sourceEmpty_ = true;
   std::unique_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
   StreamOperatorStateHandlerPtr stateHandler_;
-
+  std::unique_ptr<WatermarkGenerator> watermarkGenerator_;
   static std::shared_ptr<JniCaller> jniCaller_;
 };
 

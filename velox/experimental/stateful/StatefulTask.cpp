@@ -16,6 +16,7 @@
 #include "velox/experimental/stateful/StatefulTask.h"
 #include <experimental/stateful/state/StateBackend.h>
 #include <cstdint>
+#include <exception>
 #include "velox/exec/OperatorStats.h"
 #include "velox/exec/OperatorUtils.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
@@ -189,18 +190,44 @@ StreamElementPtr StatefulTask::popOutput() {
 }
 
 void StatefulTask::finish() {
-  VELOX_CHECK(
-      pendings_.empty(),
-      "Outputs have {} not been consumed before finishing the task. {} {}",
-      pendings_.size(),
-      operatorChain_->detail());
-  operatorChain_->close();
-  // TODO: update operator stats
+  std::exception_ptr firstError;
+  try {
+    VELOX_CHECK(
+        pendings_.empty(),
+        "Outputs have {} not been consumed before finishing the task. {} {}",
+        pendings_.size(),
+        operatorChain_ ? operatorChain_->detail() : "",
+        taskId());
+  } catch (...) {
+    firstError = std::current_exception();
+  }
 
-  // remove operators to release memory.
+  try {
+    if (operatorChain_) {
+      operatorChain_->close();
+    }
+  } catch (...) {
+    if (!firstError) {
+      firstError = std::current_exception();
+    }
+  }
+
+  // Always release references so memory pools can be reclaimed even when close
+  // fails.
   operatorChain_.reset();
   driver.reset();
-  testingFinish();
+
+  try {
+    testingFinish();
+  } catch (...) {
+    if (!firstError) {
+      firstError = std::current_exception();
+    }
+  }
+
+  if (firstError) {
+    std::rethrow_exception(firstError);
+  }
 }
 
 } // namespace facebook::velox::stateful
