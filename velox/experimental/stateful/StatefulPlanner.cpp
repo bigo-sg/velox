@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulPlanner.h"
+#include <glog/logging.h>
 #include <algorithm>
 #include "velox/core/PlanFragment.h"
 #include "velox/exec/AssignUniqueId.h"
@@ -21,7 +22,6 @@
 #include "velox/exec/Expand.h"
 #include "velox/exec/FilterProject.h"
 #include "velox/exec/GroupId.h"
-#include "velox/exec/HashAggregation.h"
 #include "velox/exec/HashProbe.h"
 #include "velox/exec/IndexLookupJoin.h"
 #include "velox/exec/Limit.h"
@@ -261,8 +261,14 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
   std::unique_ptr<KeySelector> keySelectorForSliceAssigner = std::make_unique<KeySelector>(
       windowAggNode->sliceAssignerSpec()->create(INT_MAX, true), op->pool());
   std::unique_ptr<SliceAssigner> sliceAssigner =
-      std::make_unique<SliceAssigner>(std::move(keySelectorForSliceAssigner), windowAggNode->size(), windowAggNode->step(),
-      windowAggNode->offset(),Window::getType(windowAggNode->windowType()),windowAggNode->rowtimeIndex());
+      std::make_unique<SliceAssigner>(
+          std::move(keySelectorForSliceAssigner),
+          windowAggNode->size(),
+          windowAggNode->step(),
+          windowAggNode->offset(),
+          Window::getType(windowAggNode->windowType()),
+          windowAggNode->rowtimeIndex(),
+          windowAggNode->isLocalAgg() || windowAggNode->rowtimeIndex() < 0);
   if (windowAggNode->isLocalAgg()) {
     return std::make_unique<LocalWindowAggregator>(
         std::move(op),
@@ -282,6 +288,7 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
         std::move(keySelector),
         std::move(sliceAssigner),
         windowAggNode->windowInterval(),
+        windowAggNode->size(),
         windowAggNode->useDayLightSaving(),
         windowAggNode->isEventTime(),
         windowAggNode->windowStartIndex(),

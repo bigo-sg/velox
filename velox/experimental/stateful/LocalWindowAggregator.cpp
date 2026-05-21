@@ -46,8 +46,10 @@ void LocalWindowAggregator::advance() {
   if (!input_) {
     return;
   }
+  // partition input by key
   std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
+    // assign slice end to data
     std::map<int64_t, RowVectorPtr> sliceEndToData = sliceAssigner_->assignSliceEnd(data);
     for (auto& [sliceEnd, data] : sliceEndToData) {
       windowBuffer_->addElement(key, sliceEnd, data);

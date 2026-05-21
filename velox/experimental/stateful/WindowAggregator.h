@@ -42,6 +42,7 @@ class WindowAggregator : public StatefulOperator,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const int64_t windowInterval,
+    const int64_t windowSize,
     const bool useDayLightSaving,
     const bool isEventTime,
     const int windowStartIndex,
@@ -90,6 +91,7 @@ class WindowAggregator : public StatefulOperator,
   std::unique_ptr<SliceAssigner> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
   const int64_t windowInterval_;
+  const int64_t windowSize_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   const bool isEventTime_ = true;

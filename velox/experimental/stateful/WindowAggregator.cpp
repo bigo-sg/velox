@@ -32,6 +32,7 @@ WindowAggregator::WindowAggregator(
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const int64_t windowInterval,
+    const int64_t windowSize,
     const bool useDayLightSaving,
     const bool isEventTime,
     const int windowStartIndex,
@@ -41,6 +42,7 @@ WindowAggregator::WindowAggregator(
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
       windowInterval_(windowInterval),
+      windowSize_(windowSize),
       useDayLightSaving_(useDayLightSaving),
       isEventTime_(isEventTime),
       windowStartIndex_(windowStartIndex),
@@ -65,7 +67,6 @@ void WindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
   auto record = std::static_pointer_cast<StreamRecord>(input);
   input_ = record->record();
-  // LOG(INFO) << "input_: " << input_->toString(0);
 }
 
 void WindowAggregator::advance() {
@@ -236,7 +237,7 @@ void WindowAggregator::fireWindow(K key, int64_t timerTimestamp, int64_t windowE
       output = addWindowTimestampToOutput(
         output,
         "window_start",
-        windowEnd - windowInterval_,
+        windowEnd - windowSize_,
         windowStartIndex_);
     }
     if (windowEndIndex_ >= 0) {
@@ -265,6 +266,7 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<i
   if (timer->timestamp() > lastTriggeredProcessingTime_) {
     lastTriggeredProcessingTime_ = timer->timestamp();
     auto windowKeyToData = windowBuffer_->advanceProgress(timer->timestamp());
+    int64_t windowTriggered = -1;
     for (const auto& [windowKey, datas] : windowKeyToData) {
       if (datas.empty()) {
         continue;
@@ -280,9 +282,12 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<i
       if (newAcc) {
         windowState_->update(windowKey.key(), windowKey.window(), newAcc);
       }
+      if (windowKey.window() > windowTriggered) {
+        windowTriggered = windowKey.window();
+      }
     }
     if (!windowKeyToData.empty()) {
-      windowBuffer_->clear();
+      windowBuffer_->clear(windowTriggered);
     }
   }
   onTimer(timer);

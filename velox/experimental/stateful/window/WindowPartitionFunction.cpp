@@ -24,7 +24,7 @@ namespace facebook::velox::stateful {
 
 WindowPartitionFunction::WindowPartitionFunction(
     const RowTypePtr& inputType,
-    const column_index_t rowtimeIndex,
+    const int32_t rowtimeIndex,
     int64_t size,
     int64_t step,
     int64_t offset,
@@ -43,8 +43,11 @@ WindowPartitionFunction::WindowPartitionFunction(
 std::optional<int64_t> WindowPartitionFunction::partition(
     const RowVector& input,
     std::vector<int64_t>& partitions) {
+  if (rowtimeIndex_ < 0) {
+    return std::optional<int64_t>(TimeWindowUtil::getCurrentProcessingTime());
+  }
   if (inputType_->childAt(rowtimeIndex_)->kind() == TypeKind::BIGINT) {
-    // TODO: this is a optimization, as the RowVector may have be partitioned in
+    // This is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
     // to verify whether the judge condition is enough.
     auto child = input.childAt(rowtimeIndex_);

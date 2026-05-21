@@ -63,52 +63,65 @@ SliceAssigner::SliceAssigner(
     int64_t step,
     int64_t offset,
     WindowType windowType,
-    int rowtimeIndex)
+    int rowtimeIndex,
+    bool expandHopWindows)
     : keySelector_(std::move(keySelector)),
       size_(size),
       step_(step),
       offset_(offset),
       windowType_(windowType),
-      rowtimeIndex_(rowtimeIndex) {
-  // TODO: calculate sliceSize_ based on windowType.
-  sliceSize_ = std::gcd(size, step);
+      rowtimeIndex_(rowtimeIndex),
+      expandHopWindows_(expandHopWindows) {
+  if (windowType_ == WindowType::TUMBLE) {
+    sliceSize_ = size;
+  } else if (windowType_ == WindowType::HOP) {
+    sliceSize_ = std::gcd(size, step);
+  } else {
+    VELOX_FAIL("window type: {} is not supported", static_cast<int32_t>(windowType_));
+  }
 }
 
 std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
-  auto calculateWindowEnd = []
-  (WindowType windowType, TypeKind rowtimeFieldType, int64_t timestampMs, int64_t offset, int64_t size, bool isProcessingTime) -> int64_t {
-    if (windowType == WindowType::TUMBLE && (rowtimeFieldType == TypeKind::TIMESTAMP || isProcessingTime)) {
-      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-      return stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset, size) + size;
+  auto calculateWindowEnd = [&]
+  (int64_t timestampMs, int64_t offset, int64_t sliceSize, int64_t windowSize, bool notExpandEventTimeWindow) -> int64_t {
+    if (notExpandEventTimeWindow) {
+       return timestampMs;
     } else {
-      return timestampMs;
+      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+      return TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset, sliceSize) + windowSize;
     }
   };
-  if (rowtimeIndex_ < 0) {
-    constexpr TypeKind kProcessingTimeType = TypeKind::BIGINT;
-    int64_t timestampMs = TimeWindowUtil::getCurrentProcessingTime();
-    int64_t windowEnd = calculateWindowEnd(windowType_, kProcessingTimeType, timestampMs, offset_, size_, true);
-    return {{windowEnd, input}};
-  } else {
-    VELOX_CHECK_LT(
-        rowtimeIndex_,
-        input->childrenSize(),
-        "rowtimeIndex out of bounds: {} >= {}",
-        rowtimeIndex_,
-        input->childrenSize());
-    TypeKind rowtimeFieldType = input->childAt(rowtimeIndex_)->typeKind();
-    std::map<int64_t, RowVectorPtr> res;
-    std::map<int64_t, RowVectorPtr> partitionToData = keySelector_->partition(input);
-    for (auto& kv : partitionToData) {
-      int64_t windowEnd = calculateWindowEnd(windowType_, rowtimeFieldType, kv.first, offset_, size_, false);
-      if (res.count(windowEnd) == 0) {
-        res[windowEnd] = kv.second;
-      } else {
-        res[windowEnd] = TimeWindowUtil::mergeVectors({res[windowEnd], kv.second}, input->pool());
-      }
+  std::map<int64_t, RowVectorPtr> res;
+  std::map<int64_t, RowVectorPtr> partitionToData = keySelector_->partition(input);
+  // set window end to data
+  auto setWindowEnd = [&](int64_t windowEnd, const RowVectorPtr& data) {
+    if (res.count(windowEnd) == 0) {
+      res[windowEnd] = data;
+    } else {
+      res[windowEnd] = TimeWindowUtil::mergeVectors({res[windowEnd], data}, input->pool());
     }
-    return res;
+  };
+  bool isEventTimeWindow = rowtimeIndex_ >= 0 && (windowType_ == WindowType::HOP || windowType_ == WindowType::TUMBLE);
+  // assign slice end to data
+  for (auto& kv : partitionToData) {
+    int64_t windowEnd = calculateWindowEnd(kv.first, offset_, sliceSize_, size_,
+      isEventTimeWindow && !expandHopWindows_);
+    if (windowType_ == WindowType::TUMBLE) {
+      setWindowEnd(windowEnd, kv.second);
+    } else if (windowType_ == WindowType::HOP) {
+      if (expandHopWindows_) {
+        int64_t end = rowtimeIndex_ < 0 ? windowEnd : windowEnd - sliceSize_;
+        for (; end >= kv.first; end -= sliceSize_) {
+          setWindowEnd(end, kv.second);
+        }
+      } else {
+        setWindowEnd(windowEnd, kv.second);
+      }
+    } else {
+      VELOX_FAIL("window type: {} is not supported", static_cast<int32_t>(windowType_));
+    }
   }
+  return res;
 }
 
 int64_t SliceAssigner::getLastWindowEnd(int64_t sliceEnd) {

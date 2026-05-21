@@ -15,8 +15,6 @@
  */
 #include "velox/experimental/stateful/WindowJoin.h"
 #include <cstdint>
-#include "velox/experimental/stateful/join/JoinRecordStateViews.h"
-#include "velox/expression/Expr.h"
 
 namespace facebook::velox::stateful {
 
