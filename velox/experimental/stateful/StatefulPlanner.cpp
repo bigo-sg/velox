@@ -277,7 +277,7 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
             windowAggNode->size(),
             windowAggNode->step(),
             windowAggNode->offset(),
-            windowAggNode->windowType(),
+            Window::getType(windowAggNode->windowType()),
             windowAggNode->rowtimeIndex());
     return std::make_unique<WindowAggregator>(
         std::move(localAggregator),
@@ -312,7 +312,7 @@ StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(
           0,
           0,
           0,
-          windowAggNode->windowType(),
+          Window::getType(windowAggNode->windowType()),
           windowAggNode->rowtimeIndex());
 
   return std::make_unique<GroupWindowAggregator>(

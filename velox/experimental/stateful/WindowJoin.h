@@ -29,7 +29,7 @@
     namespace facebook::velox::stateful {
 
   class WindowJoin : public StatefulOperator,
-                     public Triggerable<uint32_t, int64_t> {
+                     public Triggerable<int64_t, int64_t> {
    public:
     WindowJoin(
         std::unique_ptr<exec::Operator> leftInput,
@@ -57,7 +57,7 @@
       return "WindowJoin";
     }
 
-    void onEventTime(std::shared_ptr<TimerHeapInternalTimer<uint32_t, int64_t>>
+    void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                          timer) override;
 
    protected:
@@ -93,7 +93,7 @@
         rightWindowState_;
     const int leftWindowEndIndex_;
     const int rightWindowEndIndex_;
-    std::shared_ptr<InternalTimerService<uint32_t, int64_t>> timerService_;
+    std::shared_ptr<InternalTimerService<int64_t, int64_t>> timerService_;
   };
 
 } // namespace facebook::velox::stateful

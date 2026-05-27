@@ -125,4 +125,9 @@ RowVectorPtr TimeWindowUtil::mergeVectors(
   }
   return merged;
 }
+
+int64_t TimeWindowUtil::getCurrentProcessingTime() {
+  auto now = std::chrono::system_clock::now();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+}
 } // namespace facebook::velox::stateful

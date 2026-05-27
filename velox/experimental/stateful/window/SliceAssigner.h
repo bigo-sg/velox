@@ -17,21 +17,22 @@
 #include <cstdint>
 
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/window/Window.h"
 
 namespace facebook::velox::stateful {
 
 /// This class is relevant to Flink SliceAssigner.
 class SliceAssigner {
- public:
+public:
   SliceAssigner(
-      std::unique_ptr<KeySelector> keySelector,
+      std::unique_ptr<KeySelector>  keySelector,
       int64_t size,
       int64_t step,
       int64_t offset,
-      int windowType,
+      WindowType windowType,
       int rowtimeIndex);
 
-  std::map<uint32_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
+  std::map<int64_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
 
   int64_t getLastWindowEnd(int64_t sliceEnd);
 
@@ -41,14 +42,15 @@ class SliceAssigner {
 
   int64_t getSliceEndInterval();
 
- private:
+private:
   const std::unique_ptr<KeySelector> keySelector_;
   const int64_t size_;
   const int64_t step_;
   const int64_t offset_;
-  const int windowType_; // 0: hopping window, 1: slide window
+  const WindowType windowType_;
   int64_t sliceSize_;
   int rowtimeIndex_;
 };
 
 } // namespace facebook::velox::stateful
+ 
