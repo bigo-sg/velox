@@ -46,7 +46,7 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
   getOrCreateListState(StateDescriptor& stateDescriptor) override;
 
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>>
   getOrCreateValueState(StateDescriptor& stateDescriptor) override;
 
   std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
@@ -61,9 +61,9 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(
       Triggerable<int64_t, int64_t>* triggerable) override;
 
-  std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+  std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
   createGroupWindowAggTimerService(
-      Triggerable<uint32_t, TimeWindow>* triggerable) override;
+      Triggerable<int64_t, TimeWindow>* triggerable) override;
 
   // Deprecated, this maybe removed later
   void snapshot(

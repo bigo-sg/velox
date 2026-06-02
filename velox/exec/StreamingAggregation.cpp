@@ -210,10 +210,9 @@ void StreamingAggregation::assignGroups() {
   auto numInput = input_->size();
 
   inputGroups_.resize(numInput);
-
   // Look for the end of the last group.
   vector_size_t index = 0;
-  if (prevInput_) {
+  if (prevInput_ && numGroups_ > 0) {
     auto prevIndex = prevInput_->size() - 1;
     auto* prevGroup = groups_[numGroups_ - 1];
     for (; index < numInput; ++index) {
@@ -334,10 +333,9 @@ RowVectorPtr StreamingAggregation::getOutput() {
   evaluateAggregates();
 
   RowVectorPtr output;
-
-  if (numGroups_ > minOutputBatchSize_) {
+  if (numGroups_ >= minOutputBatchSize_) {
     output = createOutput(
-        std::min(numGroups_ - 1, static_cast<size_t>(maxOutputBatchSize_)));
+        std::min(numGroups_, static_cast<size_t>(maxOutputBatchSize_)));
   }
 
   prevInput_ = input_;

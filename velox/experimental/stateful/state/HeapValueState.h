@@ -25,6 +25,7 @@ template <typename K, typename N, typename V>
 class HeapValueState : public ValueState<K, N, V> {
  public:
   HeapValueState(int keyGroupNumber) {
+    VELOX_CHECK(keyGroupNumber > 0, "keyGroupNumber must be greater than 0");
     stateTable_ = std::make_unique<StateTable<K, N, V>>(keyGroupNumber);
   }
 

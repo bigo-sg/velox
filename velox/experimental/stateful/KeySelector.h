@@ -22,7 +22,7 @@
 
 namespace facebook::velox::stateful {
 
-/// This class is relevant to Flink KeySelector.
+/// This class is relevant to flink KeySelector.
 /// It can partition the RowVector according to the key fields.
 class KeySelector {
  public:

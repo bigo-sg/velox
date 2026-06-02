@@ -17,7 +17,6 @@
 #include <cstdint>
 
 namespace facebook::velox::stateful {
-
 SessionWindowAssigner::SessionWindowAssigner(int64_t gap, bool isEventTime)
     : gap_(gap), isEventTime_(isEventTime) {}
 

@@ -50,8 +50,7 @@ template <>
 struct hash<facebook::velox::stateful::WindowKey> {
   size_t operator()(const facebook::velox::stateful::WindowKey& key) const {
     // TODO: RowVector should have a hash function.
-    return std::hash<int64_t>()(key.window()) ^
-        std::hash<uint32_t>()(key.key());
+    return std::hash<int64_t>()(key.window()) ^ std::hash<uint32_t>()(key.key());
   }
 };
 } // namespace std

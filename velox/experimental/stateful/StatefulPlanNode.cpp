@@ -64,6 +64,10 @@ void StatefulPlanNode::registerSerDe() {
   auto& registry = DeserializationWithContextRegistryForSharedPtr();
 
   registry.Register("WatermarkAssignerNode", WatermarkAssignerNode::create);
+  registry.Register(
+    "WatermarkPushDownSpec", WatermarkPushDownSpec::deserialize);
+  registry.Register(
+    "TableScanWithWatermarkNode", TableScanNodeWithWatermark::create);
   registry.Register("StatefulPlanNode", StatefulPlanNode::create);
   registry.Register("EmptyNode", EmptyNode::create);
   registry.Register("StreamJoinNode", StreamJoinNode::create);
@@ -268,7 +272,10 @@ folly::dynamic StreamWindowAggregationNode::serialize() const {
   obj["offset"] = offset_;
   obj["windowType"] = windowType_;
   obj["outputType"] = outputType_->serialize();
+  obj["isEventTime"] = isEventTime_;
   obj["rowtimeIndex"] = rowtimeIndex_;
+  obj["windowStartIndex"] = windowStartIndex_;
+  obj["windowEndIndex"] = windowEndIndex_;
   return obj;
 }
 
@@ -314,7 +321,10 @@ core::PlanNodePtr StreamWindowAggregationNode::create(
       obj["offset"].asInt(),
       obj["windowType"].asInt(),
       outputType,
-      obj["rowtimeIndex"].asInt());
+      obj["isEventTime"].asBool(),
+      obj["rowtimeIndex"].asInt(),
+      obj["windowStartIndex"].asInt(),
+      obj["windowEndIndex"].asInt());
 }
 
 const std::vector<core::PlanNodePtr>& GroupWindowAggsHandlerNode::sources()
@@ -569,6 +579,87 @@ core::PlanNodePtr GroupAggregationNode::create(
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const GroupAggregationNode>(
       planNodeId, aggregation, keySelectorSpec, outputType);
+}
+
+folly::dynamic WatermarkPushDownSpec::serialize() const {
+  folly::dynamic obj = folly::dynamic::object;
+  obj["name"] = "WatermarkPushDownSpec";
+  obj["project"] = project_->serialize();
+  obj["idleTimeout"] = idleTimeout_;
+  obj["rowtimeFieldIndex"] = rowtimeFieldIndex_;
+  obj["watermarkInterval"] = watermarkInterval_;
+  return obj;
+}
+
+// static
+std::shared_ptr<WatermarkPushDownSpec> WatermarkPushDownSpec::deserialize(
+  const folly::dynamic& obj,
+  void* context) {
+  auto project =
+      ISerializable::deserialize<core::ProjectNode>(obj["project"], context);
+  auto idleTimeout = obj["idleTimeout"].asInt();
+  auto rowtimeFieldIndex =
+      static_cast<int32_t>(obj["rowtimeFieldIndex"].asInt());
+  int64_t watermarkInterval = obj["watermarkInterval"].asInt();
+  return std::make_shared<WatermarkPushDownSpec>(
+      std::move(project),
+      idleTimeout,
+      watermarkInterval,
+      rowtimeFieldIndex);
+}
+
+folly::dynamic TableScanNodeWithWatermark::serialize() const {
+  auto obj = core::PlanNode::serialize();
+  obj["outputType"] = outputType()->serialize();
+  obj["tableHandle"] = tableHandle()->serialize();
+  folly::dynamic serializedAssignments = folly::dynamic::array;
+  for (const auto& [assign, columnHandle] : assignments()) {
+    folly::dynamic assignmentPair = folly::dynamic::object;
+    assignmentPair["assign"] = assign;
+    assignmentPair["columnHandle"] = columnHandle->serialize();
+    serializedAssignments.push_back(std::move(assignmentPair));
+  }
+  obj["assignments"] = std::move(serializedAssignments);
+  obj["watermarkPushDownSpec"] = watermarkPushDownSpec_
+      ? watermarkPushDownSpec_->serialize()
+      : folly::dynamic(nullptr);
+  return obj;
+}
+
+// static
+core::PlanNodePtr TableScanNodeWithWatermark::create(
+  const folly::dynamic& obj,
+  void* context) {
+  auto planNodeId = obj["id"].asString();
+  auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
+  auto tableHandle = std::const_pointer_cast<connector::ConnectorTableHandle>(
+      ISerializable::deserialize<connector::ConnectorTableHandle>(
+          obj["tableHandle"], context));
+
+  std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>
+      assignments;
+  for (const auto& pair : obj["assignments"]) {
+    auto assign = pair["assign"].asString();
+    auto columnHandle = ISerializable::deserialize<connector::ColumnHandle>(
+        pair["columnHandle"]);
+    assignments[assign] =
+        std::const_pointer_cast<connector::ColumnHandle>(columnHandle);
+  }
+
+  std::shared_ptr<WatermarkPushDownSpec> watermarkPushDownSpec;
+  if (obj.count("watermarkPushDownSpec") &&
+      !obj["watermarkPushDownSpec"].isNull()) {
+    watermarkPushDownSpec = std::const_pointer_cast<WatermarkPushDownSpec>(
+        ISerializable::deserialize<WatermarkPushDownSpec>(
+            obj["watermarkPushDownSpec"], context));
+  }
+
+  return std::make_shared<const TableScanNodeWithWatermark>(
+      planNodeId,
+      outputType,
+      tableHandle,
+      assignments,
+      watermarkPushDownSpec);
 }
 
 } // namespace facebook::velox::stateful

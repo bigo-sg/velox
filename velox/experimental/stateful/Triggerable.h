@@ -16,9 +16,9 @@
 #pragma once
 
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
-#include "velox/vector/ComplexVector.h"
 
 #include <memory>
+#include <mutex>
 
 namespace facebook::velox::stateful {
 
@@ -35,10 +35,15 @@ class Triggerable {
 
   virtual void onProcessingTime(
       std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) {}
-  
-  const std::shared_ptr<std::mutex> getMutex() { return mtx_; }
 
-protected:
+  // For Gluten/Flink, the processing time is triggered by JNI.
+  virtual void processProcessingTimeByJni(int64_t timestamp) {}
+
+  const std::shared_ptr<std::mutex> getMutex() const {
+    return mtx_;
+  }
+
+ protected:
   std::shared_ptr<std::mutex> mtx_;
 };
 

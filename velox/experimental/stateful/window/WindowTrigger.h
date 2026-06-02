@@ -103,8 +103,7 @@ class TriggerContext : public std::enable_shared_from_this<TriggerContext> {
   virtual int64_t getCurrentWatermark() = 0;
 
   // TODO: support it
-  // MetricGroup getMetricGroup()；
-
+  // MetricGroup getMetricGroup()
   virtual void registerProcessingTimeTimer(
       uint32_t key,
       TimeWindow window,

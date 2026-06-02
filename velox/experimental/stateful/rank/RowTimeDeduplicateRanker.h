@@ -62,7 +62,7 @@ class RowTimeDeduplicateRanker : public exec::Operator,
   void close() override;
 
  private:
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> state_;
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>> state_;
   int64_t minRetentionTime_;
   int rowtimeIndex_;
   bool generateUpdateBefore_;

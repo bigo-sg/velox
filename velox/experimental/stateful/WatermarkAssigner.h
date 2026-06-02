@@ -17,7 +17,6 @@
 #include <cstdint>
 
 #include "velox/experimental/stateful/StatefulOperator.h"
-#include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
 namespace facebook::velox::stateful {

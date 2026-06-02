@@ -14,13 +14,58 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
-#include "velox/experimental/stateful/window/Window.h"
-#include "velox/vector/ComplexVector.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
+#include "velox/experimental/stateful/window/Window.h"
+#include "velox/type/Timestamp.h"
+#include "velox/vector/ComplexVector.h"
+#include "velox/vector/ConstantVector.h"
+#include "velox/vector/DictionaryVector.h"
+#include "velox/vector/FlatVector.h"
 #include <cstdint>
 #include <numeric>
+#include <unordered_map>
+#include <vector>
 
 namespace facebook::velox::stateful {
+
+namespace {
+
+void prepareChildrenLoaded(const RowVectorPtr& input) {
+  for (auto& child : input->children()) {
+    child->loadedVector();
+  }
+}
+
+RowVectorPtr wrapChildrenByIndices(
+    const RowVectorPtr& input,
+    vector_size_t size,
+    const BufferPtr& indices,
+    velox::memory::MemoryPool* pool) {
+  RowVectorPtr result = std::make_shared<RowVector>(
+      pool,
+      input->type(),
+      nullptr,
+      size,
+      std::vector<VectorPtr>(input->childrenSize()));
+
+  for (vector_size_t i = 0; i < input->childrenSize(); ++i) {
+    auto& child = result->childAt(i);
+    if (child && child->encoding() == VectorEncoding::Simple::DICTIONARY &&
+        child.use_count() == 1) {
+      child->BaseVector::resize(size);
+      child->setWrapInfo(indices);
+      child->setValueVector(input->childAt(i));
+    } else {
+      child = BaseVector::wrapInDictionary(
+          nullptr, indices, size, input->childAt(i));
+    }
+  }
+
+  result->updateContainsLazyNotLoaded();
+  return result;
+}
+
+} // namespace
 
 SliceAssigner::SliceAssigner(
     std::unique_ptr<KeySelector> keySelector,
@@ -40,31 +85,81 @@ SliceAssigner::SliceAssigner(
 }
 
 std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
-  auto calculateWindowEnd = []
-  (WindowType windowType, TypeKind rowtimeFieldType, int64_t timestampMs, int64_t offset, int64_t size) -> int64_t {
-    if (windowType == WindowType::TUMBLE && rowtimeFieldType == TypeKind::TIMESTAMP) {
-      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-      return stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset, size) + size;
-    } else {
-      return timestampMs;
-    }
-  };
-  TypeKind rowtimeFieldType = input->childAt(rowtimeIndex_)->typeKind();
   if (rowtimeIndex_ < 0) {
     int64_t timestampMs = TimeWindowUtil::getCurrentProcessingTime();
-    return {{calculateWindowEnd(windowType_, rowtimeFieldType, timestampMs, offset_, size_), input}};
-  } else {
-    std::map<int64_t, RowVectorPtr> res;
-    std::map<int64_t, RowVectorPtr> partitionToData = keySelector_->partition(input);
-    for (auto& kv : partitionToData) {
-      int64_t windowEnd = calculateWindowEnd(windowType_, rowtimeFieldType, kv.first, offset_, size_);
-      if (res.count(windowEnd) == 0) {
-        res[windowEnd] = kv.second;
-      } else {
-        res[windowEnd] = TimeWindowUtil::mergeVectors({res[windowEnd], kv.second}, input->pool());
-      }
+    if (windowType_ == WindowType::TUMBLE) {
+      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+      int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
+      return {{windowStart + size_, input}};
+    } else {
+      return {{timestampMs, input}};
     }
-    return res;
+  } else {
+    const VectorPtr& rowtimeVector = input->childAt(rowtimeIndex_);
+    prepareChildrenLoaded(input);
+    const auto* tsConst = rowtimeVector->as<DictionaryVector<Timestamp>>();
+    const auto* tsFlat = rowtimeVector->asFlatVector<Timestamp>();
+    VELOX_CHECK(
+        tsConst != nullptr || tsFlat != nullptr,
+        "rowtime column must be TIMESTAMP flat or constant vector");
+
+    const vector_size_t numRows = rowtimeVector->size();
+    auto isNullAtRow = [&](vector_size_t row) {
+      return tsConst ? tsConst->isNullAt(row) : tsFlat->isNullAt(row);
+    };
+    auto timestampMillisAt = [&](vector_size_t row) {
+      return tsConst ? tsConst->valueAt(row).toMillis()
+                       : tsFlat->valueAt(row).toMillis();
+    };
+
+    velox::memory::MemoryPool* pool = input->pool();
+    std::map<int64_t, RowVectorPtr> sliceEndToData;
+
+    if (windowType_ == WindowType::TUMBLE) {
+      std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
+      for (vector_size_t i = 0; i < numRows; ++i) {
+        if (isNullAtRow(i)) {
+          continue;
+        }
+        int64_t timestampMs = timestampMillisAt(i);
+        int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+        int64_t windowStart =
+            stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
+        const int64_t sliceEnd = windowStart + size_;
+        groups[sliceEnd].push_back(i);
+      }
+      for (auto& [sliceEnd, rowIndices] : groups) {
+        const vector_size_t n = rowIndices.size();
+        BufferPtr indicesBuf = allocateIndices(n, pool);
+        auto* raw = indicesBuf->asMutable<vector_size_t>();
+        for (vector_size_t j = 0; j < n; ++j) {
+          raw[j] = rowIndices[j];
+        }
+        sliceEndToData[sliceEnd] =
+            wrapChildrenByIndices(input, n, indicesBuf, pool);
+      }
+      return sliceEndToData;
+    }
+    std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
+    for (vector_size_t i = 0; i < numRows; ++i) {
+      if (isNullAtRow(i)) {
+        continue;
+      }
+      int64_t timestampMs = timestampMillisAt(i);
+      int64_t key = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+      groups[key].push_back(i);
+    }
+    for (auto& [timeKey, rowIndices] : groups) {
+      const vector_size_t n = rowIndices.size();
+      BufferPtr indicesBuf = allocateIndices(n, pool);
+      auto* raw = indicesBuf->asMutable<vector_size_t>();
+      for (vector_size_t j = 0; j < n; ++j) {
+        raw[j] = rowIndices[j];
+      }
+      sliceEndToData[timeKey] =
+          wrapChildrenByIndices(input, n, indicesBuf, pool);
+    }
+    return sliceEndToData;
   }
 }
 
