@@ -24,7 +24,7 @@ class KeyedProcessFunction {
  public:
   virtual void open(StreamOperatorStateHandler* stateHandler) = 0;
 
-  virtual RowVectorPtr processElements(uint32_t key, RowVectorPtr input) = 0;
+  virtual RowVectorPtr processElements(int64_t key, RowVectorPtr input) = 0;
 };
 
 } // namespace facebook::velox::stateful

@@ -46,7 +46,7 @@ void GroupAggregator::open(StreamOperatorStateHandler* stateHandler) {
 }
 
 RowVectorPtr GroupAggregator::processElements(
-    uint32_t key,
+    int64_t key,
     RowVectorPtr input) {
   // TODO: not identically equal to Flink.
   bool firstRow;

@@ -57,7 +57,7 @@ class RowTimeDeduplicateRanker : public exec::Operator,
 
   void open(StreamOperatorStateHandler* stateHandler) override;
 
-  RowVectorPtr processElements(uint32_t key, RowVectorPtr input) override;
+  RowVectorPtr processElements(int64_t key, RowVectorPtr input) override;
 
   void close() override;
 
