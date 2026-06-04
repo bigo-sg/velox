@@ -121,6 +121,7 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
           continue;
         }
         // TODO: agg should output no matter how many rows in data.
+        VELOX_CHECK(localAggregator_, "Local aggregator not set");
         localAggregator_->addInput(
             TimeWindowUtil::mergeVectors(datas, op()->pool()));
         RowVectorPtr localAcc = localAggregator_->getOutput();
