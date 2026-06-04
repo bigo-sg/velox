@@ -107,7 +107,7 @@ RowTypePtr combineToRowType(const TypePtr& keyType, const TypePtr& valueType) {
   return std::make_shared<RowType>(std::move(names), std::move(types));
 }
 
-std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>>
 RocksDBKeyedStateBackend::getOrCreateValueState(
     StateDescriptor& stateDescriptor) {
   const std::string stateName = stateDescriptor.name();
@@ -120,9 +120,9 @@ RocksDBKeyedStateBackend::getOrCreateValueState(
         operatorId);
   }
   memory::MemoryPool* pool = stateDescriptor.memoryPool();
-  std::shared_ptr<ValueSerializer<uint32_t>> keySerializer =
-      std::dynamic_pointer_cast<ValueSerializer<uint32_t>>(createSerializer(
-          std::make_shared<ScalarType<TypeKind::INTEGER>>(), true, pool));
+  std::shared_ptr<ValueSerializer<int64_t>> keySerializer =
+      std::dynamic_pointer_cast<ValueSerializer<int64_t>>(createSerializer(
+          std::make_shared<ScalarType<TypeKind::BIGINT>>(), false, pool));
   std::shared_ptr<ValueSerializer<int64_t>> namespaceSerializer =
       std::dynamic_pointer_cast<ValueSerializer<int64_t>>(
           createSerializer(stateNamespaces_[stateName], false, pool));
@@ -131,7 +131,7 @@ RocksDBKeyedStateBackend::getOrCreateValueState(
   std::shared_ptr<ComplexVectorSerializer<RowVectorPtr>> valueSerializer =
       std::dynamic_pointer_cast<ComplexVectorSerializer<RowVectorPtr>>(
           createSerializer(combineToRowType(keyType, valueType), false, pool));
-  return std::make_shared<RocksDBValueState<uint32_t, int64_t, RowVectorPtr>>(
+  return std::make_shared<RocksDBValueState<int64_t, int64_t, RowVectorPtr>>(
       *db_,
       *readOptions_,
       *writeOptions_,
@@ -184,9 +184,9 @@ RocksDBKeyedStateBackend::createTimerService(
   return std::make_shared<InternalTimerService<int64_t, int64_t>>(triggerable);
 }
 
-std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
 RocksDBKeyedStateBackend::createGroupWindowAggTimerService(
-    Triggerable<uint32_t, TimeWindow>* triggerable) {
+    Triggerable<int64_t, TimeWindow>* triggerable) {
   // TODO: implement this
   return nullptr;
 }

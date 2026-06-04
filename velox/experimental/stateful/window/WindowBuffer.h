@@ -20,6 +20,8 @@
 #include <unordered_map>
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
+#include <climits>
+#include <mutex>
 
 namespace facebook::velox::stateful {
 
@@ -35,6 +37,8 @@ class WindowBuffer {
   advanceProgress(int64_t progress) = 0;
 
   virtual void clear() = 0;
+
+  virtual int size() = 0;
 };
 
 using WindowBufferPtr = std::shared_ptr<WindowBuffer>;
@@ -51,6 +55,9 @@ class RecordsWindowBuffer : public WindowBuffer {
   void clear() override {
     buffer_.clear();
     minSliceEnd_ = INT64_MAX;
+  }
+  int size() override {
+    return buffer_.size();
   }
 
  private:

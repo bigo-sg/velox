@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 #pragma once
-#include "velox/common/base/BitUtil.h"
 #include <cstdint>
+
+#include "velox/common/base/BitUtil.h"
 
 namespace facebook::velox::stateful {
 

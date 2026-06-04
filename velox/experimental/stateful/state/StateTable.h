@@ -15,11 +15,9 @@
  */
 #pragma once
 
-#include <iostream>
-#include <map>
-#include <vector>
-#include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/state/StateMap.h"
+
+#include <vector>
 
 namespace facebook::velox::stateful {
 
@@ -37,22 +35,31 @@ class StateTable {
       : keyGroupedStates_(keyGroupNumber), keyGroupNumber_(keyGroupNumber) {}
 
   S get(const K& key, const N& ns) {
+    if (keyGroupNumber_ == 0) {
+      return nullptr;
+    }
     int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
     return keyGroupedStates_[keyGroupIndex].get(key, ns);
   }
 
   void put(const K& key, const N& ns, const S& state) {
+    if (keyGroupNumber_ == 0) {
+      return;
+    }
     int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
     keyGroupedStates_[keyGroupIndex].put(key, ns, state);
   }
 
   void remove(const K& key, const N& ns) {
+    if (keyGroupNumber_ == 0) {
+      return;
+    }
     int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
     keyGroupedStates_[keyGroupIndex].remove(key, ns);
   }
 
   void clear() {
-    keyGroupedStates_.clear();
+    keyGroupedStates_.assign(keyGroupNumber_, StateMap<K, N, S>{});
   }
 
  private:

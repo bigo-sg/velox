@@ -58,7 +58,8 @@ std::optional<int64_t> WindowPartitionFunction::partition(
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
     int64_t timestamp = ts.toMillis();
     if (windowType_ == WindowType::HOP) { // Hopping window
-      int64_t start = TimeWindowUtil::getWindowStartWithOffset(timestamp, offset_, sliceSize_);
+      int64_t start = TimeWindowUtil::getWindowStartWithOffset(
+          timestamp, offset_, sliceSize_);
       partitions[i] = start + sliceSize_;
     } else if (windowType_ == WindowType::TUMBLE) { // Windowed Slice Assigner
       partitions[i] = timestamp;

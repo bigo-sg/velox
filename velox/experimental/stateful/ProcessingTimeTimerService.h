@@ -23,6 +23,7 @@
 #include <string>
 #include <utility>
 
+#include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/InternalPriorityQueue.h"
 #include "velox/experimental/stateful/ProcessingTimeScheduler.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
@@ -35,6 +36,10 @@ namespace facebook::velox::stateful {
 // scheduled with the underlying ProcessingTimeScheduler so it fires at its
 // wall-clock time. When the timer fires, all timers due at that moment are
 // drained and forwarded to the Triggerable.
+//
+// All queue and nextTimer_ access is serialized with Triggerable::mtx_.
+// Do not hold mtx_ across scheduler_->registerTimer/cancel/unregister calls
+// (delay==0 may invoke callbacks inline and deadlock on std::mutex).
 template <typename K, typename N>
 class ProcessingTimeTimerService {
  public:
@@ -43,27 +48,48 @@ class ProcessingTimeTimerService {
       std::unique_ptr<ProcessingTimeScheduler> scheduler)
       : triggerable_(triggerable), scheduler_(std::move(scheduler)) {}
 
-  void registerTimer(K key, N ns, int64_t time) {
-    // Capture the timestamp of the current head before insertion. If the
-    // queue is empty, treat as +inf so the new timer is unconditionally the
-    // head.
+  void registerTimer(const K& key, const N& ns, int64_t time) {
+    std::lock_guard<std::mutex> lock(*mutex());
+    bool reschedule = false;
+    int64_t scheduleAt = time;
     const int64_t oldHeadTimestamp = timersQueue_.empty()
         ? std::numeric_limits<int64_t>::max()
         : timersQueue_.peek().timestamp();
     if (timersQueue_.add(TimerHeapInternalTimer<K, N>(time, key, ns))) {
       if (time < oldHeadTimestamp) {
-        if (nextTimer_.has_value()) {
-          scheduler_->cancel(nextTimer_.value());
-        }
-        nextTimer_ = scheduler_->registerTimer(
-            time, ProcessingTimerTask(time, [this](int64_t processingTime) {
-              onProcessingTime(processingTime);
-            }));
+        reschedule = true;
+        scheduleAt = time;
       }
+    }
+    if (!reschedule) {
+      return;
+    }
+
+    std::optional<std::string> timerToCancel;
+    if (nextTimer_.has_value()) {
+      timerToCancel = nextTimer_.value();
+      nextTimer_ = std::nullopt;
+    }
+    if (timerToCancel.has_value()) {
+      scheduler_->cancel(timerToCancel.value());
+    }
+
+    auto registered = scheduler_->registerTimer(
+        scheduleAt, ProcessingTimerTask(scheduleAt, [this](int64_t processingTime) {
+          onProcessingTime(processingTime);
+        }));
+    if (!registered.has_value()) {
+      return;
+    }
+    if (!nextTimer_.has_value()) {
+      nextTimer_ = std::move(registered);
+    } else {
+      scheduler_->cancel(registered.value());
     }
   }
 
-  void deleteTimer(K key, N ns, int64_t time) {
+  void deleteTimer(const K& key, const N& ns, int64_t time) {
+    std::lock_guard<std::mutex> lock(*mutex());
     timersQueue_.remove(TimerHeapInternalTimer<K, N>(time, key, ns));
   }
 
@@ -75,61 +101,83 @@ class ProcessingTimeTimerService {
   }
 
   void close() {
-    timersQueue_.clear();
+    {
+      std::lock_guard<std::mutex> lock(*mutex());
+      timersQueue_.clear();
+      nextTimer_ = std::nullopt;
+    }
     if (scheduler_) {
       scheduler_->close();
     }
   }
 
   bool empty() const {
+    std::lock_guard<std::mutex> lock(*mutex());
     return timersQueue_.empty();
   }
 
   size_t size() const {
+    std::lock_guard<std::mutex> lock(*mutex());
     return timersQueue_.size();
   }
 
  private:
+  std::shared_ptr<std::mutex> mutex() const {
+    auto mtx = triggerable_->getMutex();
+    VELOX_CHECK(mtx, "Triggerable mutex must be initialized");
+    return mtx;
+  }
+
   // Invoked by the ProcessingTimeScheduler when the scheduled wall-clock
   // timestamp is reached. Drains all due timers under the Triggerable's
   // mutex and re-arms the scheduler for the next head if any.
   void onProcessingTime(int64_t time) {
     std::string taskName;
+    std::optional<int64_t> nextHeadTimestamp;
+
+    std::lock_guard<std::mutex> lock(*mutex());
     if (nextTimer_.has_value()) {
       taskName = nextTimer_.value();
-    }
-    nextTimer_ = std::nullopt;
-
-    // Timestamp of the next pending timer that was NOT due (head after the
-    // drain). std::nullopt means the queue is empty after draining.
-    std::optional<int64_t> nextHeadTimestamp;
-    bool keepDraining = true;
-    const std::shared_ptr<std::mutex> mtx = triggerable_->getMutex();
-    if (mtx) {
-      std::lock_guard<std::mutex> lock(*mtx);
-      while (keepDraining && !timersQueue_.empty()) {
-        const auto& head = timersQueue_.peek();
-        if (head.timestamp() > time) {
-          nextHeadTimestamp = head.timestamp();
-          keepDraining = false;
-          continue;
-        }
-        TimerHeapInternalTimer<K, N> popped = timersQueue_.poll();
-        // Triggerable callbacks still take a shared_ptr; wrap the popped value.
-        triggerable_->onProcessingTime(
-            std::make_shared<TimerHeapInternalTimer<K, N>>(std::move(popped)));
-      }
-      if (!taskName.empty()) {
-        scheduler_->unregister(taskName);
-      }
+      nextTimer_ = std::nullopt;
     }
 
+    while (!timersQueue_.empty()) {
+      const auto& head = timersQueue_.peek();
+      if (head.timestamp() > time) {
+        nextHeadTimestamp = head.timestamp();
+        break;
+      }
+      TimerHeapInternalTimer<K, N> popped = timersQueue_.poll();
+      triggerable_->onProcessingTime(
+          std::make_shared<TimerHeapInternalTimer<K, N>>(std::move(popped)));
+    }
+  
+    triggerable_->processProcessingTimeByJni(time);
+    if (!taskName.empty()) {
+      scheduler_->unregister(taskName);
+    }
+
+    std::optional<int64_t> scheduleTs;
     if (nextHeadTimestamp.has_value() && !nextTimer_.has_value()) {
-      const int64_t ts = *nextHeadTimestamp;
-      nextTimer_ = scheduler_->registerTimer(
-          ts, ProcessingTimerTask(ts, [this](int64_t processingTime) {
-            onProcessingTime(processingTime);
-          }));
+      scheduleTs = nextHeadTimestamp;
+    }
+    if (!scheduleTs.has_value()) {
+      return;
+    }
+  
+    auto registered = scheduler_->registerTimer(
+        scheduleTs.value(),
+        ProcessingTimerTask(scheduleTs.value(), [this](int64_t processingTime) {
+          onProcessingTime(processingTime);
+        }));
+    if (!registered.has_value()) {
+      return;
+    }
+
+    if (!nextTimer_.has_value()) {
+      nextTimer_ = std::move(registered);
+    } else {
+      scheduler_->cancel(registered.value());
     }
   }
 

@@ -55,13 +55,13 @@ class GroupAggregator : public exec::Operator, public KeyedProcessFunction {
 
   void open(StreamOperatorStateHandler* stateHandler) override;
 
-  RowVectorPtr processElements(uint32_t key, RowVectorPtr input) override;
+  RowVectorPtr processElements(int64_t key, RowVectorPtr input) override;
 
   void close() override;
 
  private:
   std::unique_ptr<AggsHandleFunction> aggsFunction_;
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> accState_;
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>> accState_;
   int64_t stateRetentionTime_;
   bool generateUpdateBefore_;
 };

@@ -16,6 +16,9 @@
 #pragma once
 #include <cstdint>
 
+#include <memory>
+#include "velox/exec/Driver.h"
+#include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
@@ -33,13 +36,16 @@ class WindowAggregator : public StatefulOperator,
                          public Triggerable<int64_t, int64_t> {
  public:
   WindowAggregator(
-      std::unique_ptr<exec::Operator> localAggerator,
-      std::unique_ptr<exec::Operator> globalAggerator,
-      std::vector<std::unique_ptr<StatefulOperator>> targets,
-      std::unique_ptr<KeySelector> keySelector,
-      std::unique_ptr<SliceAssigner> sliceAssigner,
-      const int64_t windowInterval,
-      const bool useDayLightSaving);
+    std::unique_ptr<exec::Operator> localAggregator,
+    std::unique_ptr<exec::Operator> globalAggregator,
+    std::vector<std::unique_ptr<StatefulOperator>> targets,
+    std::unique_ptr<KeySelector> keySelector,
+    std::unique_ptr<SliceAssigner> sliceAssigner,
+    const int64_t windowInterval,
+    const bool useDayLightSaving,
+    const bool isEventTime,
+    const int32_t windowStartIndex,
+    const int32_t windowEndIndex);
 
   void initialize() override;
 
@@ -55,10 +61,17 @@ class WindowAggregator : public StatefulOperator,
     return "WindowAggregator";
   }
 
+  void processWatermark(int64_t timestamp) override {
+    // processWatermarkInternal(timestamp);
+  }
+
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                        timer) override;
 
-  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;
+  void onProcessingTime(
+      std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;
+
+  void processProcessingTimeByJni(int64_t timestamp) override;
 
  private:
   void processWatermarkInternal(int64_t timestamp);
@@ -67,20 +80,20 @@ class WindowAggregator : public StatefulOperator,
 
   void onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer);
 
-  template<typename K>
+  template <typename K>
   void fireWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd);
 
-  template<typename K>
+  template <typename K>
   void clearWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd);
 
-  std::unique_ptr<exec::Operator> localAggerator_;
+  std::unique_ptr<exec::Operator> localAggregator_;
   std::unique_ptr<KeySelector> keySelector_;
   std::unique_ptr<SliceAssigner> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
   const int64_t windowInterval_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
-  const bool isEventTime = true; // TODO: support processing time
+  const bool isEventTime_ = true;
   const int32_t windowStartIndex_ = -1;
   const int32_t windowEndIndex_ = -1;
 
@@ -88,7 +101,8 @@ class WindowAggregator : public StatefulOperator,
   int64_t currentProgress_ = 0;
   int64_t nextTriggerWatermark_ = 0;
   int64_t lastTriggeredProcessingTime_ = 0;
-  std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>> windowState_;
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>> windowState_;
   std::shared_ptr<InternalTimerService<int64_t, int64_t>> windowTimerService_;
 };
+
 } // namespace facebook::velox::stateful

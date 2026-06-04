@@ -47,15 +47,15 @@ HeapKeyedStateBackend::getOrCreateListState(StateDescriptor& stateDescriptor) {
   return state;
 }
 
-std::shared_ptr<ValueState<uint32_t, int64_t, RowVectorPtr>>
+std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>>
 HeapKeyedStateBackend::getOrCreateValueState(StateDescriptor& stateDescriptor) {
   auto stateIte = keyValueStatesByName_.find(stateDescriptor.name());
   if (stateIte != keyValueStatesByName_.end()) {
     return std::dynamic_pointer_cast<
-        ValueState<uint32_t, int64_t, RowVectorPtr>>(stateIte->second);
+        ValueState<int64_t, int64_t, RowVectorPtr>>(stateIte->second);
   }
   auto state =
-      std::make_shared<HeapValueState<uint32_t, int64_t, RowVectorPtr>>(
+      std::make_shared<HeapValueState<int64_t, int64_t, RowVectorPtr>>(
           stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
@@ -112,10 +112,10 @@ HeapKeyedStateBackend::createTimerService(
   return std::make_shared<InternalTimerService<int64_t, int64_t>>(triggerable);
 }
 
-std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
 HeapKeyedStateBackend::createGroupWindowAggTimerService(
-    Triggerable<uint32_t, TimeWindow>* triggerable) {
-  return std::make_shared<InternalTimerService<uint32_t, TimeWindow>>(
+    Triggerable<int64_t, TimeWindow>* triggerable) {
+  return std::make_shared<InternalTimerService<int64_t, TimeWindow>>(
       triggerable);
 }
 

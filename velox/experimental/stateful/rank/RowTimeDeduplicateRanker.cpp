@@ -51,7 +51,7 @@ void RowTimeDeduplicateRanker::open(StreamOperatorStateHandler* stateHandler) {
 }
 
 RowVectorPtr RowTimeDeduplicateRanker::processElements(
-    uint32_t key,
+    int64_t key,
     RowVectorPtr input) {
   // TODO: not identically equal to Flink. Flink may generate output each row,
   // but we only generate output once a batch.

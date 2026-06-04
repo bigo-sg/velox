@@ -22,7 +22,7 @@
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/vector/ComplexVector.h"
-
+#include <algorithm>
 #include <type_traits>
 #include <vector>
 

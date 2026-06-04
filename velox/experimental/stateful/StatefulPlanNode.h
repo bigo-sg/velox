@@ -115,6 +115,78 @@ class WatermarkAssignerNode : public core::PlanNode {
   const int64_t watermarkInterval_;
 };
 
+class WatermarkPushDownSpec : public ISerializable {
+public:
+  WatermarkPushDownSpec(
+      std::shared_ptr<const core::ProjectNode> project,
+      int64_t idleTimeout,
+      int64_t watermarkInterval,
+      int32_t rowtimeFieldIndex)
+      : project_(std::move(project)),
+        idleTimeout_(idleTimeout),
+        watermarkInterval_(watermarkInterval),
+        rowtimeFieldIndex_(rowtimeFieldIndex) {}
+
+  int64_t watermarkInterval() const {
+    return watermarkInterval_;
+  }
+
+  int64_t idleTimeout() const {
+    return idleTimeout_;
+  }
+
+  int32_t rowtimeFieldIndex() const {
+    return rowtimeFieldIndex_;
+  }
+
+  const std::shared_ptr<const core::ProjectNode>& project() const {
+    return project_;
+  }
+
+  folly::dynamic serialize() const override;
+
+  static std::shared_ptr<WatermarkPushDownSpec> deserialize(
+      const folly::dynamic& obj,
+      void* context);
+
+private:
+  const std::shared_ptr<const core::ProjectNode> project_;
+  const int64_t idleTimeout_;
+  const int64_t watermarkInterval_;
+  const int32_t rowtimeFieldIndex_;
+};
+  
+
+class TableScanNodeWithWatermark : public core::TableScanNode {
+  public:
+    TableScanNodeWithWatermark(
+      const core::PlanNodeId& id,
+      RowTypePtr outputType,
+      const std::shared_ptr<connector::ConnectorTableHandle>& tableHandle,
+      const std::unordered_map<
+          std::string,
+          std::shared_ptr<connector::ColumnHandle>>& assignments,
+      const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec)
+         : core::TableScanNode(id, outputType, tableHandle, assignments),
+         watermarkPushDownSpec_(watermarkPushDownSpec) {}
+  
+    const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec() const {
+      return watermarkPushDownSpec_;
+    }
+  
+    std::string_view name() const override {
+      return "TableScanWithWatermark";
+    }
+  
+    folly::dynamic serialize() const override;
+  
+    static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
+  
+  private:
+    const std::shared_ptr<WatermarkPushDownSpec> watermarkPushDownSpec_;
+    
+};
+
 class StreamJoinNode : public core::PlanNode {
  public:
   StreamJoinNode(
@@ -342,8 +414,11 @@ class StreamWindowAggregationNode : public core::PlanNode {
       int64_t offset,
       int windowType,
       const RowTypePtr& outputType,
-      int rowtimeIndex)
-      : PlanNode(id),
+      bool isEventTime,
+      int rowtimeIndex,
+      int windowStartIndex,
+      int windowEndIndex) :
+        PlanNode(id),
         aggregation_(std::move(aggregationNode)),
         localAgg_(std::move(localAgg)),
         keySelectorSpec_(std::move(keySelectorSpec)),
@@ -356,7 +431,10 @@ class StreamWindowAggregationNode : public core::PlanNode {
         offset_(offset),
         windowType_(windowType),
         outputType_(std::move(outputType)),
-        rowtimeIndex_(rowtimeIndex) {}
+        isEventTime_(isEventTime),
+        rowtimeIndex_(rowtimeIndex),
+        windowStartIndex_(windowStartIndex),
+        windowEndIndex_(windowEndIndex) {}
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -408,8 +486,20 @@ class StreamWindowAggregationNode : public core::PlanNode {
     return windowType_;
   }
 
+  bool isEventTime() const {
+    return isEventTime_;
+  }
+
   int rowtimeIndex() const {
     return rowtimeIndex_;
+  }
+
+  int windowStartIndex() const {
+    return windowStartIndex_;
+  }
+
+  int windowEndIndex() const {
+    return windowEndIndex_;
   }
 
   const std::vector<core::PlanNodePtr>& sources() const override;
@@ -437,7 +527,10 @@ class StreamWindowAggregationNode : public core::PlanNode {
   int64_t offset_;
   int windowType_;
   const RowTypePtr outputType_;
+  bool isEventTime_;
   int rowtimeIndex_;
+  int windowStartIndex_;
+  int windowEndIndex_;
 };
 
 class GroupWindowAggsHandlerNode : public core::PlanNode {

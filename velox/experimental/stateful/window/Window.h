@@ -16,6 +16,7 @@
 #pragma once
 #include <cstdint>
 
+#include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Exceptions.h"
 #include <algorithm>
 #include <string>
@@ -95,10 +96,14 @@ class TimeWindow : public Window {
     return start_ >= 0 && end_ >= start_;
   }
 
- private:
+  uint64_t hashCode() {
+    return bits::hashMix(end_, start_);
+  }
+
+  private:
   int64_t start_;
   int64_t end_;
-};
+}; 
 
 } // namespace facebook::velox::stateful
 

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
+#include "velox/experimental/stateful/window/SliceAssigner.h"
 #include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
@@ -23,7 +24,7 @@ LocalWindowAggregator::LocalWindowAggregator(
     std::unique_ptr<exec::Operator> op,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
-    std::unique_ptr<KeySelector> sliceAssigner,
+    std::unique_ptr<SliceAssigner> sliceAssigner,
     const int64_t windowInterval,
     const bool useDayLightSaving,
     RowTypePtr outputType)
@@ -50,14 +51,13 @@ void LocalWindowAggregator::advance() {
   std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
     std::map<int64_t, RowVectorPtr> sliceEndToData =
-        sliceAssigner_->partition(data);
+        sliceAssigner_->assignSliceEnd(data);
     for (const auto& [sliceEnd, data] : sliceEndToData) {
       // TODO: addElement may have data output.
       auto windowData = data;
       windowBuffer_->addElement(key, sliceEnd, windowData);
     }
   }
-
   input_.reset();
 }
 

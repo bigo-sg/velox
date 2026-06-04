@@ -124,7 +124,7 @@ void GroupWindowAggregator::advance() {
 }
 
 void GroupWindowAggregator::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<uint32_t, TimeWindow>> timer) {
+    std::shared_ptr<TimerHeapInternalTimer<int64_t, TimeWindow>> timer) {
   windowContext_->setCurrentKey(timer->key());
   if (triggerContext_->onEventTime(timer->ns(), timer->timestamp())) {
     // Fire the window and emit result.
@@ -187,7 +187,7 @@ void GroupWindowAggregator::emitWindowResult(uint32_t key, TimeWindow window) {
 
 GroupWindowAggregator::WindowTriggerContext::WindowTriggerContext(
     std::shared_ptr<WindowTrigger> trigger,
-    std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>>
+    std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
         internalTimerService,
     int shiftTimeZone)
     : trigger_(std::move(trigger)),
@@ -236,7 +236,6 @@ int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
 void GroupWindowAggregator::WindowTriggerContext::registerProcessingTimeTimer(
     uint32_t key,
     TimeWindow window,
-
     int64_t time) {
   internalTimerService_->registerProcessingTimeTimer(key, window, time);
 }
@@ -287,7 +286,7 @@ void GroupWindowAggregator::WindowTriggerContext::mergePartitionedState(
 WindowContext::WindowContext(
     GroupWindowAggsHandler* windowAggregator,
     std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> windowState,
-    std::shared_ptr<InternalTimerService<uint32_t, TimeWindow>> timerService,
+    std::shared_ptr<InternalTimerService<int64_t, TimeWindow>> timerService,
     std::shared_ptr<TriggerContext> triggerContext,
     std::shared_ptr<StreamOperatorStateHandler> stateHandler,
     int shiftTimeZone,
