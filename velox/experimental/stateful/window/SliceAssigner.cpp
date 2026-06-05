@@ -97,19 +97,25 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr
   } else {
     const VectorPtr& rowtimeVector = input->childAt(rowtimeIndex_);
     prepareChildrenLoaded(input);
-    const auto* tsConst = rowtimeVector->as<DictionaryVector<Timestamp>>();
+    const auto* tsDict = rowtimeVector->as<DictionaryVector<Timestamp>>();
     const auto* tsFlat = rowtimeVector->asFlatVector<Timestamp>();
+    const auto* tsDictInt = rowtimeVector->as<DictionaryVector<int64_t>>();
+    const auto* tsFlatInt = rowtimeVector->asFlatVector<int64_t>();
     VELOX_CHECK(
-        tsConst != nullptr || tsFlat != nullptr,
-        "rowtime column must be TIMESTAMP flat or constant vector");
+        tsDict != nullptr || tsFlat != nullptr || tsDictInt != nullptr || tsFlatInt != nullptr,
+        "rowtime column must be TIMESTAMP/Int64 flat or dictionary vector");
 
     const vector_size_t numRows = rowtimeVector->size();
     auto isNullAtRow = [&](vector_size_t row) {
-      return tsConst ? tsConst->isNullAt(row) : tsFlat->isNullAt(row);
+      return tsDict ? tsDict->isNullAt(row) : tsFlat
+        ? tsFlat->isNullAt(row) : tsDictInt
+        ? tsDictInt->isNullAt(row) : tsFlatInt
+        ? tsFlatInt->isNullAt(row) : false;
     };
     auto timestampMillisAt = [&](vector_size_t row) {
-      return tsConst ? tsConst->valueAt(row).toMillis()
-                       : tsFlat->valueAt(row).toMillis();
+      return tsDict ? tsDict->valueAt(row).toMillis() : tsFlat
+        ? tsFlat->valueAt(row).toMillis() : tsDictInt
+        ? tsDictInt->valueAt(row) : tsFlatInt->valueAt(row);
     };
 
     velox::memory::MemoryPool* pool = input->pool();
