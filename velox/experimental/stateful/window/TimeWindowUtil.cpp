@@ -55,6 +55,9 @@ int64_t TimeWindowUtil::getWindowStartWithOffset(
     int64_t timestamp,
     int64_t offset,
     int64_t windowSize) {
+  if (windowSize <= 0) {
+    return timestamp;
+  }
   int64_t remainder = (timestamp - offset) % windowSize;
   // handle both positive and negative cases
   if (remainder < 0) {

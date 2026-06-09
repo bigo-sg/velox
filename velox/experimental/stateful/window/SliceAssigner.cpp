@@ -97,19 +97,17 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr
   } else {
     const VectorPtr& rowtimeVector = input->childAt(rowtimeIndex_);
     prepareChildrenLoaded(input);
-    const auto* tsConst = rowtimeVector->as<DictionaryVector<Timestamp>>();
-    const auto* tsFlat = rowtimeVector->asFlatVector<Timestamp>();
-    VELOX_CHECK(
-        tsConst != nullptr || tsFlat != nullptr,
-        "rowtime column must be TIMESTAMP flat or constant vector");
+    const auto* tsSimple = rowtimeVector->as<SimpleVector<Timestamp>>();
+    const auto* tsSimpleInt = rowtimeVector->as<SimpleVector<int64_t>>();
+    VELOX_CHECK(tsSimple != nullptr || tsSimpleInt != nullptr,
+        "rowtime column must be TIMESTAMP/Int64 simple vector");
 
     const vector_size_t numRows = rowtimeVector->size();
     auto isNullAtRow = [&](vector_size_t row) {
-      return tsConst ? tsConst->isNullAt(row) : tsFlat->isNullAt(row);
+      return tsSimple ? tsSimple->isNullAt(row) : tsSimpleInt->isNullAt(row);
     };
     auto timestampMillisAt = [&](vector_size_t row) {
-      return tsConst ? tsConst->valueAt(row).toMillis()
-                       : tsFlat->valueAt(row).toMillis();
+      return tsSimple ? tsSimple->valueAt(row).toMillis() : tsSimpleInt->valueAt(row);
     };
 
     velox::memory::MemoryPool* pool = input->pool();
