@@ -41,21 +41,21 @@ struct ExtractFunction {
     gmtime_r(&time, &timeInfo);
 
     // here to fix compile warning
-    if (field == std::string("year")) {
+    if (fieldLower == "year") {
       result = timeInfo.tm_year + 1900;
-    } else if (field == "month") {
+    } else if (fieldLower == "month") {
       result = timeInfo.tm_mon + 1;
-    } else if (field == "day" || field == "day_of_month") {
+    } else if (fieldLower == "day" || fieldLower == "day_of_month") {
       result = timeInfo.tm_mday;
-    } else if (field == "hour") {
+    } else if (fieldLower == "hour") {
       result = timeInfo.tm_hour;
-    } else if (field == "minute") {
+    } else if (fieldLower == "minute") {
       result = timeInfo.tm_min;
-    } else if (field == "second") {
+    } else if (fieldLower == "second") {
       result = timeInfo.tm_sec;
-    } else if (field == "day_of_week" || field == "dow") {
+    } else if (fieldLower == "day_of_week" || fieldLower == "dow") {
       result = timeInfo.tm_wday == 0 ? 7 : timeInfo.tm_wday;
-    } else if (field == "day_of_year" || field == "doy") {
+    } else if (fieldLower == "day_of_year" || fieldLower == "doy") {
       result = timeInfo.tm_yday + 1;
     } else {
       return false;

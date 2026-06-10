@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include <cstdint>
+#include "velox/core/Expressions.h"
 #include "velox/experimental/stateful/udf/Register.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 #include "velox/parse/TypeResolver.h"
@@ -30,7 +31,92 @@ class UDFTest : public functions::test::FunctionBaseTest {
     // stateful::udf::registerFunctions("");
     memory::MemoryManager::testingSetInstance({});
   }
+
+  // Build expression tree directly since 'extract' is a SQL keyword
+  // and cannot be parsed by DuckDB as a function call.
+  core::TypedExprPtr makeExtractExpr(
+      const std::string& field,
+      const TypePtr& timestampType) {
+    return std::make_shared<core::CallTypedExpr>(
+        BIGINT(),
+        std::vector<core::TypedExprPtr>{
+            std::make_shared<core::ConstantTypedExpr>(
+                VARCHAR(), variant(field)),
+            std::make_shared<core::FieldAccessTypedExpr>(timestampType, "c0")},
+        "extract");
+  }
+
+  std::optional<int64_t> extractField(
+      const std::string& field,
+      std::optional<Timestamp> timestamp) {
+    auto rowVector = makeRowVector({
+        makeNullableFlatVector<Timestamp>({timestamp}, TIMESTAMP()),
+    });
+    auto expr = makeExtractExpr(field, TIMESTAMP());
+    auto result = evaluate(expr, rowVector);
+    auto* flatResult = result->asFlatVector<int64_t>();
+    if (flatResult->isNullAt(0)) {
+      return std::nullopt;
+    }
+    return flatResult->valueAt(0);
+  }
 };
+
+// 2026-06-08 09:40:30 UTC (Monday)
+static constexpr int64_t kMondayTs = 1780911630;
+
+// 2026-06-07 00:00:00 UTC (Sunday)
+static constexpr int64_t kSundayTs = 1780790400;
+
+TEST_F(UDFTest, extractAllFields) {
+  auto ts = Timestamp(kMondayTs, 0);
+  stateful::udf::registerFunctions("");
+
+  struct Case {
+    std::string lower;
+    std::string upper;
+    std::string mixed;
+    int64_t expected;
+  };
+
+  const std::vector<Case> fields = {
+      {"year", "YEAR", "Year", 2026},
+      {"month", "MONTH", "Month", 6},
+      {"day", "DAY", "Day", 8},
+      {"day_of_month", "DAY_OF_MONTH", "Day_Of_Month", 8},
+      {"hour", "HOUR", "Hour", 9},
+      {"minute", "MINUTE", "Minute", 40},
+      {"second", "SECOND", "Second", 30},
+      {"day_of_week", "DAY_OF_WEEK", "Day_Of_Week", 1},
+      {"dow", "DOW", "Dow", 1},
+      {"day_of_year", "DAY_OF_YEAR", "Day_Of_Year", 159},
+      {"doy", "DOY", "Doy", 159},
+  };
+
+  for (const auto& f : fields) {
+    EXPECT_EQ(f.expected, extractField(f.lower, ts).value())
+        << "field: " << f.lower;
+    EXPECT_EQ(f.expected, extractField(f.upper, ts).value())
+        << "field: " << f.upper;
+    EXPECT_EQ(f.expected, extractField(f.mixed, ts).value())
+        << "field: " << f.mixed;
+  }
+
+  // Sunday: tm_wday=0 returns 7
+  auto sunday = Timestamp(kSundayTs, 0);
+  for (const auto& name :
+       {"day_of_week", "DAY_OF_WEEK", "Day_Of_Week", "dow", "DOW", "Dow"}) {
+    EXPECT_EQ(7, extractField(name, sunday).value()) << "field: " << name;
+  }
+}
+
+TEST_F(UDFTest, extractUnknownFieldReturnsNull) {
+  auto ts = Timestamp(kMondayTs, 0);
+  stateful::udf::registerFunctions("");
+
+  EXPECT_FALSE(extractField("unknown_field", ts).has_value());
+  EXPECT_FALSE(extractField("UNKNOWN", ts).has_value());
+}
 
 TEST_F(UDFTest, splitIndex) {
   const auto splitIndex = [&](const std::optional<std::string>& a,
