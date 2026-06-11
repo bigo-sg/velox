@@ -1,0 +1,42 @@
+velox/experimental/stateful/StatefulOperator.h
+  s_b62df494f5f54a::t_603194b1fc7450 22,119-120
+velox/experimental/stateful/WindowAggregator.cpp
+  s_6f52406df23c98::t_3e98d7c9ef839c 285-289
+velox/experimental/stateful/StatefulTask.h
+  s_6f52406df23c98::t_0c660afea2c964 18,117
+  s_b62df494f5f54a::t_603194b1fc7450 22,87-91,116,118
+velox/experimental/stateful/NativeCallbackBridge.h
+  s_b62df494f5f54a::t_603194b1fc7450 1-27
+velox/experimental/stateful/StatefulTask.cpp
+  s_6f52406df23c98::t_8ac29615ab0c96 19,160-166
+  s_6f52406df23c98::t_0c660afea2c964 171
+  s_b62df494f5f54a::t_603194b1fc7450 158-159,167-170,172
+velox/experimental/stateful/StatefulOperator.cpp
+  s_b62df494f5f54a::t_603194b1fc7450 25-29,31-32
+  s_6f52406df23c98::t_3e98d7c9ef839c 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "f77529cfea090d33a11415fb86cfc2cdff3377ed",
+  "prompts": {},
+  "logical_commit_id": "f77529cfea090d33a11415fb86cfc2cdff3377ed",
+  "sessions": {
+    "s_6f52406df23c98": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_14bbe9fd2ffep4PIBxKdgtCdFE",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    },
+    "s_b62df494f5f54a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb0e5-7363-7613-955d-4a287a8e300a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
