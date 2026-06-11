@@ -19,6 +19,7 @@
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/CombinedWatermarkStatus.h"
+#include "velox/experimental/stateful/NativeCallbackBridge.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
@@ -115,6 +116,8 @@ class StatefulOperator {
   }
 
  protected:
+  std::shared_ptr<NativeCallbackBridge> nativeCallbackBridge() const;
+
   void pushOutput(StreamElementPtr output);
   void emitWatermark(int64_t timestamp);
 

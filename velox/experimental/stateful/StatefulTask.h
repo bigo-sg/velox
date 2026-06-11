@@ -15,9 +15,11 @@
  */
 #pragma once
 #include <cstdint>
+#include <mutex>
 
 #include "velox/exec/Task.h"
 #include "velox/exec/TaskStats.h"
+#include "velox/experimental/stateful/NativeCallbackBridge.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
@@ -82,6 +84,11 @@ class StatefulTask : public exec::Task {
 
   void addOutput(StreamElementPtr element);
 
+  void setNativeCallbackBridge(
+      std::shared_ptr<NativeCallbackBridge> callbackBridge);
+
+  std::shared_ptr<NativeCallbackBridge> nativeCallbackBridge() const;
+
  private:
   StatefulTask(
       const std::string& taskId,
@@ -106,5 +113,8 @@ class StatefulTask : public exec::Task {
 
   // The state backend used by this task.
   std::unique_ptr<StateBackend> statebackend_;
+
+  mutable std::mutex nativeCallbackBridgeMutex_;
+  std::shared_ptr<NativeCallbackBridge> nativeCallbackBridge_;
 };
 } // namespace facebook::velox::stateful
