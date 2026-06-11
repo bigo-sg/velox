@@ -36,8 +36,7 @@ class Triggerable {
   virtual void onProcessingTime(
       std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) {}
 
-  // For Gluten/Flink, the processing time is triggered by JNI.
-  virtual void processProcessingTimeByJni(int64_t timestamp) {}
+  virtual void onProcessingTime(int64_t timestamp) {}
 
   const std::shared_ptr<std::mutex> getMutex() const {
     return mtx_;

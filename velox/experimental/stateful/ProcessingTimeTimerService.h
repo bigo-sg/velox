@@ -152,7 +152,7 @@ class ProcessingTimeTimerService {
           std::make_shared<TimerHeapInternalTimer<K, N>>(std::move(popped)));
     }
   
-    triggerable_->processProcessingTimeByJni(time);
+    triggerable_->onProcessingTime(time);
     if (!taskName.empty()) {
       scheduler_->unregister(taskName);
     }

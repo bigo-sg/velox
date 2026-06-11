@@ -281,12 +281,12 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<i
   onTimer(timer);
 }
 
-void WindowAggregator::processProcessingTimeByJni(int64_t) {
+void WindowAggregator::onProcessingTime(int64_t timestamp) {
   auto callbackBridge = nativeCallbackBridge();
   if (callbackBridge == nullptr) {
     return;
   }
-  callbackBridge->onProcessElement();
+  callbackBridge->onProcessingTime(timestamp);
 }
 
 void WindowAggregator::close() {

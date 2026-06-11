@@ -21,7 +21,7 @@ class NativeCallbackBridge {
  public:
   virtual ~NativeCallbackBridge() = default;
 
-  virtual void onProcessElement() = 0;
+  virtual void onProcessingTime(int64_t timestamp) = 0;
 };
 
 } // namespace facebook::velox::stateful
