@@ -81,7 +81,7 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
     cityVector->set(i, StringView(person.city));
     stateVector->set(i, StringView(person.state));
     dateTimeVector->set(
-        i, Timestamp(person.dateTime / 1000, (person.dateTime % 1000) * 1000));
+        i, Timestamp(person.dateTime / 1000, (person.dateTime % 1000) * 1000000));
     extraVector->set(i, StringView(person.extra));
   }
 

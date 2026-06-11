@@ -51,7 +51,7 @@ RowVectorPtr BidGenerator::nextBidBatch(
     channelVector->set(i, StringView(bid.channel));
     urlVector->set(i, StringView(bid.url));
     dateTimeVector->set(
-        i, Timestamp(bid.dateTime / 1000, bid.dateTime % 1000 * 1000));
+        i, Timestamp(bid.dateTime / 1000, bid.dateTime % 1000 * 1000000));
     extraVector->set(i, StringView(bid.extra));
   }
 

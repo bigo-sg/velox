@@ -59,9 +59,9 @@ RowVectorPtr AuctionGenerator::nextAuctionBatch(
     reserveVector->set(i, auction.reserve);
     dateTimeVector->set(
         i,
-        Timestamp(auction.dateTime / 1000, (auction.dateTime % 1000) * 1000));
+        Timestamp(auction.dateTime / 1000, (auction.dateTime % 1000) * 1000000));
     expiresVector->set(
-        i, Timestamp(auction.expires / 1000, (auction.expires % 1000) * 1000));
+        i, Timestamp(auction.expires / 1000, (auction.expires % 1000) * 1000000));
     sellerVector->set(i, auction.seller);
     categoryVector->set(i, auction.category);
     extraVector->set(i, StringView(auction.extra));
