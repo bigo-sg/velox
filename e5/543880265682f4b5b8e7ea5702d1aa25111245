@@ -1,0 +1,28 @@
+velox/experimental/stateful/WindowAggregator.cpp
+  s_6f52406df23c98::t_7310b0a6849cfc 284,289
+velox/experimental/stateful/ProcessingTimeTimerService.h
+  s_6f52406df23c98::t_7310b0a6849cfc 155
+velox/experimental/stateful/WindowAggregator.h
+  s_6f52406df23c98::t_7310b0a6849cfc 74
+velox/experimental/stateful/NativeCallbackBridge.h
+  s_6f52406df23c98::t_7310b0a6849cfc 24
+velox/experimental/stateful/Triggerable.h
+  s_6f52406df23c98::t_7310b0a6849cfc 39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "e5543880265682f4b5b8e7ea5702d1aa25111245",
+  "prompts": {},
+  "logical_commit_id": "e5543880265682f4b5b8e7ea5702d1aa25111245",
+  "sessions": {
+    "s_6f52406df23c98": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_14bbe9fd2ffep4PIBxKdgtCdFE",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
