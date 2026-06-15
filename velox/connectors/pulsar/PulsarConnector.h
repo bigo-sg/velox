@@ -64,10 +64,9 @@ class PulsarConnectorFactory : public ConnectorFactory {
  public:
   static constexpr const char* kPulsarConnectorName{"Pulsar"};
 
-  PulsarConnectorFactory() : ConnectorFactory(kPulsarConnectorName) {}
+  PulsarConnectorFactory();
 
-  explicit PulsarConnectorFactory(const char* connectorName)
-      : ConnectorFactory(connectorName) {}
+  explicit PulsarConnectorFactory(const char* connectorName);
 
   std::shared_ptr<Connector> newConnector(
       const std::string& id,

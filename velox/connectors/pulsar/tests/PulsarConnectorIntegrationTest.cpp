@@ -17,6 +17,7 @@
 #include "velox/connectors/pulsar/PulsarConnector.h"
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
+#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/common/memory/Memory.h"
 #include "velox/vector/ComplexVector.h"
@@ -59,7 +60,8 @@ std::shared_ptr<const config::ConfigBase> makeRawConfig(
     const std::string& subscription,
     const std::string& receiveTimeoutMillis = "1000",
     const std::string& dataBatchSize = "2",
-    const std::string& startMessageIdInclusive = "true") {
+    const std::string& startMessageIdInclusive = "true",
+    const std::string& ackMode = "individual") {
   std::unordered_map<std::string, std::string> configMap;
   configMap[ConnectionConfig::kServiceUrl] = serviceUrl;
   configMap[ConnectionConfig::kTopic] = topic;
@@ -69,6 +71,7 @@ std::shared_ptr<const config::ConfigBase> makeRawConfig(
   configMap[ConnectionConfig::kDataBatchSize] = dataBatchSize;
   configMap[ConnectionConfig::kReceiveTimeoutMills] = receiveTimeoutMillis;
   configMap[ConnectionConfig::kAcknowledgeMessages] = "true";
+  configMap[ConnectionConfig::kAckMode] = ackMode;
   configMap[ConnectionConfig::kStartMessageIdInclusive] =
       startMessageIdInclusive;
   return std::make_shared<const config::ConfigBase>(std::move(configMap));
@@ -197,6 +200,61 @@ TEST(PulsarConnectorIntegrationTest, rawMessagesFromStandalone) {
   ASSERT_EQ(stats.at("pulsarAcknowledgedMessages").value, 2);
 }
 
+TEST(PulsarConnectorIntegrationTest, addSplitRejectsMismatchedConfig) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-split-config-it-{}",
+      getpid());
+  const auto subscription =
+      fmt::format("velox-split-config-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-split-config";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig = makeRawConfig(serviceUrl, topic, subscription);
+  auto connector =
+      connector::getConnectorFactory(PulsarConnectorFactory::kPulsarConnectorName)
+          ->newConnector(connectorId, connectorConfig);
+  connector::registerConnector(connector);
+
+  connector::ConnectorQueryCtx queryCtx(
+      pool.get(),
+      nullptr,
+      connectorConfig.get(),
+      nullptr,
+      common::PrefixSortConfig(),
+      nullptr,
+      nullptr,
+      "query.Pulsar",
+      "task.Pulsar",
+      "planNodeId.Pulsar",
+      0,
+      "");
+  const auto outputType = ROW({"payload"}, {VARCHAR()});
+  auto tableHandle =
+      std::make_shared<PulsarTableHandle>(connectorId, topic, outputType);
+  std::unordered_map<std::string, std::shared_ptr<ColumnHandle>> columnHandles;
+  auto source = connector->createDataSource(
+      outputType, tableHandle, columnHandles, &queryCtx);
+
+  VELOX_ASSERT_THROW(
+      source->addSplit(std::make_shared<PulsarConnectorSplit>(
+          connectorId,
+          serviceUrl,
+          topic,
+          fmt::format("{}-other", subscription),
+          "raw")),
+      "Pulsar split subscription name differs from data source config");
+  VELOX_ASSERT_THROW(
+      source->addSplit(std::make_shared<PulsarConnectorSplit>(
+          connectorId, serviceUrl, topic, subscription, "json")),
+      "Pulsar split format differs from data source config");
+}
+
 TEST(PulsarConnectorIntegrationTest, emptyTopicBlocksWithFuture) {
   const auto serviceUrl =
       getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
@@ -221,6 +279,39 @@ TEST(PulsarConnectorIntegrationTest, emptyTopicBlocksWithFuture) {
   ASSERT_TRUE(future.valid());
   ASSERT_FALSE(future.isReady());
   ASSERT_TRUE(std::move(future).wait(std::chrono::seconds{5}));
+}
+
+TEST(PulsarConnectorIntegrationTest, cumulativeAckOncePerBatch) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-cumulative-ack-it-{}",
+      getpid());
+  const auto subscription = fmt::format("velox-cumulative-ack-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-cumulative-ack";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(serviceUrl, topic, messageIds);
+  ASSERT_EQ(messageIds.size(), 2);
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig = makeRawConfig(
+      serviceUrl, topic, subscription, "100", "2", "true", "cumulative");
+  auto source = createRawDataSource(
+      pool, connectorConfig, connectorId, serviceUrl, topic, subscription);
+
+  auto resultVector = readNextResult(source.get());
+  ASSERT_TRUE(resultVector.has_value());
+  ASSERT_NE(resultVector.value(), nullptr);
+  ASSERT_EQ(resultVector.value()->size(), 2);
+
+  const auto stats = source->runtimeStats();
+  ASSERT_EQ(stats.at("pulsarReceivedMessages").value, 2);
+  ASSERT_EQ(stats.at("pulsarAcknowledgedMessages").value, 1);
 }
 
 TEST(PulsarConnectorIntegrationTest, endMessageIdFinishesSplit) {

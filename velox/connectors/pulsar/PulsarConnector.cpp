@@ -15,9 +15,34 @@
  */
 
 #include "velox/connectors/pulsar/PulsarConnector.h"
+#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarDataSource.h"
+#include "velox/connectors/pulsar/PulsarTableHandle.h"
+#include <mutex>
 
 namespace facebook::velox::connector::pulsar {
+
+namespace {
+
+void registerPulsarSerDe() {
+  static std::once_flag registerOnce;
+  std::call_once(registerOnce, []() {
+    PulsarConnectorSplit::registerSerDe();
+    PulsarTableHandle::registerSerDe();
+  });
+}
+
+} // namespace
+
+PulsarConnectorFactory::PulsarConnectorFactory()
+    : ConnectorFactory(kPulsarConnectorName) {
+  registerPulsarSerDe();
+}
+
+PulsarConnectorFactory::PulsarConnectorFactory(const char* connectorName)
+    : ConnectorFactory(connectorName) {
+  registerPulsarSerDe();
+}
 
 std::unique_ptr<DataSource> PulsarConnector::createDataSource(
     const RowTypePtr& outputType,

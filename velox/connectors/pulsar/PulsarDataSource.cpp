@@ -158,19 +158,27 @@ void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
   VELOX_CHECK(
       !consumer_ || (consumer_->reachedEnd() && queue_.empty()),
       "Cannot add Pulsar split before current split is fully processed.");
-  PulsarConnectorSplit* pulsarConnectorSplit =
-      static_cast<PulsarConnectorSplit*>(split.get());
+  auto pulsarConnectorSplit =
+      std::dynamic_pointer_cast<PulsarConnectorSplit>(split);
   VELOX_CHECK_NOT_NULL(
       pulsarConnectorSplit,
       "Failed to add split, because the pulsar connector split is null.");
   VELOX_CHECK_EQ(
       pulsarConnectorSplit->serviceUrl_,
-      config_->getServiceUrl(),
+      baseConfig_->getServiceUrl(),
       "Pulsar split service url differs from data source config.");
   VELOX_CHECK_EQ(
       pulsarConnectorSplit->topic_,
-      config_->getTopic(),
+      baseConfig_->getTopic(),
       "Pulsar split topic differs from data source config.");
+  VELOX_CHECK_EQ(
+      pulsarConnectorSplit->subscriptionName_,
+      baseConfig_->getSubscriptionName(),
+      "Pulsar split subscription name differs from data source config.");
+  VELOX_CHECK_EQ(
+      pulsarConnectorSplit->format_,
+      baseConfig_->getFormat(),
+      "Pulsar split format differs from data source config.");
 
   resetSplitState();
   std::unordered_map<std::string, std::string> splitConfigs;
@@ -219,23 +227,29 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
   outRow_->prepareForReuse();
   size_t processDataSize = batchSize_ > 1 ? queue_.size() : batchSize_;
   outRow_->resize(processDataSize);
+  const bool acknowledgeMessages = config_->getAcknowledgeMessages();
+  const bool useCumulativeAck = acknowledgeMessages && cumulativeAck();
   for (size_t pos = 0; pos < processDataSize; ++pos) {
     const auto& message = queue_[pos + consumePos_];
     try {
       deserializer_->deserialize(message.payload, pos, outRow_);
     } catch (...) {
       ++deserializeFailures_;
-      if (config_->getAcknowledgeMessages()) {
+      if (acknowledgeMessages) {
         consumer_->negativeAcknowledge(message.message);
         refreshConsumerStats();
       }
       throw;
     }
-    if (config_->getAcknowledgeMessages()) {
-      consumer_->acknowledge(message.message, cumulativeAck());
+    if (acknowledgeMessages && !useCumulativeAck) {
+      consumer_->acknowledge(message.message, false);
     }
     completedBytes_ += message.payload.size();
     completedRows_ += 1;
+  }
+  if (useCumulativeAck && processDataSize > 0) {
+    consumer_->acknowledge(
+        queue_[consumePos_ + processDataSize - 1].message, true);
   }
   refreshConsumerStats();
   res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));

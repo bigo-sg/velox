@@ -33,6 +33,7 @@ std::string PulsarConnectorSplit::toString() const {
 
 folly::dynamic PulsarConnectorSplit::serialize() const {
   folly::dynamic obj = folly::dynamic::object;
+  obj["name"] = "PulsarConnectorSplit";
   obj["connectorId"] = connectorId;
   obj["serviceUrl"] = serviceUrl_;
   obj["topic"] = topic_;

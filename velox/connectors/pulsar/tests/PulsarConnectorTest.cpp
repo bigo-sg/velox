@@ -282,6 +282,31 @@ TEST(PulsarConnectorTest, splitSerialization) {
       std::string::npos);
 }
 
+TEST(PulsarConnectorTest, serdeRoundTripThroughRegistry) {
+  Type::registerSerDe();
+  PulsarConnectorSplit::registerSerDe();
+  PulsarTableHandle::registerSerDe();
+
+  PulsarConnectorSplit split(
+      "pulsar",
+      "pulsar://localhost:6650",
+      "persistent://public/default/topic",
+      "sub",
+      "raw");
+  const auto splitCopy =
+      ISerializable::deserialize<ConnectorSplit>(split.serialize());
+  ASSERT_NE(splitCopy, nullptr);
+  EXPECT_NE(
+      dynamic_cast<const PulsarConnectorSplit*>(splitCopy.get()), nullptr);
+
+  const auto rowType = ROW({"payload"}, {VARCHAR()});
+  PulsarTableHandle handle("pulsar", "topic", rowType);
+  const auto handleCopy = ISerializable::deserialize<ConnectorTableHandle>(
+      handle.serialize(), nullptr);
+  ASSERT_NE(handleCopy, nullptr);
+  EXPECT_NE(dynamic_cast<const PulsarTableHandle*>(handleCopy.get()), nullptr);
+}
+
 TEST(PulsarConnectorTest, splitSerializationDefaults) {
   folly::dynamic serialized = folly::dynamic::object;
   serialized["connectorId"] = "pulsar";
