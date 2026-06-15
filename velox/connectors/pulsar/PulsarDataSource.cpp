@@ -43,6 +43,7 @@ PulsarDataSource::PulsarDataSource(
   if (pulsarTableHandle) {
     config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(
         pulsarTableHandle->tableParameters());
+    baseConfig_ = config_;
   } else {
     VELOX_FAIL(
         "The table handle {} is not supported for pulsar data source.",
@@ -73,6 +74,16 @@ void PulsarDataSource::createConsumer() {
       "Failed to create pulsar consumer as the consumer is not null");
   consumer_ = std::make_shared<PulsarConsumer>(
       config_, config_->getReceiveTimeoutMills(), batchSize_);
+}
+
+void PulsarDataSource::resetSplitState() {
+  consumer_.reset();
+  queue_.clear();
+  consumePos_ = 0;
+  if (blockingPromise_.has_value()) {
+    blockingPromise_->setValue();
+    blockingPromise_.reset();
+  }
 }
 
 bool PulsarDataSource::cumulativeAck() const {
@@ -144,6 +155,9 @@ void PulsarDataSource::createRecordDeserializer(
 }
 
 void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
+  VELOX_CHECK(
+      !consumer_ || (consumer_->reachedEnd() && queue_.empty()),
+      "Cannot add Pulsar split before current split is fully processed.");
   PulsarConnectorSplit* pulsarConnectorSplit =
       static_cast<PulsarConnectorSplit*>(split.get());
   VELOX_CHECK_NOT_NULL(
@@ -157,6 +171,8 @@ void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
       pulsarConnectorSplit->topic_,
       config_->getTopic(),
       "Pulsar split topic differs from data source config.");
+
+  resetSplitState();
   std::unordered_map<std::string, std::string> splitConfigs;
   splitConfigs[ConnectionConfig::kPartitionIndex] =
       folly::to<std::string>(pulsarConnectorSplit->partitionIndex_);
@@ -168,7 +184,7 @@ void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
     splitConfigs[ConnectionConfig::kEndMessageId] =
         pulsarConnectorSplit->endMessageId_;
   }
-  config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(splitConfigs);
+  config_ = baseConfig_->updateAndGetAllConfigs<ConnectionConfig>(splitConfigs);
   if (consumerCanbeCreated()) {
     createConsumer();
   }

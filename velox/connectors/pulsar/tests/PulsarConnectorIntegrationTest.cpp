@@ -130,12 +130,13 @@ std::string messageIdString(const ::pulsar::MessageId& messageId) {
 void produceRawMessages(
     const std::string& serviceUrl,
     const std::string& topic,
-    std::vector<::pulsar::MessageId>& messageIds) {
+    std::vector<::pulsar::MessageId>& messageIds,
+    const std::vector<std::string>& payloads = {"first", "second"}) {
   ::pulsar::Client client(serviceUrl);
   ::pulsar::Producer producer;
   auto result = client.createProducer(topic, producer);
   ASSERT_EQ(result, ::pulsar::ResultOk) << ::pulsar::strResult(result);
-  for (const auto& payload : {"first", "second"}) {
+  for (const auto& payload : payloads) {
     ::pulsar::MessageId messageId;
     result = producer.send(
         ::pulsar::MessageBuilder().setContent(payload).build(), messageId);
@@ -268,6 +269,72 @@ TEST(PulsarConnectorIntegrationTest, endMessageIdFinishesSplit) {
   ASSERT_EQ(stats.at("pulsarReceivedMessages").value, 1);
   ASSERT_EQ(stats.at("pulsarNegativelyAcknowledgedMessages").value, 1);
   ASSERT_EQ(stats.at("pulsarSkippedMessagesAfterEnd").value, 1);
+}
+
+TEST(PulsarConnectorIntegrationTest, addSplitRecreatesConsumer) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-multi-split-it-{}",
+      getpid());
+  const auto subscription = fmt::format("velox-multi-split-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-multi-split";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(
+      serviceUrl, topic, messageIds, {"first", "second", "third"});
+  ASSERT_EQ(messageIds.size(), 3);
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig =
+      makeRawConfig(serviceUrl, topic, subscription, "100", "2");
+  auto source = createRawDataSource(
+      pool,
+      connectorConfig,
+      connectorId,
+      serviceUrl,
+      topic,
+      subscription,
+      "earliest",
+      messageIdString(messageIds[0]));
+
+  auto firstResult = readNextResult(source.get());
+  ASSERT_TRUE(firstResult.has_value());
+  ASSERT_NE(firstResult.value(), nullptr);
+  ASSERT_EQ(firstResult.value()->size(), 1);
+  auto payloads =
+      firstResult.value()->childAt(0)->as<FlatVector<StringView>>();
+  ASSERT_EQ(payloads->valueAt(0).str(), "first");
+
+  ContinueFuture future{folly::Unit{}};
+  auto firstEnd = source->next(0, future);
+  ASSERT_TRUE(firstEnd.has_value());
+  ASSERT_EQ(firstEnd.value(), nullptr);
+
+  source->addSplit(std::make_shared<PulsarConnectorSplit>(
+      connectorId,
+      serviceUrl,
+      topic,
+      subscription,
+      "raw",
+      -1,
+      messageIdString(messageIds[1]),
+      messageIdString(messageIds[1])));
+
+  auto secondResult = readNextResult(source.get());
+  ASSERT_TRUE(secondResult.has_value());
+  ASSERT_NE(secondResult.value(), nullptr);
+  ASSERT_EQ(secondResult.value()->size(), 1);
+  payloads = secondResult.value()->childAt(0)->as<FlatVector<StringView>>();
+  ASSERT_EQ(payloads->valueAt(0).str(), "second");
+
+  auto secondEnd = source->next(0, future);
+  ASSERT_TRUE(secondEnd.has_value());
+  ASSERT_EQ(secondEnd.value(), nullptr);
 }
 
 TEST(PulsarConnectorIntegrationTest, startMessageIdInclusiveIncludesStart) {

@@ -69,6 +69,7 @@ class PulsarDataSource : public DataSource {
 
  private:
   const ConnectorQueryCtx* queryCtx_;
+  ConnectionConfigPtr baseConfig_;
   ConnectionConfigPtr config_;
   RowTypePtr outputType_;
   PulsarConsumerPtr consumer_;
@@ -92,6 +93,7 @@ class PulsarDataSource : public DataSource {
 
   bool consumerCanbeCreated() const;
   void createConsumer();
+  void resetSplitState();
   bool cumulativeAck() const;
   std::optional<RowVectorPtr> blockOnReceiveTimeout(
       velox::ContinueFuture& future);
