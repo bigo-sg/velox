@@ -22,6 +22,7 @@
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
 #include "velox/vector/BaseVector.h"
+#include <fmt/format.h>
 #include <folly/Conv.h>
 
 namespace facebook::velox::connector::pulsar {
@@ -35,6 +36,7 @@ PulsarDataSource::PulsarDataSource(
       config_(config),
       outputType_(outputType),
       batchSize_(config_->getDataBatchSize()) {
+  scheduler_.start();
   VELOX_CHECK(batchSize_ > 0, "Batch size config value must greater than 0.");
   const std::shared_ptr<PulsarTableHandle> pulsarTableHandle =
       std::dynamic_pointer_cast<PulsarTableHandle>(tableHandle);
@@ -48,6 +50,14 @@ PulsarDataSource::PulsarDataSource(
   }
   createCachedQueue(batchSize_);
   createRecordDeserializer(config_->getFormat(), outputType_);
+}
+
+PulsarDataSource::~PulsarDataSource() {
+  scheduler_.shutdown();
+  if (blockingPromise_.has_value()) {
+    blockingPromise_->setValue();
+    blockingPromise_.reset();
+  }
 }
 
 bool PulsarDataSource::consumerCanbeCreated() const {
@@ -74,6 +84,24 @@ bool PulsarDataSource::cumulativeAck() const {
     return true;
   }
   VELOX_FAIL("Unsupported Pulsar ack mode: {}", ackMode);
+}
+
+std::optional<RowVectorPtr> PulsarDataSource::blockOnReceiveTimeout(
+    velox::ContinueFuture& future) {
+  auto [promise, blockedFuture] =
+      makeVeloxContinuePromiseContract("PulsarDataSource::next");
+  blockingPromise_ = std::move(promise);
+  scheduler_.addFunctionOnce(
+      [this]() {
+        if (blockingPromise_.has_value()) {
+          blockingPromise_->setValue();
+          blockingPromise_.reset();
+        }
+      },
+      fmt::format("PulsarDataSource::next.{}", ++blockingSequence_),
+      std::chrono::milliseconds(config_->getReceiveTimeoutMills()));
+  future = std::move(blockedFuture);
+  return std::nullopt;
 }
 
 void PulsarDataSource::refreshConsumerStats() {
@@ -148,7 +176,7 @@ void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
 
 std::optional<RowVectorPtr> PulsarDataSource::next(
     uint64_t,
-    velox::ContinueFuture&) {
+    velox::ContinueFuture& future) {
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
   if (queue_.empty()) {
@@ -162,7 +190,10 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
     refreshConsumerStats();
     consumePos_ = 0;
     if (consumedMsgBytes == 0) {
-      return res;
+      if (consumer_->reachedEnd()) {
+        return RowVectorPtr{nullptr};
+      }
+      return blockOnReceiveTimeout(future);
     }
   }
 

@@ -120,6 +120,7 @@ void PulsarConsumer::consumeBatch(
 
     if (endMessageId_.has_value() &&
         message.getMessageId() > endMessageId_.value()) {
+      reachedEnd_ = true;
       ++stats_.skippedMessagesAfterEnd;
       break;
     }

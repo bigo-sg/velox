@@ -67,6 +67,10 @@ class PulsarConsumer {
     return stats_;
   }
 
+  bool reachedEnd() const {
+    return reachedEnd_;
+  }
+
  private:
   static std::optional<::pulsar::MessageId> parseMessageId(
       const std::string& value,
@@ -79,6 +83,7 @@ class PulsarConsumer {
   std::string topic_;
   std::string subscriptionName_;
   std::optional<::pulsar::MessageId> endMessageId_;
+  bool reachedEnd_{false};
   PulsarConsumerStats stats_;
 };
 

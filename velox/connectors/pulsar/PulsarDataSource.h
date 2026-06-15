@@ -23,6 +23,7 @@
 #include "velox/connectors/pulsar/PulsarConsumer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
+#include <folly/experimental/FunctionScheduler.h>
 
 namespace facebook::velox::connector::pulsar {
 
@@ -36,6 +37,8 @@ class PulsarDataSource : public DataSource {
       const TableHandlePtr& tableHandle,
       const ConnectorQueryCtx* connectorQueryCtx,
       const ConnectionConfigPtr& connectionConfig);
+
+  ~PulsarDataSource() override;
 
   void addSplit(ConnectorSplitPtr split) override;
 
@@ -70,6 +73,9 @@ class PulsarDataSource : public DataSource {
   RowTypePtr outputType_;
   PulsarConsumerPtr consumer_;
   kafka::KafkaRecordDeserializerPtr deserializer_;
+  folly::FunctionScheduler scheduler_;
+  std::optional<ContinuePromise> blockingPromise_;
+  uint64_t blockingSequence_{0};
   uint64_t completedRows_ = 0;
   uint64_t completedBytes_ = 0;
   VectorPtr outRow_;
@@ -87,6 +93,8 @@ class PulsarDataSource : public DataSource {
   bool consumerCanbeCreated() const;
   void createConsumer();
   bool cumulativeAck() const;
+  std::optional<RowVectorPtr> blockOnReceiveTimeout(
+      velox::ContinueFuture& future);
   void refreshConsumerStats();
   void createCachedQueue(uint32_t size);
   void createRecordDeserializer(
