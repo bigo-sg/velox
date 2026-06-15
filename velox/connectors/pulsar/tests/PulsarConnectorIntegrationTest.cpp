@@ -266,6 +266,7 @@ TEST(PulsarConnectorIntegrationTest, endMessageIdFinishesSplit) {
 
   const auto stats = source->runtimeStats();
   ASSERT_EQ(stats.at("pulsarReceivedMessages").value, 1);
+  ASSERT_EQ(stats.at("pulsarNegativelyAcknowledgedMessages").value, 1);
   ASSERT_EQ(stats.at("pulsarSkippedMessagesAfterEnd").value, 1);
 }
 

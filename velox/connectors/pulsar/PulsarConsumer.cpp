@@ -120,7 +120,9 @@ void PulsarConsumer::consumeBatch(
 
     if (endMessageId_.has_value() &&
         message.getMessageId() > endMessageId_.value()) {
+      consumer_.negativeAcknowledge(message.getMessageId());
       reachedEnd_ = true;
+      ++stats_.negativelyAcknowledgedMessages;
       ++stats_.skippedMessagesAfterEnd;
       break;
     }

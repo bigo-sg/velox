@@ -180,6 +180,9 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
   if (queue_.empty()) {
+    if (consumer_ && consumer_->reachedEnd()) {
+      return RowVectorPtr{nullptr};
+    }
     if (consumerCanbeCreated()) {
       createConsumer();
     }
