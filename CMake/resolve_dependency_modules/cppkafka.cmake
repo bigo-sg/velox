@@ -29,3 +29,16 @@ FetchContent_Declare(
   URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM})
 
 FetchContent_MakeAvailable(cppkafka)
+
+if(TARGET cppkafka)
+  target_include_directories(
+    cppkafka PRIVATE $<BUILD_INTERFACE:${cppkafka_SOURCE_DIR}/include/cppkafka>)
+  set_target_properties(
+    cppkafka
+    PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
+               "$<BUILD_INTERFACE:${cppkafka_SOURCE_DIR}/include>")
+endif()
+
+if(TARGET cppkafka AND NOT TARGET CppKafka::cppkafka)
+  add_library(CppKafka::cppkafka ALIAS cppkafka)
+endif()
