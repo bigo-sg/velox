@@ -16,28 +16,32 @@
 #pragma once
 
 #include "velox/connectors/Connector.h"
+#include "velox/connectors/nexmark/GeneratorConfig.h"
 
 namespace facebook::velox::connector::nexmark {
 
 struct NexmarkConnectorSplit : public connector::ConnectorSplit {
-  explicit NexmarkConnectorSplit(const std::string& connectorId, size_t numRows)
-      : ConnectorSplit(connectorId), numRows(numRows) {}
+  explicit NexmarkConnectorSplit(
+      const std::string& connectorId,
+      GeneratorConfig config)
+      : ConnectorSplit(connectorId), config(std::move(config)) {}
 
-  // Row many rows to generate.
-  size_t numRows;
+  GeneratorConfig config;
 
   folly::dynamic serialize() const override {
     folly::dynamic obj = folly::dynamic::object;
     obj["name"] = "NexmarkConnectorSplit";
     obj["connectorId"] = connectorId;
-    obj["numRows"] = numRows;
+    obj["config"] = config.serialize();
     return obj;
   }
 
-  static std::shared_ptr<NexmarkConnectorSplit> create(const folly::dynamic& obj) {
+  static std::shared_ptr<NexmarkConnectorSplit> create(
+      const folly::dynamic& obj) {
     const auto connectorId = obj["connectorId"].asString();
-    const auto numRows = obj["numRows"].asInt();
-    return std::make_shared<NexmarkConnectorSplit>(connectorId, numRows);
+    auto config = GeneratorConfig::deserialize(obj["config"]);
+    return std::make_shared<NexmarkConnectorSplit>(
+        connectorId, std::move(config));
   }
 
   static void registerSerDe() {

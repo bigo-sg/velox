@@ -70,7 +70,9 @@ void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
   VELOX_CHECK(currentSplit_, "Wrong type of split for NexmarkDataSource.");
 
   splitOffset_ = 0;
-  splitEnd_ = currentSplit_->numRows;
+  splitEnd_ = currentSplit_->config.maxEvents;
+  nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
+      currentSplit_->config, 0, -1, pool_);
 }
 
 std::optional<RowVectorPtr> NexmarkDataSource::next(

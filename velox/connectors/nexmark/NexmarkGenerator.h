@@ -20,6 +20,8 @@
 #include "velox/connectors/nexmark/GeneratorConfig.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 
+#include <random>
+
 namespace facebook::velox::connector::nexmark {
 
 /// `NexmarkGenerator` is the c++ implements of Flink NexmarkGenerator.
@@ -34,7 +36,8 @@ class NexmarkGenerator {
       : config_(config),
         eventsCountSoFar_(eventsCountSoFar),
         wallclockBaseTime_(wallclockBaseTime),
-        pool_(pool) {}
+        pool_(pool),
+        random_(pcg_extras::seed_seq_from<std::random_device>()) {}
 
   ~NexmarkGenerator() = default;
 

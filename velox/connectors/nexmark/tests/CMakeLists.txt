@@ -23,3 +23,16 @@ target_link_libraries(
   velox_aggregates
   GTest::gtest
   GTest::gtest_main)
+
+add_executable(velox_nexmark_generator_random_test NexmarkGeneratorRandomTest.cpp)
+
+add_test(velox_nexmark_generator_random_test velox_nexmark_generator_random_test)
+
+target_link_libraries(
+  velox_nexmark_generator_random_test
+  velox_nexmark_connector
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_aggregates
+  GTest::gtest
+  GTest::gtest_main)
