@@ -37,4 +37,5 @@ done
 
 "${pulsar_home}/bin/pulsar-admin" brokers healthcheck
 PULSAR_SERVICE_URL="${PULSAR_SERVICE_URL:-pulsar://127.0.0.1:6650}" \
+  PULSAR_STANDALONE_HOME="${pulsar_home}" \
   "${test_binary}"

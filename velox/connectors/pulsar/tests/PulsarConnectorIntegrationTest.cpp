@@ -61,12 +61,13 @@ std::shared_ptr<const config::ConfigBase> makeRawConfig(
     const std::string& receiveTimeoutMillis = "1000",
     const std::string& dataBatchSize = "2",
     const std::string& startMessageIdInclusive = "true",
-    const std::string& ackMode = "individual") {
+    const std::string& ackMode = "individual",
+    const std::string& format = "raw") {
   std::unordered_map<std::string, std::string> configMap;
   configMap[ConnectionConfig::kServiceUrl] = serviceUrl;
   configMap[ConnectionConfig::kTopic] = topic;
   configMap[ConnectionConfig::kSubscriptionName] = subscription;
-  configMap[ConnectionConfig::kFormat] = "raw";
+  configMap[ConnectionConfig::kFormat] = format;
   configMap[ConnectionConfig::kInitialPosition] = "earliest";
   configMap[ConnectionConfig::kDataBatchSize] = dataBatchSize;
   configMap[ConnectionConfig::kReceiveTimeoutMills] = receiveTimeoutMillis;
@@ -85,8 +86,13 @@ std::unique_ptr<DataSource> createRawDataSource(
     const std::string& topic,
     const std::string& subscription,
     const std::string& startMessageId = "",
-    const std::string& endMessageId = "") {
-  const auto outputType = ROW({"payload"}, {VARCHAR()});
+    const std::string& endMessageId = "",
+    int32_t partitionIndex = -1,
+    const std::string& format = "raw",
+    RowTypePtr outputType = nullptr) {
+  if (outputType == nullptr) {
+    outputType = ROW({"payload"}, {VARCHAR()});
+  }
   auto connector =
       connector::getConnectorFactory(PulsarConnectorFactory::kPulsarConnectorName)
           ->newConnector(connectorId, connectorConfig);
@@ -115,8 +121,8 @@ std::unique_ptr<DataSource> createRawDataSource(
       serviceUrl,
       topic,
       subscription,
-      "raw",
-      -1,
+      format,
+      partitionIndex,
       startMessageId,
       endMessageId));
   return source;
@@ -148,6 +154,21 @@ void produceRawMessages(
   }
   producer.close();
   client.close();
+}
+
+void createPartitionedTopic(
+    const std::string& topic,
+    int32_t partitions) {
+  const char* pulsarHome = std::getenv("PULSAR_STANDALONE_HOME");
+  ASSERT_NE(pulsarHome, nullptr);
+  const auto pulsarAdmin = fmt::format("{}/bin/pulsar-admin", pulsarHome);
+  ASSERT_EQ(access(pulsarAdmin.c_str(), X_OK), 0);
+  const auto command = fmt::format(
+      "{} topics create-partitioned-topic {} -p {}",
+      pulsarAdmin,
+      topic,
+      partitions);
+  ASSERT_EQ(std::system(command.c_str()), 0);
 }
 
 std::optional<RowVectorPtr> readNextResult(DataSource* source) {
@@ -198,6 +219,91 @@ TEST(PulsarConnectorIntegrationTest, rawMessagesFromStandalone) {
   const auto stats = source->runtimeStats();
   ASSERT_EQ(stats.at("pulsarReceivedMessages").value, 2);
   ASSERT_EQ(stats.at("pulsarAcknowledgedMessages").value, 2);
+}
+
+TEST(PulsarConnectorIntegrationTest, jsonMessagesFromStandalone) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-json-it-{}", getpid());
+  const auto subscription = fmt::format("velox-json-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-json";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig = makeRawConfig(
+      serviceUrl, topic, subscription, "100", "2", "true", "individual", "json");
+  auto source = createRawDataSource(
+      pool,
+      connectorConfig,
+      connectorId,
+      serviceUrl,
+      topic,
+      subscription,
+      "",
+      "",
+      -1,
+      "json",
+      ROW({"id", "name"}, {INTEGER(), VARCHAR()}));
+
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(
+      serviceUrl,
+      topic,
+      messageIds,
+      {R"({"id": 11, "name": "first"})", R"({"id": 12, "name": "second"})"});
+
+  auto resultVector = readNextResult(source.get());
+  ASSERT_TRUE(resultVector.has_value());
+  ASSERT_NE(resultVector.value(), nullptr);
+  ASSERT_EQ(resultVector.value()->size(), 2);
+  auto ids = resultVector.value()->childAt(0)->as<FlatVector<int32_t>>();
+  auto names =
+      resultVector.value()->childAt(1)->as<FlatVector<StringView>>();
+  ASSERT_EQ(ids->valueAt(0), 11);
+  ASSERT_EQ(ids->valueAt(1), 12);
+  ASSERT_EQ(names->valueAt(0).str(), "first");
+  ASSERT_EQ(names->valueAt(1).str(), "second");
+}
+
+TEST(PulsarConnectorIntegrationTest, csvDeserializeFailureNacksMessage) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-csv-it-{}", getpid());
+  const auto subscription = fmt::format("velox-csv-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-csv";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig = makeRawConfig(
+      serviceUrl, topic, subscription, "100", "1", "true", "individual", "csv");
+  auto source = createRawDataSource(
+      pool,
+      connectorConfig,
+      connectorId,
+      serviceUrl,
+      topic,
+      subscription,
+      "",
+      "",
+      -1,
+      "csv");
+
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(serviceUrl, topic, messageIds, {"first,second"});
+
+  ContinueFuture future{folly::Unit{}};
+  VELOX_ASSERT_THROW(source->next(0, future), "Not implemented");
+  const auto stats = source->runtimeStats();
+  ASSERT_EQ(stats.at("pulsarNegativelyAcknowledgedMessages").value, 1);
+  ASSERT_EQ(stats.at("pulsarAcknowledgedMessages").value, 0);
 }
 
 TEST(PulsarConnectorIntegrationTest, addSplitRejectsMismatchedConfig) {
@@ -281,6 +387,48 @@ TEST(PulsarConnectorIntegrationTest, emptyTopicBlocksWithFuture) {
   ASSERT_TRUE(std::move(future).wait(std::chrono::seconds{5}));
 }
 
+TEST(PulsarConnectorIntegrationTest, multipleNextCallsDrainBatchesThenBlock) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-multi-next-it-{}",
+      getpid());
+  const auto subscription = fmt::format("velox-multi-next-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-multi-next";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(
+      serviceUrl, topic, messageIds, {"first", "second", "third"});
+  ASSERT_EQ(messageIds.size(), 3);
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig =
+      makeRawConfig(serviceUrl, topic, subscription, "10", "2");
+  auto source = createRawDataSource(
+      pool, connectorConfig, connectorId, serviceUrl, topic, subscription);
+
+  auto firstBatch = readNextResult(source.get());
+  ASSERT_TRUE(firstBatch.has_value());
+  ASSERT_NE(firstBatch.value(), nullptr);
+  ASSERT_EQ(firstBatch.value()->size(), 2);
+
+  auto secondBatch = readNextResult(source.get());
+  ASSERT_TRUE(secondBatch.has_value());
+  ASSERT_NE(secondBatch.value(), nullptr);
+  ASSERT_EQ(secondBatch.value()->size(), 1);
+
+  ContinueFuture future{folly::Unit{}};
+  auto empty = source->next(0, future);
+  ASSERT_FALSE(empty.has_value());
+  ASSERT_TRUE(future.valid());
+  ASSERT_FALSE(future.isReady());
+  ASSERT_TRUE(std::move(future).wait(std::chrono::seconds{5}));
+}
+
 TEST(PulsarConnectorIntegrationTest, cumulativeAckOncePerBatch) {
   const auto serviceUrl =
       getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
@@ -355,6 +503,10 @@ TEST(PulsarConnectorIntegrationTest, endMessageIdFinishesSplit) {
   auto end = source->next(0, future);
   ASSERT_TRUE(end.has_value());
   ASSERT_EQ(end.value(), nullptr);
+
+  auto repeatedEnd = source->next(0, future);
+  ASSERT_TRUE(repeatedEnd.has_value());
+  ASSERT_EQ(repeatedEnd.value(), nullptr);
 
   const auto stats = source->runtimeStats();
   ASSERT_EQ(stats.at("pulsarReceivedMessages").value, 1);
@@ -503,6 +655,46 @@ TEST(PulsarConnectorIntegrationTest, startMessageIdInclusiveExcludesStart) {
   auto payloads =
       resultVector.value()->childAt(0)->as<FlatVector<StringView>>();
   ASSERT_EQ(payloads->valueAt(0).str(), "second");
+}
+
+TEST(PulsarConnectorIntegrationTest, partitionIndexReadsPartitionedTopic) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-ptopic-it-{}", getpid());
+  const auto subscription = fmt::format("velox-partition-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-partition";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  createPartitionedTopic(topic, 2);
+  const auto partitionOneTopic = fmt::format("{}-partition-1", topic);
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(serviceUrl, partitionOneTopic, messageIds, {"partition-1"});
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig =
+      makeRawConfig(serviceUrl, topic, subscription, "100", "1");
+  auto source = createRawDataSource(
+      pool,
+      connectorConfig,
+      connectorId,
+      serviceUrl,
+      topic,
+      subscription,
+      "",
+      "",
+      1);
+
+  auto resultVector = readNextResult(source.get());
+  ASSERT_TRUE(resultVector.has_value());
+  ASSERT_NE(resultVector.value(), nullptr);
+  ASSERT_EQ(resultVector.value()->size(), 1);
+  auto payloads =
+      resultVector.value()->childAt(0)->as<FlatVector<StringView>>();
+  ASSERT_EQ(payloads->valueAt(0).str(), "partition-1");
 }
 
 } // namespace facebook::velox::connector::pulsar::test
