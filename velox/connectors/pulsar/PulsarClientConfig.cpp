@@ -16,6 +16,9 @@
 
 #include "velox/connectors/pulsar/PulsarConfig.h"
 #include "velox/common/base/Exceptions.h"
+#include <folly/FileUtil.h>
+#include <folly/String.h>
+#include <pulsar/Authentication.h>
 #include <pulsar/ConsumerType.h>
 #include <pulsar/InitialPosition.h>
 
@@ -23,7 +26,19 @@ namespace facebook::velox::connector::pulsar {
 
 ::pulsar::ClientConfiguration
 ConnectionConfig::getPulsarClientConfiguration() const {
-  return ::pulsar::ClientConfiguration();
+  ::pulsar::ClientConfiguration conf;
+  auto token = getAuthToken();
+  if (token.empty() && !getAuthTokenFile().empty()) {
+    VELOX_CHECK(
+        folly::readFile(getAuthTokenFile().c_str(), token),
+        "Failed to read Pulsar token file: {}",
+        getAuthTokenFile());
+    folly::trimWhitespace(token);
+  }
+  if (!token.empty()) {
+    conf.setAuth(::pulsar::AuthToken::createWithToken(token));
+  }
+  return conf;
 }
 
 ::pulsar::ConsumerConfiguration
@@ -53,6 +68,7 @@ ConnectionConfig::getPulsarConsumerConfiguration() const {
   }
 
   conf.setReceiverQueueSize(getReceiverQueueSize());
+  conf.setStartMessageIdInclusive(getStartMessageIdInclusive());
   if (!getConsumerName().empty()) {
     conf.setConsumerName(getConsumerName());
   }

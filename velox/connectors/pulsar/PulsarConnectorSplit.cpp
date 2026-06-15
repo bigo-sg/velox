@@ -21,11 +21,14 @@ namespace facebook::velox::connector::pulsar {
 
 std::string PulsarConnectorSplit::toString() const {
   return fmt::format(
-      "Pulsar connector split, connectorId: {}, service url: {}, topic: {}, subscription: {}",
+      "Pulsar connector split, connectorId: {}, service url: {}, topic: {}, subscription: {}, partition: {}, start message id: {}, end message id: {}",
       connectorId,
       serviceUrl_,
       topic_,
-      subscriptionName_);
+      subscriptionName_,
+      partitionIndex_,
+      startMessageId_,
+      endMessageId_);
 }
 
 folly::dynamic PulsarConnectorSplit::serialize() const {
@@ -35,6 +38,9 @@ folly::dynamic PulsarConnectorSplit::serialize() const {
   obj["topic"] = topic_;
   obj["subscriptionName"] = subscriptionName_;
   obj["format"] = format_;
+  obj["partitionIndex"] = partitionIndex_;
+  obj["startMessageId"] = startMessageId_;
+  obj["endMessageId"] = endMessageId_;
   return obj;
 }
 
@@ -45,7 +51,10 @@ std::shared_ptr<PulsarConnectorSplit> PulsarConnectorSplit::create(
       obj["serviceUrl"].asString(),
       obj["topic"].asString(),
       obj["subscriptionName"].asString(),
-      obj["format"].asString());
+      obj["format"].asString(),
+      obj.getDefault("partitionIndex", -1).asInt(),
+      obj.getDefault("startMessageId", "").asString(),
+      obj.getDefault("endMessageId", "").asString());
 }
 
 void PulsarConnectorSplit::registerSerDe() {

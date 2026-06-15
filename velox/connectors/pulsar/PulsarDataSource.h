@@ -74,11 +74,20 @@ class PulsarDataSource : public DataSource {
   uint64_t completedBytes_ = 0;
   VectorPtr outRow_;
   uint64_t batchSize_;
-  std::vector<std::string> queue_;
+  std::vector<PulsarMessage> queue_;
   size_t consumePos_ = 0;
+  uint64_t receivedMessages_ = 0;
+  uint64_t receivedBytes_ = 0;
+  uint64_t receiveTimeouts_ = 0;
+  uint64_t acknowledgedMessages_ = 0;
+  uint64_t negativelyAcknowledgedMessages_ = 0;
+  uint64_t deserializeFailures_ = 0;
+  uint64_t skippedMessagesAfterEnd_ = 0;
 
   bool consumerCanbeCreated() const;
   void createConsumer();
+  bool cumulativeAck() const;
+  void refreshConsumerStats();
   void createCachedQueue(uint32_t size);
   void createRecordDeserializer(
       const std::string& format,

@@ -22,6 +22,7 @@
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
 #include "velox/vector/BaseVector.h"
+#include <folly/Conv.h>
 
 namespace facebook::velox::connector::pulsar {
 
@@ -45,9 +46,6 @@ PulsarDataSource::PulsarDataSource(
         "The table handle {} is not supported for pulsar data source.",
         tableHandle->connectorId());
   }
-  if (consumerCanbeCreated()) {
-    createConsumer();
-  }
   createCachedQueue(batchSize_);
   createRecordDeserializer(config_->getFormat(), outputType_);
 }
@@ -65,6 +63,30 @@ void PulsarDataSource::createConsumer() {
       "Failed to create pulsar consumer as the consumer is not null");
   consumer_ = std::make_shared<PulsarConsumer>(
       config_, config_->getReceiveTimeoutMills(), batchSize_);
+}
+
+bool PulsarDataSource::cumulativeAck() const {
+  const auto ackMode = config_->getAckMode();
+  if (ackMode == "individual") {
+    return false;
+  }
+  if (ackMode == "cumulative") {
+    return true;
+  }
+  VELOX_FAIL("Unsupported Pulsar ack mode: {}", ackMode);
+}
+
+void PulsarDataSource::refreshConsumerStats() {
+  if (!consumer_) {
+    return;
+  }
+  const auto& stats = consumer_->stats();
+  receivedMessages_ = stats.receivedMessages;
+  receivedBytes_ = stats.receivedBytes;
+  receiveTimeouts_ = stats.receiveTimeouts;
+  acknowledgedMessages_ = stats.acknowledgedMessages;
+  negativelyAcknowledgedMessages_ = stats.negativelyAcknowledgedMessages;
+  skippedMessagesAfterEnd_ = stats.skippedMessagesAfterEnd;
 }
 
 void PulsarDataSource::createCachedQueue(uint32_t size) {
@@ -107,6 +129,21 @@ void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
       pulsarConnectorSplit->topic_,
       config_->getTopic(),
       "Pulsar split topic differs from data source config.");
+  std::unordered_map<std::string, std::string> splitConfigs;
+  splitConfigs[ConnectionConfig::kPartitionIndex] =
+      folly::to<std::string>(pulsarConnectorSplit->partitionIndex_);
+  if (!pulsarConnectorSplit->startMessageId_.empty()) {
+    splitConfigs[ConnectionConfig::kStartMessageId] =
+        pulsarConnectorSplit->startMessageId_;
+  }
+  if (!pulsarConnectorSplit->endMessageId_.empty()) {
+    splitConfigs[ConnectionConfig::kEndMessageId] =
+        pulsarConnectorSplit->endMessageId_;
+  }
+  config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(splitConfigs);
+  if (consumerCanbeCreated()) {
+    createConsumer();
+  }
 }
 
 std::optional<RowVectorPtr> PulsarDataSource::next(
@@ -115,11 +152,14 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
   if (queue_.empty()) {
+    if (consumerCanbeCreated()) {
+      createConsumer();
+    }
     VELOX_CHECK_NOT_NULL(
         consumer_.get(),
         "Failed to consume pulsar messages as the consumer is null.");
-    consumer_->consumeBatch(
-        queue_, consumedMsgBytes, config_->getAcknowledgeMessages());
+    consumer_->consumeBatch(queue_, consumedMsgBytes);
+    refreshConsumerStats();
     consumePos_ = 0;
     if (consumedMsgBytes == 0) {
       return res;
@@ -130,10 +170,24 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
   size_t processDataSize = batchSize_ > 1 ? queue_.size() : batchSize_;
   outRow_->resize(processDataSize);
   for (size_t pos = 0; pos < processDataSize; ++pos) {
-    deserializer_->deserialize(queue_[pos + consumePos_], pos, outRow_);
-    completedBytes_ += queue_[pos + consumePos_].size();
+    const auto& message = queue_[pos + consumePos_];
+    try {
+      deserializer_->deserialize(message.payload, pos, outRow_);
+    } catch (...) {
+      ++deserializeFailures_;
+      if (config_->getAcknowledgeMessages()) {
+        consumer_->negativeAcknowledge(message.message);
+        refreshConsumerStats();
+      }
+      throw;
+    }
+    if (config_->getAcknowledgeMessages()) {
+      consumer_->acknowledge(message.message, cumulativeAck());
+    }
+    completedBytes_ += message.payload.size();
     completedRows_ += 1;
   }
+  refreshConsumerStats();
   res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
   consumePos_ += processDataSize;
   if (consumePos_ >= queue_.size()) {
@@ -145,8 +199,19 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
 
 std::unordered_map<std::string, RuntimeCounter>
 PulsarDataSource::runtimeStats() {
-  std::unordered_map<std::string, RuntimeCounter> stats;
-  return stats;
+  refreshConsumerStats();
+  return {
+      {"pulsarReceivedMessages", RuntimeCounter(receivedMessages_)},
+      {"pulsarReceivedBytes",
+       RuntimeCounter(receivedBytes_, RuntimeCounter::Unit::kBytes)},
+      {"pulsarReceiveTimeouts", RuntimeCounter(receiveTimeouts_)},
+      {"pulsarAcknowledgedMessages", RuntimeCounter(acknowledgedMessages_)},
+      {"pulsarNegativelyAcknowledgedMessages",
+       RuntimeCounter(negativelyAcknowledgedMessages_)},
+      {"pulsarDeserializeFailures", RuntimeCounter(deserializeFailures_)},
+      {"pulsarSkippedMessagesAfterEnd",
+       RuntimeCounter(skippedMessagesAfterEnd_)},
+  };
 }
 
 } // namespace facebook::velox::connector::pulsar

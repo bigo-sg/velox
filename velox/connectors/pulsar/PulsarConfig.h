@@ -71,12 +71,22 @@ class ConnectionConfig : public PulsarConfig {
   static constexpr const char* kDataBatchSize = "data.batch.size";
   static constexpr const char* kReceiveTimeoutMills = "receive.timeout.mills";
   static constexpr const char* kAcknowledgeMessages = "acknowledge.messages";
+  static constexpr const char* kAckMode = "ack.mode";
+  static constexpr const char* kPartitionIndex = "partition.index";
+  static constexpr const char* kStartMessageId = "start.message.id";
+  static constexpr const char* kEndMessageId = "end.message.id";
+  static constexpr const char* kStartMessageIdInclusive =
+      "start.message.id.inclusive";
+  static constexpr const char* kAuthToken = "auth.token";
+  static constexpr const char* kAuthTokenFile = "auth.token.file";
 
   static constexpr const char* defaultSubscriptionType = "exclusive";
   static constexpr const char* defaultInitialPosition = "latest";
+  static constexpr const char* defaultAckMode = "individual";
   static constexpr const uint32_t defaultReceiverQueueSize = 1000;
   static constexpr const uint32_t defaultDataBatchSize = 500;
   static constexpr const uint32_t defaultReceiveTimeoutMills = 100;
+  static constexpr const int32_t defaultPartitionIndex = -1;
 
   std::string getServiceUrl() const;
   std::string getTopic() const;
@@ -85,10 +95,17 @@ class ConnectionConfig : public PulsarConfig {
   std::string getFormat() const;
   std::string getSubscriptionType() const;
   std::string getInitialPosition() const;
+  std::string getAckMode() const;
+  std::string getStartMessageId() const;
+  std::string getEndMessageId() const;
+  std::string getAuthToken() const;
+  std::string getAuthTokenFile() const;
+  int32_t getPartitionIndex() const;
   uint32_t getReceiverQueueSize() const;
   uint32_t getDataBatchSize() const;
   uint32_t getReceiveTimeoutMills() const;
   bool getAcknowledgeMessages() const;
+  bool getStartMessageIdInclusive() const;
 
   ::pulsar::ClientConfiguration getPulsarClientConfiguration() const;
   ::pulsar::ConsumerConfiguration getPulsarConsumerConfiguration() const;

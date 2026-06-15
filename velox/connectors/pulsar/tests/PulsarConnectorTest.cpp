@@ -16,6 +16,7 @@
 
 #include "velox/connectors/pulsar/PulsarConfig.h"
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
+#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/type/Type.h"
@@ -48,6 +49,13 @@ TEST(PulsarConnectorTest, connectionConfigRequiredValues) {
   EXPECT_EQ(config.getConsumerName(), "");
   EXPECT_EQ(config.getSubscriptionType(), "exclusive");
   EXPECT_EQ(config.getInitialPosition(), "latest");
+  EXPECT_EQ(config.getAckMode(), "individual");
+  EXPECT_EQ(config.getPartitionIndex(), -1);
+  EXPECT_EQ(config.getStartMessageId(), "");
+  EXPECT_EQ(config.getEndMessageId(), "");
+  EXPECT_TRUE(config.getStartMessageIdInclusive());
+  EXPECT_EQ(config.getAuthToken(), "");
+  EXPECT_EQ(config.getAuthTokenFile(), "");
   EXPECT_EQ(config.getReceiverQueueSize(), 1000);
   EXPECT_EQ(config.getDataBatchSize(), 500);
   EXPECT_EQ(config.getReceiveTimeoutMills(), 100);
@@ -67,6 +75,13 @@ TEST(PulsarConnectorTest, connectionConfigOverrides) {
       {ConnectionConfig::kDataBatchSize, "20"},
       {ConnectionConfig::kReceiveTimeoutMills, "30"},
       {ConnectionConfig::kAcknowledgeMessages, "false"},
+      {ConnectionConfig::kAckMode, "cumulative"},
+      {ConnectionConfig::kPartitionIndex, "2"},
+      {ConnectionConfig::kStartMessageId, "1:2:3:4"},
+      {ConnectionConfig::kEndMessageId, "5:6"},
+      {ConnectionConfig::kStartMessageIdInclusive, "0"},
+      {ConnectionConfig::kAuthToken, "token"},
+      {ConnectionConfig::kAuthTokenFile, "/tmp/token"},
   }));
 
   EXPECT_EQ(config.getConsumerName(), "consumer");
@@ -76,6 +91,13 @@ TEST(PulsarConnectorTest, connectionConfigOverrides) {
   EXPECT_EQ(config.getDataBatchSize(), 20);
   EXPECT_EQ(config.getReceiveTimeoutMills(), 30);
   EXPECT_FALSE(config.getAcknowledgeMessages());
+  EXPECT_EQ(config.getAckMode(), "cumulative");
+  EXPECT_EQ(config.getPartitionIndex(), 2);
+  EXPECT_EQ(config.getStartMessageId(), "1:2:3:4");
+  EXPECT_EQ(config.getEndMessageId(), "5:6");
+  EXPECT_FALSE(config.getStartMessageIdInclusive());
+  EXPECT_EQ(config.getAuthToken(), "token");
+  EXPECT_EQ(config.getAuthTokenFile(), "/tmp/token");
 }
 
 TEST(PulsarConnectorTest, missingRequiredConfigFails) {
@@ -88,13 +110,42 @@ TEST(PulsarConnectorTest, missingRequiredConfigFails) {
   VELOX_ASSERT_THROW(config.getServiceUrl(), "has no specified value");
 }
 
+TEST(PulsarConnectorTest, invalidBooleanConfigFails) {
+  ConnectionConfig acknowledgeConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kAcknowledgeMessages, "maybe"},
+  }));
+
+  VELOX_ASSERT_THROW(
+      acknowledgeConfig.getAcknowledgeMessages(),
+      "Invalid Pulsar acknowledge messages config");
+
+  ConnectionConfig startInclusiveConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kStartMessageIdInclusive, "maybe"},
+  }));
+
+  VELOX_ASSERT_THROW(
+      startInclusiveConfig.getStartMessageIdInclusive(),
+      "Invalid Pulsar start message id inclusive config");
+}
+
 TEST(PulsarConnectorTest, splitSerialization) {
   PulsarConnectorSplit split(
       "pulsar",
       "pulsar://localhost:6650",
       "persistent://public/default/topic",
       "sub",
-      "json");
+      "json",
+      3,
+      "1:2",
+      "3:4");
 
   const auto serialized = split.serialize();
   const auto copy = PulsarConnectorSplit::create(serialized);
@@ -104,9 +155,36 @@ TEST(PulsarConnectorTest, splitSerialization) {
   EXPECT_EQ(copy->topic_, "persistent://public/default/topic");
   EXPECT_EQ(copy->subscriptionName_, "sub");
   EXPECT_EQ(copy->format_, "json");
+  EXPECT_EQ(copy->partitionIndex_, 3);
+  EXPECT_EQ(copy->startMessageId_, "1:2");
+  EXPECT_EQ(copy->endMessageId_, "3:4");
   EXPECT_NE(
       copy->toString().find("persistent://public/default/topic"),
       std::string::npos);
+}
+
+TEST(PulsarConnectorTest, splitSerializationDefaults) {
+  folly::dynamic serialized = folly::dynamic::object;
+  serialized["connectorId"] = "pulsar";
+  serialized["serviceUrl"] = "pulsar://localhost:6650";
+  serialized["topic"] = "persistent://public/default/topic";
+  serialized["subscriptionName"] = "sub";
+  serialized["format"] = "raw";
+
+  const auto copy = PulsarConnectorSplit::create(serialized);
+
+  EXPECT_EQ(copy->partitionIndex_, -1);
+  EXPECT_EQ(copy->startMessageId_, "");
+  EXPECT_EQ(copy->endMessageId_, "");
+}
+
+TEST(PulsarConnectorTest, partitionedTopicName) {
+  EXPECT_EQ(
+      partitionedTopicName("persistent://public/default/topic", -1),
+      "persistent://public/default/topic");
+  EXPECT_EQ(
+      partitionedTopicName("persistent://public/default/topic", 2),
+      "persistent://public/default/topic-partition-2");
 }
 
 TEST(PulsarConnectorTest, tableHandleSerialization) {

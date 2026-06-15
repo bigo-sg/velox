@@ -16,10 +16,47 @@
 
 #include "velox/connectors/pulsar/PulsarConsumer.h"
 #include "velox/common/base/Exceptions.h"
+#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
+#include <folly/String.h>
 #include <pulsar/Message.h>
+#include <pulsar/MessageIdBuilder.h>
 #include <pulsar/Result.h>
 
 namespace facebook::velox::connector::pulsar {
+
+std::optional<::pulsar::MessageId> PulsarConsumer::parseMessageId(
+    const std::string& value,
+    int32_t partitionIndex) {
+  if (value.empty()) {
+    return std::nullopt;
+  }
+  if (value == "earliest") {
+    return ::pulsar::MessageId::earliest();
+  }
+  if (value == "latest") {
+    return ::pulsar::MessageId::latest();
+  }
+
+  std::vector<std::string> parts;
+  folly::split(':', value, parts);
+  VELOX_CHECK(
+      parts.size() >= 2 && parts.size() <= 4,
+      "Invalid Pulsar message id '{}'. Expected earliest, latest, or ledgerId:entryId[:batchIndex[:partition]].",
+      value);
+
+  auto builder = ::pulsar::MessageIdBuilder()
+                     .ledgerId(folly::to<int64_t>(parts[0]))
+                     .entryId(folly::to<int64_t>(parts[1]));
+  if (parts.size() >= 3 && !parts[2].empty()) {
+    builder.batchIndex(folly::to<int32_t>(parts[2]));
+  }
+  if (parts.size() >= 4 && !parts[3].empty()) {
+    builder.partition(folly::to<int32_t>(parts[3]));
+  } else if (partitionIndex >= 0) {
+    builder.partition(partitionIndex);
+  }
+  return builder.build();
+}
 
 PulsarConsumer::PulsarConsumer(
     const ConnectionConfigPtr& config,
@@ -30,8 +67,11 @@ PulsarConsumer::PulsarConsumer(
           config->getPulsarClientConfiguration()),
       receiveTimeoutMillis_(receiveTimeoutMillis),
       batchSize_(batchSize),
-      topic_(config->getTopic()),
-      subscriptionName_(config->getSubscriptionName()) {
+      topic_(
+          partitionedTopicName(config->getTopic(), config->getPartitionIndex())),
+      subscriptionName_(config->getSubscriptionName()),
+      endMessageId_(
+          parseMessageId(config->getEndMessageId(), config->getPartitionIndex())) {
   auto result = client_.subscribe(
       topic_,
       subscriptionName_,
@@ -43,6 +83,18 @@ PulsarConsumer::PulsarConsumer(
       topic_,
       subscriptionName_,
       ::pulsar::strResult(result));
+
+  const auto startMessageId =
+      parseMessageId(config->getStartMessageId(), config->getPartitionIndex());
+  if (startMessageId.has_value()) {
+    auto seekResult = consumer_.seek(startMessageId.value());
+    VELOX_CHECK(
+        seekResult == ::pulsar::ResultOk,
+        "Failed to seek Pulsar topic {} to start message id {}: {}",
+        topic_,
+        config->getStartMessageId(),
+        ::pulsar::strResult(seekResult));
+  }
 }
 
 PulsarConsumer::~PulsarConsumer() {
@@ -51,13 +103,13 @@ PulsarConsumer::~PulsarConsumer() {
 }
 
 void PulsarConsumer::consumeBatch(
-    std::vector<std::string>& messages,
-    size_t& messageBytes,
-    bool acknowledgeMessages) {
+    std::vector<PulsarMessage>& messages,
+    size_t& messageBytes) {
   for (uint32_t i = 0; i < batchSize_; ++i) {
     ::pulsar::Message message;
     auto result = consumer_.receive(message, receiveTimeoutMillis_.count());
     if (result == ::pulsar::ResultTimeout) {
+      ++stats_.receiveTimeouts;
       break;
     }
     VELOX_CHECK(
@@ -65,18 +117,38 @@ void PulsarConsumer::consumeBatch(
         "Failed to receive Pulsar message from topic {}: {}",
         topic_,
         ::pulsar::strResult(result));
+
+    if (endMessageId_.has_value() &&
+        message.getMessageId() > endMessageId_.value()) {
+      ++stats_.skippedMessagesAfterEnd;
+      break;
+    }
+
     std::string payload = message.getDataAsString();
     messageBytes += payload.size();
-    messages.emplace_back(std::move(payload));
-    if (acknowledgeMessages) {
-      auto ackResult = consumer_.acknowledge(message);
-      VELOX_CHECK(
-          ackResult == ::pulsar::ResultOk,
-          "Failed to acknowledge Pulsar message from topic {}: {}",
-          topic_,
-          ::pulsar::strResult(ackResult));
-    }
+    stats_.receivedBytes += payload.size();
+    ++stats_.receivedMessages;
+    messages.push_back({std::move(payload), std::move(message)});
   }
+}
+
+void PulsarConsumer::acknowledge(
+    const ::pulsar::Message& message,
+    bool cumulative) {
+  const auto result = cumulative
+      ? consumer_.acknowledgeCumulative(message.getMessageId())
+      : consumer_.acknowledge(message);
+  VELOX_CHECK(
+      result == ::pulsar::ResultOk,
+      "Failed to acknowledge Pulsar message from topic {}: {}",
+      topic_,
+      ::pulsar::strResult(result));
+  ++stats_.acknowledgedMessages;
+}
+
+void PulsarConsumer::negativeAcknowledge(const ::pulsar::Message& message) {
+  consumer_.negativeAcknowledge(message.getMessageId());
+  ++stats_.negativelyAcknowledgedMessages;
 }
 
 } // namespace facebook::velox::connector::pulsar

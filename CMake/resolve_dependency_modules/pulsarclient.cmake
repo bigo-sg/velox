@@ -21,10 +21,17 @@ set(BUILD_DYNAMIC_LIB ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   pulsarclient
   GIT_REPOSITORY https://github.com/apache/pulsar-client-cpp.git
-  GIT_TAG v3.3.0
-  PATCH_COMMAND git apply
-                ${CMAKE_CURRENT_LIST_DIR}/pulsarclient/pulsar-client-cpp-subproject.patch)
+  GIT_TAG v3.3.0)
 
 FetchContent_MakeAvailable(pulsarclient)
+
+if(TARGET PULSAR_OBJECT_LIB)
+  target_compile_options(PULSAR_OBJECT_LIB PRIVATE -Wno-error=deprecated-copy
+                                                   -Wno-error=extra)
+endif()
+
+target_include_directories(
+  pulsarShared INTERFACE ${pulsarclient_SOURCE_DIR}/include
+                         ${pulsarclient_BINARY_DIR}/include)
 
 add_library(PulsarClient::pulsar ALIAS pulsarShared)

@@ -30,5 +30,36 @@ target_link_libraries(
   velox_type
   velox_exception
   Folly::folly
+  PulsarClient::pulsar
   GTest::gtest
   GTest::gtest_main)
+
+option(
+  VELOX_ENABLE_PULSAR_INTEGRATION_TESTS
+  "Enable Pulsar connector standalone integration tests."
+  OFF)
+
+if(${VELOX_ENABLE_PULSAR_INTEGRATION_TESTS})
+  add_executable(
+    velox_pulsar_connector_integration_test
+    PulsarConnectorIntegrationTest.cpp)
+
+  target_link_libraries(
+    velox_pulsar_connector_integration_test
+    velox_pulsar_connector
+    velox_kafka_connector_format
+    velox_connector
+    velox_vector
+    velox_exception
+    Folly::folly
+    PulsarClient::pulsar
+    GTest::gtest
+    GTest::gtest_main)
+
+  add_test(
+    NAME velox_pulsar_connector_integration_test
+    COMMAND
+      bash ${CMAKE_CURRENT_SOURCE_DIR}/run_pulsar_standalone_test.sh
+      $<TARGET_FILE:velox_pulsar_connector_integration_test>
+      ${CMAKE_CURRENT_BINARY_DIR}/standalone)
+endif()
