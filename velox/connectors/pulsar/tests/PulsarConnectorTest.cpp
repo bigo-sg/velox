@@ -20,8 +20,12 @@
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/type/Type.h"
+#include <cstdio>
+#include <fstream>
+#include <fmt/format.h>
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
+#include <unistd.h>
 
 namespace facebook::velox::connector::pulsar::test {
 
@@ -134,6 +138,121 @@ TEST(PulsarConnectorTest, invalidBooleanConfigFails) {
   VELOX_ASSERT_THROW(
       startInclusiveConfig.getStartMessageIdInclusive(),
       "Invalid Pulsar start message id inclusive config");
+}
+
+TEST(PulsarConnectorTest, consumerConfigurationOverrides) {
+  ConnectionConfig sharedConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kConsumerName, "consumer"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kSubscriptionType, "shared"},
+      {ConnectionConfig::kInitialPosition, "earliest"},
+      {ConnectionConfig::kReceiverQueueSize, "7"},
+      {ConnectionConfig::kStartMessageIdInclusive, "false"},
+  }));
+
+  auto sharedConsumerConfig = sharedConfig.getPulsarConsumerConfiguration();
+  EXPECT_EQ(sharedConsumerConfig.getConsumerType(), ::pulsar::ConsumerShared);
+  EXPECT_EQ(
+      sharedConsumerConfig.getSubscriptionInitialPosition(),
+      ::pulsar::InitialPositionEarliest);
+  EXPECT_EQ(sharedConsumerConfig.getReceiverQueueSize(), 7);
+  EXPECT_EQ(sharedConsumerConfig.getConsumerName(), "consumer");
+
+  ConnectionConfig failoverConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kSubscriptionType, "failover"},
+      {ConnectionConfig::kInitialPosition, "latest"},
+  }));
+  auto failoverConsumerConfig = failoverConfig.getPulsarConsumerConfiguration();
+  EXPECT_EQ(
+      failoverConsumerConfig.getConsumerType(), ::pulsar::ConsumerFailover);
+  EXPECT_EQ(
+      failoverConsumerConfig.getSubscriptionInitialPosition(),
+      ::pulsar::InitialPositionLatest);
+
+  ConnectionConfig keySharedConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kSubscriptionType, "key_shared"},
+  }));
+  auto keySharedConsumerConfig =
+      keySharedConfig.getPulsarConsumerConfiguration();
+  EXPECT_EQ(
+      keySharedConsumerConfig.getConsumerType(), ::pulsar::ConsumerKeyShared);
+}
+
+TEST(PulsarConnectorTest, invalidConsumerConfigurationFails) {
+  ConnectionConfig subscriptionTypeConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kSubscriptionType, "round-robin"},
+  }));
+
+  VELOX_ASSERT_THROW(
+      subscriptionTypeConfig.getPulsarConsumerConfiguration(),
+      "Unsupported Pulsar subscription type");
+
+  ConnectionConfig initialPositionConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kInitialPosition, "middle"},
+  }));
+
+  VELOX_ASSERT_THROW(
+      initialPositionConfig.getPulsarConsumerConfiguration(),
+      "Unsupported Pulsar initial position");
+}
+
+TEST(PulsarConnectorTest, tokenFileClientConfiguration) {
+  const auto tokenFile =
+      fmt::format("/tmp/velox-pulsar-token-test-{}.txt", getpid());
+  {
+    std::ofstream out(tokenFile);
+    out << " test-token \n";
+  }
+
+  ConnectionConfig config(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kAuthTokenFile, tokenFile},
+  }));
+
+  auto clientConfig = config.getPulsarClientConfiguration();
+  EXPECT_EQ(clientConfig.getAuth().getAuthMethodName(), "token");
+  ::pulsar::AuthenticationDataPtr authData;
+  ASSERT_EQ(clientConfig.getAuth().getAuthData(authData), ::pulsar::ResultOk);
+  ASSERT_NE(authData, nullptr);
+  EXPECT_TRUE(authData->hasDataFromCommand());
+  EXPECT_EQ(authData->getCommandData(), "test-token");
+
+  std::remove(tokenFile.c_str());
+}
+
+TEST(PulsarConnectorTest, missingTokenFileFails) {
+  ConnectionConfig config(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kAuthTokenFile, "/tmp/velox-missing-pulsar-token"},
+  }));
+
+  VELOX_ASSERT_THROW(
+      config.getPulsarClientConfiguration(), "Failed to read Pulsar token file");
 }
 
 TEST(PulsarConnectorTest, splitSerialization) {

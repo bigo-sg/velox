@@ -33,7 +33,7 @@ ConnectionConfig::getPulsarClientConfiguration() const {
         folly::readFile(getAuthTokenFile().c_str(), token),
         "Failed to read Pulsar token file: {}",
         getAuthTokenFile());
-    folly::trimWhitespace(token);
+    token = folly::trimWhitespace(token).str();
   }
   if (!token.empty()) {
     conf.setAuth(::pulsar::AuthToken::createWithToken(token));

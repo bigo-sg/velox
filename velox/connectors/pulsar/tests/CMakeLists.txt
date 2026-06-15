@@ -15,6 +15,7 @@
 add_executable(
   velox_pulsar_connector_test
   PulsarConnectorTest.cpp
+  ../PulsarClientConfig.cpp
   ../PulsarConfig.cpp
   ../PulsarConnectorSplit.cpp
   ../PulsarTableHandle.cpp)
