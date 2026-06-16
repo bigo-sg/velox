@@ -31,6 +31,12 @@ class FileSystemWriteConfig {
   static constexpr const char* kPath = "path";
   /// The config key fo format
   static constexpr const char* kFormat = "format";
+  /// For testing only. 
+  static constexpr const char* kFileNamePrefix = "file-name-prefix";
+  /// For testing only.
+  static constexpr const char* kFileNameSuffix = "file-name-suffix";
+  /// The task id for the writer.
+  static constexpr const char* kTaskId = "task-id";
   static constexpr const char* kFileRollingInterval =
       "sink.rolling-policy.rollover-interval";
   static constexpr const char* kFileRollingSize =
