@@ -80,10 +80,9 @@ class ConnectionConfig : public PulsarConfig {
   static constexpr const char* kAuthToken = "auth.token";
   static constexpr const char* kAuthTokenFile = "auth.token.file";
 
-  // Exclusive subscription allows only one active consumer for a subscription.
-  // Parallel splits over the same topic must use a compatible subscription
-  // strategy, such as shared/key_shared, or provide isolated subscriptions.
-  static constexpr const char* defaultSubscriptionType = "exclusive";
+  // Shared subscription is the safest default for parallel source readers.
+  // Use exclusive only when a single active consumer is guaranteed.
+  static constexpr const char* defaultSubscriptionType = "shared";
   static constexpr const char* defaultInitialPosition = "latest";
   static constexpr const char* defaultAckMode = "individual";
   static constexpr const uint32_t defaultReceiverQueueSize = 1000;

@@ -51,7 +51,7 @@ TEST(PulsarConnectorTest, connectionConfigRequiredValues) {
   EXPECT_EQ(config.getSubscriptionName(), "sub");
   EXPECT_EQ(config.getFormat(), "json");
   EXPECT_EQ(config.getConsumerName(), "");
-  EXPECT_EQ(config.getSubscriptionType(), "exclusive");
+  EXPECT_EQ(config.getSubscriptionType(), "shared");
   EXPECT_EQ(config.getInitialPosition(), "latest");
   EXPECT_EQ(config.getAckMode(), "individual");
   EXPECT_EQ(config.getPartitionIndex(), -1);
