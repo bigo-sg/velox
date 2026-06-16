@@ -50,8 +50,7 @@ RowVectorPtr BidGenerator::nextBidBatch(
     priceVector->set(i, bid.price);
     channelVector->set(i, StringView(bid.channel));
     urlVector->set(i, StringView(bid.url));
-    dateTimeVector->set(
-        i, Timestamp(bid.dateTime / 1000, bid.dateTime % 1000 * 1000000));
+    dateTimeVector->set(i, Timestamp::fromMillis(bid.dateTime));
     extraVector->set(i, StringView(bid.extra));
   }
 
