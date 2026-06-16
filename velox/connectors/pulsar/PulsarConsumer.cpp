@@ -87,6 +87,8 @@ PulsarConsumer::PulsarConsumer(
   const auto startMessageId =
       parseMessageId(config->getStartMessageId(), config->getPartitionIndex());
   if (startMessageId.has_value()) {
+    // start.message.id.inclusive is applied via ConsumerConfiguration before
+    // subscribe because Pulsar C++ client 3.3 has no seek(id, inclusive) API.
     auto seekResult = consumer_.seek(startMessageId.value());
     VELOX_CHECK(
         seekResult == ::pulsar::ResultOk,
