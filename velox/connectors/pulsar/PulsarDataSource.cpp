@@ -27,6 +27,12 @@
 
 namespace facebook::velox::connector::pulsar {
 
+namespace {
+
+constexpr uint32_t kReceiveTimeoutBackoffMillis = 1;
+
+} // namespace
+
 PulsarDataSource::PulsarDataSource(
     const RowTypePtr& outputType,
     const TableHandlePtr& tableHandle,
@@ -110,7 +116,7 @@ std::optional<RowVectorPtr> PulsarDataSource::blockOnReceiveTimeout(
         }
       },
       fmt::format("PulsarDataSource::next.{}", ++blockingSequence_),
-      std::chrono::milliseconds(config_->getReceiveTimeoutMills()));
+      std::chrono::milliseconds(kReceiveTimeoutBackoffMillis));
   future = std::move(blockedFuture);
   return std::nullopt;
 }
