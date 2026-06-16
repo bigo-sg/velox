@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 #include <cstdint>
 
 namespace facebook::velox::stateful {
@@ -61,6 +62,8 @@ core::PlanNodePtr StatefulPlanNode::create(
 }
 
 void StatefulPlanNode::registerSerDe() {
+  registerPartitionFunctionSerDe();
+
   auto& registry = DeserializationWithContextRegistryForSharedPtr();
 
   registry.Register("WatermarkAssignerNode", WatermarkAssignerNode::create);
