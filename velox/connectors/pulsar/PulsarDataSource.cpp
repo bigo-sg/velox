@@ -61,10 +61,7 @@ PulsarDataSource::PulsarDataSource(
 
 PulsarDataSource::~PulsarDataSource() {
   scheduler_.shutdown();
-  if (blockingPromise_.has_value()) {
-    blockingPromise_->setValue();
-    blockingPromise_.reset();
-  }
+  completeBlockingFuture();
 }
 
 bool PulsarDataSource::consumerCanbeCreated() const {
@@ -86,6 +83,19 @@ void PulsarDataSource::resetSplitState() {
   consumer_.reset();
   queue_.clear();
   consumePos_ = 0;
+  canceled_ = false;
+  completeBlockingFuture();
+}
+
+void PulsarDataSource::cancel() {
+  canceled_ = true;
+  if (consumer_) {
+    consumer_->close();
+  }
+  completeBlockingFuture();
+}
+
+void PulsarDataSource::completeBlockingFuture() {
   if (blockingPromise_.has_value()) {
     blockingPromise_->setValue();
     blockingPromise_.reset();
@@ -110,10 +120,7 @@ std::optional<RowVectorPtr> PulsarDataSource::blockOnReceiveTimeout(
   blockingPromise_ = std::move(promise);
   scheduler_.addFunctionOnce(
       [this]() {
-        if (blockingPromise_.has_value()) {
-          blockingPromise_->setValue();
-          blockingPromise_.reset();
-        }
+        completeBlockingFuture();
       },
       fmt::format("PulsarDataSource::next.{}", ++blockingSequence_),
       std::chrono::milliseconds(kReceiveTimeoutBackoffMillis));
@@ -209,6 +216,9 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
     velox::ContinueFuture& future) {
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
+  if (canceled_) {
+    return RowVectorPtr{nullptr};
+  }
   if (queue_.empty()) {
     if (consumer_ && consumer_->reachedEnd()) {
       return RowVectorPtr{nullptr};
@@ -222,6 +232,9 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
     consumer_->consumeBatch(queue_, consumedMsgBytes);
     refreshConsumerStats();
     consumePos_ = 0;
+    if (canceled_) {
+      return RowVectorPtr{nullptr};
+    }
     if (consumedMsgBytes == 0) {
       if (consumer_->reachedEnd()) {
         return RowVectorPtr{nullptr};

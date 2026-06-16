@@ -98,6 +98,13 @@ PulsarConsumer::PulsarConsumer(
 }
 
 PulsarConsumer::~PulsarConsumer() {
+  close();
+}
+
+void PulsarConsumer::close() {
+  if (closed_.exchange(true)) {
+    return;
+  }
   consumer_.close();
   client_.close();
 }
@@ -110,6 +117,11 @@ void PulsarConsumer::consumeBatch(
     auto result = consumer_.receive(message, receiveTimeoutMillis_.count());
     if (result == ::pulsar::ResultTimeout) {
       ++stats_.receiveTimeouts;
+      break;
+    }
+    if (closed_.load() && (result == ::pulsar::ResultAlreadyClosed ||
+                           result == ::pulsar::ResultInterrupted)) {
+      reachedEnd_ = true;
       break;
     }
     VELOX_CHECK(

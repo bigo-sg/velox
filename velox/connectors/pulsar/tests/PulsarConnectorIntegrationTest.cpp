@@ -16,6 +16,7 @@
 
 #include "velox/connectors/pulsar/PulsarConnector.h"
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
+#include "velox/connectors/pulsar/PulsarDataSource.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/common/future/VeloxPromise.h"
@@ -23,11 +24,13 @@
 #include "velox/vector/ComplexVector.h"
 #include <chrono>
 #include <cstdlib>
+#include <future>
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 #include <pulsar/Client.h>
 #include <pulsar/MessageBuilder.h>
 #include <pulsar/Producer.h>
+#include <thread>
 #include <unistd.h>
 
 namespace facebook::velox::connector::pulsar::test {
@@ -385,6 +388,42 @@ TEST(PulsarConnectorIntegrationTest, emptyTopicBlocksWithFuture) {
   ASSERT_TRUE(future.valid());
   ASSERT_FALSE(future.isReady());
   ASSERT_TRUE(std::move(future).wait(std::chrono::milliseconds{250}));
+}
+
+TEST(PulsarConnectorIntegrationTest, cancelUnblocksReceive) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-cancel-it-{}", getpid());
+  const auto subscription = fmt::format("velox-cancel-sub-{}", getpid());
+  const auto connectorId = "test-pulsar-cancel";
+  auto pool = memory::memoryManager()->addLeafPool();
+
+  connector::registerConnectorFactory(
+      std::make_shared<connector::pulsar::PulsarConnectorFactory>());
+  ConnectorCleanup cleanup(connectorId);
+
+  auto connectorConfig =
+      makeRawConfig(serviceUrl, topic, subscription, "5000");
+  auto source = createRawDataSource(
+      pool, connectorConfig, connectorId, serviceUrl, topic, subscription);
+
+  auto nextResult = std::async(std::launch::async, [&source]() {
+    ContinueFuture future{folly::Unit{}};
+    return source->next(0, future);
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds{200});
+  source->cancel();
+
+  ASSERT_EQ(
+      nextResult.wait_for(std::chrono::seconds{2}),
+      std::future_status::ready);
+  auto result = nextResult.get();
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result.value(), nullptr);
+  auto* pulsarSource = dynamic_cast<PulsarDataSource*>(source.get());
+  ASSERT_NE(pulsarSource, nullptr);
+  ASSERT_TRUE(pulsarSource->getConsumer()->closed());
 }
 
 TEST(PulsarConnectorIntegrationTest, multipleNextCallsDrainBatchesThenBlock) {

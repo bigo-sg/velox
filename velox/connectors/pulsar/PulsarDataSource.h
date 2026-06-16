@@ -24,6 +24,7 @@
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
 #include <folly/experimental/FunctionScheduler.h>
+#include <atomic>
 
 namespace facebook::velox::connector::pulsar {
 
@@ -44,6 +45,8 @@ class PulsarDataSource : public DataSource {
 
   std::optional<RowVectorPtr> next(uint64_t size, velox::ContinueFuture& future)
       override;
+
+  void cancel() override;
 
   void addDynamicFilter(
       column_index_t outputChannel,
@@ -77,6 +80,7 @@ class PulsarDataSource : public DataSource {
   folly::FunctionScheduler scheduler_;
   std::optional<ContinuePromise> blockingPromise_;
   uint64_t blockingSequence_{0};
+  std::atomic_bool canceled_{false};
   uint64_t completedRows_ = 0;
   uint64_t completedBytes_ = 0;
   VectorPtr outRow_;
@@ -95,6 +99,7 @@ class PulsarDataSource : public DataSource {
   void createConsumer();
   void resetSplitState();
   bool cumulativeAck() const;
+  void completeBlockingFuture();
   std::optional<RowVectorPtr> blockOnReceiveTimeout(
       velox::ContinueFuture& future);
   void refreshConsumerStats();

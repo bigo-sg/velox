@@ -20,6 +20,7 @@
 #include <pulsar/Consumer.h>
 #include <pulsar/Message.h>
 #include <pulsar/MessageId.h>
+#include <atomic>
 #include <optional>
 
 namespace facebook::velox::connector::pulsar {
@@ -47,6 +48,8 @@ class PulsarConsumer {
 
   ~PulsarConsumer();
 
+  void close();
+
   void consumeBatch(
       std::vector<PulsarMessage>& messages,
       size_t& messageBytes);
@@ -71,6 +74,10 @@ class PulsarConsumer {
     return reachedEnd_;
   }
 
+  bool closed() const {
+    return closed_.load();
+  }
+
  private:
   static std::optional<::pulsar::MessageId> parseMessageId(
       const std::string& value,
@@ -84,6 +91,7 @@ class PulsarConsumer {
   std::string subscriptionName_;
   std::optional<::pulsar::MessageId> endMessageId_;
   bool reachedEnd_{false};
+  std::atomic_bool closed_{false};
   PulsarConsumerStats stats_;
 };
 
