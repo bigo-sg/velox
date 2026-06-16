@@ -60,6 +60,17 @@ void StatefulOperator::close() {
   targets_.clear();
 }
 
+void StatefulOperator::advanceWithFuture(ContinueFuture* future) {
+  ContinueFuture localFuture = ContinueFuture::makeEmpty();
+  auto* blockingFuture = future == nullptr ? &localFuture : future;
+  const auto blockingReason = operator_->isBlocked(blockingFuture);
+  if (blockingReason != exec::BlockingReason::kNotBlocked) {
+    sourceEmpty_ = true;
+    return;
+  }
+  advance();
+}
+
 void StatefulOperator::advance() {
   sourceEmpty_ = true;
   auto intermediateResult = operator_->getOutput();
