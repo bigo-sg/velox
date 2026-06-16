@@ -377,7 +377,7 @@ TEST(PulsarConnectorIntegrationTest, emptyTopicBlocksWithFuture) {
       std::make_shared<connector::pulsar::PulsarConnectorFactory>());
   ConnectorCleanup cleanup(connectorId);
 
-  auto connectorConfig = makeRawConfig(serviceUrl, topic, subscription, "500");
+  auto connectorConfig = makeRawConfig(serviceUrl, topic, subscription, "50");
   auto source = createRawDataSource(
       pool, connectorConfig, connectorId, serviceUrl, topic, subscription);
 
@@ -387,7 +387,7 @@ TEST(PulsarConnectorIntegrationTest, emptyTopicBlocksWithFuture) {
   ASSERT_FALSE(result.has_value());
   ASSERT_TRUE(future.valid());
   ASSERT_FALSE(future.isReady());
-  ASSERT_TRUE(std::move(future).wait(std::chrono::milliseconds{250}));
+  ASSERT_TRUE(std::move(future).wait(std::chrono::seconds{1}));
 }
 
 TEST(PulsarConnectorIntegrationTest, cancelUnblocksReceive) {
