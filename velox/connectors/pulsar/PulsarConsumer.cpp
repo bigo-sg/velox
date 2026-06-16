@@ -174,6 +174,9 @@ void PulsarConsumer::acknowledge(
 }
 
 void PulsarConsumer::negativeAcknowledge(const ::pulsar::Message& message) {
+  if (closed_.load()) {
+    return;
+  }
   consumer_.negativeAcknowledge(message.getMessageId());
   ++stats_.negativelyAcknowledgedMessages;
 }

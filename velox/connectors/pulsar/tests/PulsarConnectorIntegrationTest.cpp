@@ -446,7 +446,9 @@ TEST(PulsarConnectorIntegrationTest, acknowledgeAfterCloseDoesNotThrow) {
 
   consumer.close();
   EXPECT_NO_THROW(consumer.acknowledge(messages[0].message, false));
+  EXPECT_NO_THROW(consumer.negativeAcknowledge(messages[0].message));
   EXPECT_EQ(consumer.stats().acknowledgedMessages, 0);
+  EXPECT_EQ(consumer.stats().negativelyAcknowledgedMessages, 0);
 }
 
 TEST(PulsarConnectorIntegrationTest, multipleNextCallsDrainBatchesThenBlock) {
