@@ -426,6 +426,29 @@ TEST(PulsarConnectorIntegrationTest, cancelUnblocksReceive) {
   ASSERT_TRUE(pulsarSource->getConsumer()->closed());
 }
 
+TEST(PulsarConnectorIntegrationTest, acknowledgeAfterCloseDoesNotThrow) {
+  const auto serviceUrl =
+      getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");
+  const auto topic = fmt::format(
+      "persistent://public/default/velox-pulsar-ack-close-it-{}", getpid());
+  const auto subscription = fmt::format("velox-ack-close-sub-{}", getpid());
+
+  std::vector<::pulsar::MessageId> messageIds;
+  produceRawMessages(serviceUrl, topic, messageIds, {"first"});
+  auto config = std::make_shared<ConnectionConfig>(
+      makeRawConfig(serviceUrl, topic, subscription, "1000", "1"));
+  PulsarConsumer consumer(config, config->getReceiveTimeoutMills(), 1);
+
+  std::vector<PulsarMessage> messages;
+  size_t messageBytes = 0;
+  consumer.consumeBatch(messages, messageBytes);
+  ASSERT_EQ(messages.size(), 1);
+
+  consumer.close();
+  EXPECT_NO_THROW(consumer.acknowledge(messages[0].message, false));
+  EXPECT_EQ(consumer.stats().acknowledgedMessages, 0);
+}
+
 TEST(PulsarConnectorIntegrationTest, multipleNextCallsDrainBatchesThenBlock) {
   const auto serviceUrl =
       getEnvOrDefault("PULSAR_SERVICE_URL", "pulsar://127.0.0.1:6650");

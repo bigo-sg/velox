@@ -153,9 +153,16 @@ void PulsarConsumer::consumeBatch(
 void PulsarConsumer::acknowledge(
     const ::pulsar::Message& message,
     bool cumulative) {
+  if (closed_.load()) {
+    return;
+  }
   const auto result = cumulative
       ? consumer_.acknowledgeCumulative(message.getMessageId())
       : consumer_.acknowledge(message);
+  if (closed_.load() && (result == ::pulsar::ResultAlreadyClosed ||
+                         result == ::pulsar::ResultInterrupted)) {
+    return;
+  }
   VELOX_CHECK(
       result == ::pulsar::ResultOk,
       "Failed to acknowledge Pulsar message from topic {}: {}",
