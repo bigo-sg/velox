@@ -132,6 +132,9 @@ void PulsarConsumer::consumeBatch(
 
     if (endMessageId_.has_value() &&
         message.getMessageId() > endMessageId_.value()) {
+      // This message belongs to a later split. Nack it so Pulsar can redeliver
+      // it to that split's consumer; bounded split readers should expect the
+      // first message after endMessageId to be negatively acknowledged.
       consumer_.negativeAcknowledge(message.getMessageId());
       reachedEnd_ = true;
       ++stats_.negativelyAcknowledgedMessages;
