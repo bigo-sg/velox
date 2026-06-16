@@ -125,4 +125,11 @@ core::PartitionFunctionSpecPtr StreamWindowPartitionFunctionSpec::deserialize(
       windowType);
 }
 
+void registerPartitionFunctionSerDe() {
+  auto& registry = DeserializationWithContextRegistryForSharedPtr();
+  registry.Register(
+      "StreamWindowPartitionFunctionSpec",
+      StreamWindowPartitionFunctionSpec::deserialize);
+}
+
 } // namespace facebook::velox::stateful

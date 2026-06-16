@@ -110,8 +110,7 @@ velox_link_libraries(
   velox_common_base
   velox_test_util
   velox_arrow_bridge
-  velox_common_compression
-  velox_stateful_window)
+  velox_common_compression)
 
 velox_add_library(velox_cursor Cursor.cpp)
 velox_link_libraries(
