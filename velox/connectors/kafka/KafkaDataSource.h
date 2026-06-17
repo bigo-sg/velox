@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cppkafka/cppkafka.h>
+#include <map>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/connectors/Connector.h"
@@ -48,6 +49,14 @@ class KafkaDataSource : public DataSource {
   std::optional<RowVectorPtr> next(uint64_t size, velox::ContinueFuture& future)
       override;
 
+  std::vector<std::string> snapshotState(int64_t checkpointId) override;
+
+  void restoreState(const std::vector<std::string>& checkpointRecords) override;
+
+  std::vector<std::string> commit(int64_t checkpointId) override;
+
+  void abortCheckpoint(int64_t checkpointId) override;
+
   void addDynamicFilter(
       column_index_t outputChannel,
       const std::shared_ptr<common::Filter>& filter) override {}
@@ -61,8 +70,6 @@ class KafkaDataSource : public DataSource {
   }
 
   std::unordered_map<std::string, RuntimeCounter> runtimeStats() override;
-
-  std::vector<std::string> checkpointState() override;
 
   /// For test.
   const KafkaConsumerPtr& getConsumer() const {
@@ -104,11 +111,15 @@ class KafkaDataSource : public DataSource {
   uint64_t batchSize_;
   /// The cache queue for storing consumed data.
   std::vector<KafkaMessage> queue_;
-  std::unordered_map<std::string, std::unordered_map<uint32_t, int64_t>>
-      checkpointOffsets_;
-  std::string connectorId_;
   /// The consumed position of the cache queue.
   size_t consumePos_ = 0;
+
+  using TopicPartitionKey = std::pair<std::string, int32_t>;
+  using TopicPartitionOffsets = std::map<TopicPartitionKey, int64_t>;
+  TopicPartitionOffsets nextOffsets_;
+  TopicPartitionOffsets committedOffsets_;
+  std::map<int64_t, TopicPartitionOffsets> pendingCheckpointOffsets_;
+  std::vector<std::string> restoredCheckpointRecords_;
 
   /// Whether consumer can be created.
   bool consumerCanbeCreated();
@@ -119,7 +130,7 @@ class KafkaDataSource : public DataSource {
   /// Create message queue with given size.
   void createCachedQueue(const uint32_t size);
 
-  void updateCheckpointOffsets(
+  void updateNextOffsets(
       const cppkafka::TopicPartitionList& topicPartitions);
 
   /// Create deserializer to deserialize the consumed recored to the given row
@@ -139,6 +150,19 @@ class KafkaDataSource : public DataSource {
   int32_t getTaskParallelism() const;
 
   void applyTaskScopedClientId();
+
+  void applyRestoredOffsets(cppkafka::TopicPartitionList& topicPartitions);
+
+  bool hasOffsetsToCommit(const TopicPartitionOffsets& offsets) const;
+
+  void updateCommittedOffsets(const TopicPartitionOffsets& offsets);
+
+  std::string snapshotToJson(
+      int64_t checkpointId,
+      const TopicPartitionOffsets& offsets) const;
+
+  TopicPartitionOffsets offsetsFromCheckpointRecords(
+      const std::vector<std::string>& checkpointRecords) const;
 };
 
 } // namespace facebook::velox::connector::kafka

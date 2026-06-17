@@ -267,6 +267,19 @@ class DataSource {
 
   virtual std::unordered_map<std::string, RuntimeCounter> runtimeStats() = 0;
 
+  virtual std::vector<std::string> snapshotState(int64_t /*checkpointId*/) {
+    return {};
+  }
+
+  virtual void restoreState(
+      const std::vector<std::string>& /*checkpointRecords*/) {}
+
+  virtual std::vector<std::string> commit(int64_t /*checkpointId*/) {
+    return {};
+  }
+
+  virtual void abortCheckpoint(int64_t /*checkpointId*/) {}
+
   /// Returns true if 'this' has initiated all the prefetch this will initiate.
   /// This means that the caller should schedule next splits to prefetch in the
   /// background. false if the source does not prefetch.
@@ -307,14 +320,6 @@ class DataSource {
   /// connector implementation decides how to support the cancellation if
   /// needed.
   virtual void cancel() {}
-
-  virtual std::vector<std::string> checkpointState() {
-    return {};
-  }
-
-  virtual std::vector<std::string> commit(int64_t /*id*/) {
-    return {};
-  }
 };
 
 class IndexSource {

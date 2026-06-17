@@ -194,19 +194,18 @@ void StatefulTask::notifyWatermark(int64_t watermark) {
 }
 
 void StatefulTask::initializeState(
-    const std::shared_ptr<const KeyedStateBackendParameters> parameters) {
+    const std::shared_ptr<const KeyedStateBackendParameters> parameters,
+    const std::vector<std::string>& checkpointRecords) {
   initStateBackend(parameters);
+  if (!checkpointRecords.empty()) {
+    operatorChain_->restoreState(checkpointRecords);
+  }
   operatorChain_->initializeState();
 }
 
-void StatefulTask::snapshotState() {
+std::vector<std::string> StatefulTask::snapshotState(int64_t checkpointId) {
   // TODO: this is a synchronous call now, maybe need to use async.
-  operatorChain_->snapshotState();
-}
-
-std::vector<std::string> StatefulTask::snapshotSourceState() {
-  return operatorChain_ ? operatorChain_->snapshotSourceState()
-                        : std::vector<std::string>{};
+  return operatorChain_->snapshotState(checkpointId);
 }
 
 std::vector<std::string> StatefulTask::notifyCheckpointComplete(

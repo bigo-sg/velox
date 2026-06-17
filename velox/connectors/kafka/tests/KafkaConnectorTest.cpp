@@ -15,6 +15,7 @@
  */
 
 #include <folly/init/Init.h>
+#include <folly/json.h>
 #include <gtest/gtest.h>
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/connectors/Connector.h"
@@ -267,27 +268,26 @@ TEST_F(KafkaConnectorTest, testKafkaSourceNext) {
   }
 }
 
-TEST_F(KafkaConnectorTest, testCheckpointStateRecordsSplitOffset) {
+TEST_F(KafkaConnectorTest, testSnapshotStateRecordsSplitOffset) {
   const std::unique_ptr<DataSource> dataSource = createDataSource();
   KafkaDataSource* kafkaDataSource =
       reinterpret_cast<KafkaDataSource*>(dataSource.get());
   ASSERT_TRUE(kafkaDataSource != nullptr);
   kafkaDataSource->addSplit(createKafkaSplit());
 
-  const auto checkpointState = kafkaDataSource->checkpointState();
-  ASSERT_EQ(checkpointState.size(), 1);
-  const auto obj = folly::parseJson(checkpointState[0]);
-  ASSERT_EQ(obj["connectorId"].asString(), kKafkaConnectorId);
-  ASSERT_EQ(obj["bootstrapServers"].asString(), kafkaInstance);
+  const auto snapshots = kafkaDataSource->snapshotState(123);
+  ASSERT_EQ(snapshots.size(), 1);
+  const auto obj = folly::parseJson(snapshots[0]);
+  ASSERT_EQ(obj["connector"].asString(), "kafka");
+  ASSERT_EQ(obj["checkpointId"].asInt(), 123);
   ASSERT_EQ(obj["groupId"].asString(), kafkaConsumeGroupId);
-  ASSERT_EQ(obj["format"].asString(), kafkaDataFormat);
   ASSERT_EQ(obj["topicPartitions"].size(), 1);
   ASSERT_EQ(obj["topicPartitions"][0]["topic"].asString(), kafkaTopic);
   ASSERT_EQ(obj["topicPartitions"][0]["partition"].asInt(), 0);
   ASSERT_EQ(obj["topicPartitions"][0]["offset"].asInt(), 0);
 }
 
-TEST_F(KafkaConnectorTest, testCheckpointStateRecordsNextOffset) {
+TEST_F(KafkaConnectorTest, testSnapshotStateRecordsNextOffset) {
   const std::unique_ptr<DataSource> dataSource = createDataSource();
   KafkaDataSource* kafkaDataSource =
       reinterpret_cast<KafkaDataSource*>(dataSource.get());
@@ -301,13 +301,42 @@ TEST_F(KafkaConnectorTest, testCheckpointStateRecordsNextOffset) {
   ASSERT_TRUE(res.has_value());
   ASSERT_TRUE(res.value() != nullptr);
 
-  const auto checkpointState = kafkaDataSource->checkpointState();
-  ASSERT_EQ(checkpointState.size(), 1);
-  const auto obj = folly::parseJson(checkpointState[0]);
+  auto snapshots = kafkaDataSource->snapshotState(123);
+  ASSERT_EQ(snapshots.size(), 1);
+  auto obj = folly::parseJson(snapshots[0]);
+  ASSERT_EQ(obj["connector"].asString(), "kafka");
+  ASSERT_EQ(obj["checkpointId"].asInt(), 123);
+  ASSERT_EQ(obj["groupId"].asString(), kafkaConsumeGroupId);
   ASSERT_EQ(obj["topicPartitions"].size(), 1);
   ASSERT_EQ(obj["topicPartitions"][0]["topic"].asString(), kafkaTopic);
   ASSERT_EQ(obj["topicPartitions"][0]["partition"].asInt(), 0);
   ASSERT_GT(obj["topicPartitions"][0]["offset"].asInt(), 0);
+}
+
+TEST_F(KafkaConnectorTest, testRestoreStateOverridesSplitOffset) {
+  const std::unique_ptr<DataSource> dataSource = createDataSource();
+  KafkaDataSource* kafkaDataSource =
+      reinterpret_cast<KafkaDataSource*>(dataSource.get());
+  ASSERT_TRUE(kafkaDataSource != nullptr);
+  folly::dynamic topicPartition = folly::dynamic::object;
+  topicPartition["topic"] = kafkaTopic;
+  topicPartition["partition"] = 0;
+  topicPartition["offset"] = 42;
+  folly::dynamic checkpoint = folly::dynamic::object;
+  checkpoint["connector"] = "kafka";
+  checkpoint["checkpointId"] = 123;
+  checkpoint["groupId"] = kafkaConsumeGroupId;
+  checkpoint["topicPartitions"] = folly::dynamic::array(topicPartition);
+
+  kafkaDataSource->restoreState({folly::toJson(checkpoint)});
+  kafkaDataSource->addSplit(createKafkaSplit());
+
+  const auto& kafkaConsumer = kafkaDataSource->getConsumer();
+  ASSERT_TRUE(kafkaConsumer != nullptr);
+  const cppkafka::TopicPartitionList tps =
+      kafkaConsumer->getAssignedTopicPartitions();
+  ASSERT_TRUE(tps.size() > 0);
+  ASSERT_EQ(tps[0].get_offset(), 42);
 }
 
 } // namespace facebook::velox::connector::kafka::test

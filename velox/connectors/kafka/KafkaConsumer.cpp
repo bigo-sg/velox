@@ -96,14 +96,20 @@ void KafkaConsumer::assign(const cppkafka::TopicPartitionList& tps) {
 const void KafkaConsumer::consumeBatch(
     std::vector<KafkaMessage>& res,
     size_t& msgBytes) {
-  const std::vector<cppkafka::Message> msgs =
-      consumer_->poll_batch(pollBatchSize_);
+  std::vector<cppkafka::Message> msgs = consumer_->poll_batch(pollBatchSize_);
   for (const auto& msg : msgs) {
+    if (!msg) {
+      continue;
+    }
     const std::string msgData = msg.get_payload();
     msgBytes += msgData.size();
     res.push_back(
         {msgData, msg.get_topic(), msg.get_partition(), msg.get_offset()});
   }
+}
+
+void KafkaConsumer::commit(const cppkafka::TopicPartitionList& tps) {
+  consumer_->commit(tps);
 }
 
 const std::vector<std::string> KafkaConsumer::getSubscribedTopics() {

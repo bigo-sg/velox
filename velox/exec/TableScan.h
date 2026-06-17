@@ -46,9 +46,13 @@ class TableScan : public SourceOperator {
 
   void close() override;
 
-  std::vector<std::string> checkpointState() const;
+  std::vector<std::string> snapshotState(int64_t checkpointId) override;
 
-  std::vector<std::string> commit(int64_t id) override;
+  void restoreState(const std::vector<std::string>& checkpointRecords) override;
+
+  std::vector<std::string> commit(int64_t checkpointId) override;
+
+  void abortCheckpoint(int64_t checkpointId) override;
 
   bool canAddDynamicFilter() const override {
     return connector_->canAddDynamicFilter();
@@ -127,6 +131,7 @@ class TableScan : public SourceOperator {
   bool needNewSplit_ = true;
   std::shared_ptr<connector::ConnectorQueryCtx> connectorQueryCtx_;
   std::unique_ptr<connector::DataSource> dataSource_;
+  std::vector<std::string> restoredCheckpointRecords_;
   bool noMoreSplits_ = false;
   // Dynamic filters to add to the data source when it gets created.
   std::unordered_map<column_index_t, std::shared_ptr<common::Filter>>

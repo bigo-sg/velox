@@ -227,6 +227,34 @@ RowVectorPtr TableScan::getOutput() {
   }
 }
 
+std::vector<std::string> TableScan::snapshotState(int64_t checkpointId) {
+  if (dataSource_ == nullptr) {
+    return {};
+  }
+  return dataSource_->snapshotState(checkpointId);
+}
+
+void TableScan::restoreState(
+    const std::vector<std::string>& checkpointRecords) {
+  restoredCheckpointRecords_ = checkpointRecords;
+  if (dataSource_ != nullptr) {
+    dataSource_->restoreState(restoredCheckpointRecords_);
+  }
+}
+
+std::vector<std::string> TableScan::commit(int64_t checkpointId) {
+  if (dataSource_ == nullptr) {
+    return {};
+  }
+  return dataSource_->commit(checkpointId);
+}
+
+void TableScan::abortCheckpoint(int64_t checkpointId) {
+  if (dataSource_ != nullptr) {
+    dataSource_->abortCheckpoint(checkpointId);
+  }
+}
+
 bool TableScan::getSplit() {
   // A point for test code injection.
   TestValue::adjust("facebook::velox::exec::TableScan::getSplit", this);
@@ -287,6 +315,9 @@ bool TableScan::getSplit() {
         connectorSplit->connectorId, planNodeId(), connectorPool_);
     dataSource_ = connector_->createDataSource(
         outputType_, tableHandle_, columnHandles_, connectorQueryCtx_.get());
+    if (!restoredCheckpointRecords_.empty()) {
+      dataSource_->restoreState(restoredCheckpointRecords_);
+    }
     for (const auto& entry : dynamicFilters_) {
       dataSource_->addDynamicFilter(entry.first, entry.second);
     }
@@ -437,15 +468,6 @@ void TableScan::addDynamicFilter(
     currentFilter = filter;
   }
   stats_.wlock()->dynamicFilterStats.producerNodeIds.emplace(producer);
-}
-
-std::vector<std::string> TableScan::checkpointState() const {
-  return dataSource_ ? dataSource_->checkpointState()
-                     : std::vector<std::string>{};
-}
-
-std::vector<std::string> TableScan::commit(int64_t id) {
-  return dataSource_ ? dataSource_->commit(id) : std::vector<std::string>{};
 }
 
 void TableScan::close() {
