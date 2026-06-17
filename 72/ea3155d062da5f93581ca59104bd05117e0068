@@ -1,0 +1,20 @@
+velox/exec/Task.h
+  s_e1f35e69b6742d::t_e67b6c76969764 101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "72ea3155d062da5f93581ca59104bd05117e0068",
+  "prompts": {},
+  "logical_commit_id": "72ea3155d062da5f93581ca59104bd05117e0068",
+  "sessions": {
+    "s_e1f35e69b6742d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_14aa6f671ffePoWUDQKp2k7k57",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
