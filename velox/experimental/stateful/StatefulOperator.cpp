@@ -61,6 +61,11 @@ void StatefulOperator::close() {
 }
 
 void StatefulOperator::advanceWithFuture(ContinueFuture* future) {
+  if (numInputs() > 1) {
+    advance();
+    return;
+  }
+
   ContinueFuture localFuture = ContinueFuture::makeEmpty();
   auto* blockingFuture = future == nullptr ? &localFuture : future;
   const auto blockingReason = operator_->isBlocked(blockingFuture);
