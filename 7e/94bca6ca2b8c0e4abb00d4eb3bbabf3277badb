@@ -1,0 +1,22 @@
+velox/experimental/stateful/StatefulTask.cpp
+  s_e1f35e69b6742d::t_09dc0d911a769c 162-164
+velox/experimental/stateful/WindowAggregator.cpp
+  s_e1f35e69b6742d::t_eb32b54ce034d2 286-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "7e94bca6ca2b8c0e4abb00d4eb3bbabf3277badb",
+  "prompts": {},
+  "logical_commit_id": "7e94bca6ca2b8c0e4abb00d4eb3bbabf3277badb",
+  "sessions": {
+    "s_e1f35e69b6742d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_14aa6f671ffePoWUDQKp2k7k57",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
