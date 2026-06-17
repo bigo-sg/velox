@@ -98,7 +98,7 @@ class Task : public std::enable_shared_from_this<Task> {
   /// in debugging messages and listings.
   static std::string shortId(const std::string& id);
 
-  ~Task();
+  virtual ~Task();
 
   /// Specify directory to which data will be spilled if spilling is enabled and
   /// required. Set 'alreadyCreated' to true if the directory has already been
