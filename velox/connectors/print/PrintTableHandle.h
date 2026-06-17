@@ -29,9 +29,10 @@ class PrintTableHandle : public ConnectorInsertTableHandle {
   PrintTableHandle(
       std::string tableName,
       const RowTypePtr& dataColumns,
-      const std::string& path);
+      const std::string& printIdentifier,
+      bool isStdErr);
 
-  const std::string& tableName() {
+  const std::string& tableName() const {
     return tableName_;
   }
 
@@ -39,8 +40,12 @@ class PrintTableHandle : public ConnectorInsertTableHandle {
     return dataColumns_;
   }
 
-  const std::string& path() {
-    return path_;
+  const std::string& printIdentifier() const {
+    return printIdentifier_;
+  }
+
+  bool isStdErr() const {
+    return isStdErr_;
   }
 
   std::string toString() const override;
@@ -56,7 +61,8 @@ class PrintTableHandle : public ConnectorInsertTableHandle {
  private:
   const std::string tableName_;
   const RowTypePtr dataColumns_;
-  const std::string path_;
+  const std::string printIdentifier_;
+  const bool isStdErr_;
 };
 
 } // namespace facebook::velox::connector::print

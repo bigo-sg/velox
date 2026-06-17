@@ -27,9 +27,11 @@ std::unique_ptr<DataSink> PrintConnector::createDataSink(
     CommitStrategy /** commitStrategy */) {
   std::shared_ptr<PrintTableHandle> printTableHandle =
       std::dynamic_pointer_cast<PrintTableHandle>(connectorInsertTableHandle);
-  ;
   return std::make_unique<PrintSink>(
-      inputType, printTableHandle->path(), connectorQueryCtx);
+      inputType,
+      printTableHandle->printIdentifier(),
+      printTableHandle->isStdErr(),
+      connectorQueryCtx);
 }
 
 } // namespace facebook::velox::connector::print

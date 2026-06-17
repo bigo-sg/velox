@@ -14,96 +14,79 @@
  * limitations under the License.
  */
 #include "velox/connectors/print/PrintSink.h"
-#include "velox/dwio/common/WriterFactory.h"
-#include "velox/type/Type.h"
+#include "velox/connectors/utils/StringFormatter.h"
 #include "velox/type/tz/TimeZoneMap.h"
+
 #include <fmt/format.h>
-#include <memory>
+#include <iostream>
+#include <mutex>
+#include <sstream>
 
 namespace facebook::velox::connector::print {
 
+// Process-wide mutex serializing stdout/stderr writes across subtasks.
+namespace {
+std::mutex& printSinkWriteMutex() {
+  static std::mutex m;
+  return m;
+}
+} // namespace
+
 PrintSink::PrintSink(
     const RowTypePtr& inputType,
-    const std::string& path,
+    const std::string& printIdentifier,
+    bool isStdErr,
     const ConnectorQueryCtx* queryCtx)
     : inputType_(inputType),
-      outputType_(createOutputType()),
       queryCtx_(queryCtx),
-      writer_(createWriter(path)),
-      formatter_(createFormatter(inputType_, tz::locateZone(queryCtx->sessionTimezone()))) {}
+      formatter_(createFormatter(inputType_, tz::locateZone(queryCtx->sessionTimezone()))),
+      prefix_([&] {
+        const auto* props = queryCtx->sessionProperties();
+        int parallelism = 1;
+        int taskIndex = 0;
+        if (props != nullptr) {
+          parallelism = props->get<int>("parallelism", 1);
+          taskIndex = props->get<int>("task_index", 0);
+        }
+        return computePrefix(printIdentifier, parallelism, taskIndex);
+      }()),
+      isStdErr_(isStdErr) {}
 
-std::unique_ptr<dwio::common::Writer> PrintSink::createWriter(
-    const std::string& path) {
-  std::unordered_map<std::string, std::string> rawConfigs;
-  auto fs = filesystems::getFileSystem(
-      path, std::make_shared<const config::ConfigBase>(std::move(rawConfigs)));
-  if (fs->exists(path)) {
-    fs->remove(path);
+std::string PrintSink::computePrefix(
+    const std::string& printIdentifier,
+    int parallelism,
+    int taskIndex) {
+  std::string prefix = printIdentifier;
+  if (parallelism > 1) {
+    if (!prefix.empty()) {
+      prefix += ":";
+    }
+    prefix += std::to_string(taskIndex + 1);
   }
-  std::unique_ptr<dwio::common::FileSink> writeFileSink =
-      dwio::common::FileSink::create(
-          path,
-          {
-              .bufferWrite = false,
-              .pool = queryCtx_->memoryPool(),
-              .metricLogger = dwio::common::MetricsLog::voidLog(),
-              .stats = &ioStats_,
-          });
-  auto writerFactory =
-      dwio::common::getWriterFactory(dwio::common::FileFormat::TEXT);
-  std::shared_ptr<dwio::common::WriterOptions> options =
-      writerFactory->createWriterOptions();
-  if (options->schema == nullptr) {
-    options->schema = outputType_;
+  if (!prefix.empty()) {
+    prefix += "> ";
   }
-  if (options->memoryPool == nullptr) {
-    options->memoryPool = queryCtx_->connectorMemoryPool();
-  }
-  return writerFactory->createWriter(std::move(writeFileSink), options);
-}
-
-const RowTypePtr PrintSink::createOutputType() {
-  std::vector<std::string> fieldNames;
-  std::vector<TypePtr> fieldTypes;
-  fieldNames.emplace_back("result");
-  fieldTypes.emplace_back(std::make_shared<const VarcharType>());
-  return std::make_shared<const RowType>(
-      std::move(fieldNames), std::move(fieldTypes));
-}
-
-const RowVectorPtr PrintSink::formatToSingleStringVector(
-    const RowVectorPtr& input) {
-  VELOX_CHECK_EQ(input->childrenSize(), inputType_->children().size());
-  auto output =
-      RowVector::create(outputType_, input->size(), queryCtx_->memoryPool());
-  RowVectorPtr rowVector = std::dynamic_pointer_cast<RowVector>(output);
-  VELOX_CHECK(rowVector != nullptr);
-  VELOX_CHECK_EQ(rowVector->childrenSize(), 1);
-  auto outputField =
-      std::dynamic_pointer_cast<FlatVector<StringView>>(rowVector->childAt(0));
-  VELOX_CHECK(outputField != nullptr);
-  const std::vector<VectorPtr> inputFields = input->children();
-  for (size_t i = 0; i < input->size(); ++i) {
-    std::stringstream ss;
-    formatter_->toString(input, inputType_, i, ss);
-    const std::string sValue = ss.str();
-    outputField->set(i, StringView(sValue.data(), sValue.size()));
-  }
-  return rowVector;
+  return prefix;
 }
 
 void PrintSink::appendData(RowVectorPtr input) {
-  VELOX_CHECK(writer_ != nullptr);
-  writer_->write(formatToSingleStringVector(input));
-  writer_->flush();
+  VELOX_CHECK_NOT_NULL(formatter_);
+  const auto& inputFields = inputType_->children();
+  VELOX_CHECK_EQ(input->childrenSize(), inputFields.size());
+
+  std::ostream& stream = isStdErr_ ? static_cast<std::ostream&>(std::cerr)
+                                   : static_cast<std::ostream&>(std::cout);
+  std::lock_guard<std::mutex> lock(printSinkWriteMutex());
+  for (auto i = 0; i < input->size(); ++i) {
+    std::stringstream ss;
+    formatter_->toString(input, inputType_, i, ss);
+    stream << prefix_ << ss.str() << std::endl;
+  }
 }
 
 std::vector<std::string> PrintSink::close() {
-  std::vector<std::string> res;
-  VELOX_CHECK(writer_ != nullptr);
-  writer_->close();
   finished = true;
-  return res;
+  return {};
 }
 
 bool PrintSink::finish() {
@@ -114,8 +97,7 @@ bool PrintSink::finish() {
 void PrintSink::abort() {}
 
 connector::DataSink::Stats PrintSink::stats() const {
-  connector::DataSink::Stats stats;
-  return stats;
+  return connector::DataSink::Stats{};
 }
 
 } // namespace facebook::velox::connector::print
