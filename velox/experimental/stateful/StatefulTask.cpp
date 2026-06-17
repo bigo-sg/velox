@@ -159,6 +159,9 @@ void StatefulTask::setNativeCallbackBridge(
     std::shared_ptr<NativeCallbackBridge> callbackBridge) {
   const bool bound = callbackBridge != nullptr;
   {
+    // Protects nativeCallbackBridge_ from concurrent bind/unbind and timer
+    // callbacks. The getter copies the shared_ptr under the same lock so the
+    // bridge stays alive while the callback is being invoked.
     std::lock_guard<std::mutex> lock(nativeCallbackBridgeMutex_);
     nativeCallbackBridge_ = std::move(callbackBridge);
   }

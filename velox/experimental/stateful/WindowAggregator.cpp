@@ -283,9 +283,9 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<i
 
 void WindowAggregator::onProcessingTime(int64_t timestamp) {
   auto callbackBridge = nativeCallbackBridge();
-  if (callbackBridge == nullptr) {
-    return;
-  }
+  VELOX_CHECK_NOT_NULL(
+      callbackBridge,
+      "Native callback bridge is not bound for processing-time callback");
   callbackBridge->onProcessingTime(timestamp);
 }
 
