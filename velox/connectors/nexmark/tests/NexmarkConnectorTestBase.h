@@ -78,10 +78,8 @@ class NexmarkConnectorTestBase : public exec::test::OperatorTestBase {
         makeNexmarkGeneratorConfig(maxEvents), 0, -1, pool());
   }
 
-  std::shared_ptr<NexmarkTableHandle> makeNexmarkTableHandle(
-      int64_t maxEvents) const {
-    return std::make_shared<NexmarkTableHandle>(
-        kNexmarkConnectorId, makeNexmarkGeneratorConfig(maxEvents));
+  std::shared_ptr<NexmarkTableHandle> makeNexmarkTableHandle() const {
+    return std::make_shared<NexmarkTableHandle>(kNexmarkConnectorId);
   }
 };
 

@@ -37,7 +37,7 @@ TEST_F(NexmarkConnectorTest, testRows) {
   auto plan = PlanBuilder()
                   .startTableScan()
                   .outputType(std::dynamic_pointer_cast<const RowType>(type))
-                  .tableHandle(makeNexmarkTableHandle(numRows))
+                  .tableHandle(makeNexmarkTableHandle())
                   .endTableScan()
                   .planNode();
 
@@ -54,7 +54,7 @@ TEST_F(NexmarkConnectorTest, testProportions) {
   auto plan = PlanBuilder()
                   .startTableScan()
                   .outputType(std::dynamic_pointer_cast<const RowType>(type))
-                  .tableHandle(makeNexmarkTableHandle(numRows))
+                  .tableHandle(makeNexmarkTableHandle())
                   .endTableScan()
                   .partialAggregation(
                       {"event_type"}, // Group by "event_type"
