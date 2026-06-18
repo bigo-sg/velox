@@ -58,7 +58,7 @@ void WindowAggregator::initialize() {
 }
 
 void WindowAggregator::initializeState() {
-  StateDescriptor stateDesc("window-aggs");
+  StateDescriptor stateDesc("window-aggs", "", memoryPool());
   windowState_ = stateHandler()->getValueState(stateDesc);
   windowTimerService_ = stateHandler()->createTimerService(this);
 }
@@ -173,31 +173,34 @@ void WindowAggregator::processWatermarkInternal(int64_t timestamp) {
 
 /// Add window_start / window_end timestamp to output
 RowVectorPtr addWindowTimestampToOutput(
-  const RowVectorPtr& output,
-  const std::string& fieldName,
-  const int64_t fieldValue,
-  const int fieldIndex) {
-  auto createTimestampVector = [&](
-    const Timestamp& val,
-    const size_t size,
-    velox::memory::MemoryPool* pool) -> VectorPtr {
-      const TypePtr windowStartType = std::make_shared<const TimestampType>();
-      VectorPtr windowStartVec = BaseVector::create(windowStartType, output->size(), output->pool());
-      FlatVector<Timestamp>* timestampVector = windowStartVec->asFlatVector<Timestamp>();
-      for (size_t i = 0; i < size; ++i) {
-        timestampVector->set(i, val);
-      }
-      return windowStartVec;
+    const RowVectorPtr& output,
+    const std::string& fieldName,
+    const int64_t fieldValue,
+    const int32_t fieldIndex) {
+  auto createTimestampVector = [&](const Timestamp& val,
+                                   const size_t size,
+                                   velox::memory::MemoryPool* pool) -> VectorPtr {
+    const TypePtr windowStartType = std::make_shared<const TimestampType>();
+    VectorPtr windowStartVec =
+        BaseVector::create(windowStartType, output->size(), output->pool());
+    FlatVector<Timestamp>* timestampVector =
+        windowStartVec->asFlatVector<Timestamp>();
+    for (size_t i = 0; i < size; ++i) {
+      timestampVector->set(i, val);
+    }
+    return windowStartVec;
   };
   const TypePtr& outputType = output->type();
-  const RowTypePtr& outputRowType = std::dynamic_pointer_cast<const RowType>(outputType);
+  const RowTypePtr& outputRowType =
+      std::dynamic_pointer_cast<const RowType>(outputType);
   const std::vector<std::string>& outputFieldNames = outputRowType->names();
   const std::vector<TypePtr>& outputFieldTypes = outputRowType->children();
   const std::vector<VectorPtr>& outputFields = output->children();
   std::vector<std::string> newOutputFieldNames;
   std::vector<TypePtr> newOutputFieldTypes;
   std::vector<VectorPtr> newOutputFields;
-  VectorPtr windowStartVec = createTimestampVector(Timestamp::fromMillis(fieldValue), output->size(), output->pool());
+  VectorPtr windowStartVec = createTimestampVector(
+      Timestamp::fromMillis(fieldValue), output->size(), output->pool());
   for (int i = 0; i < fieldIndex; ++i) {
     newOutputFieldTypes.emplace_back(outputFieldTypes[i]);
     newOutputFieldNames.emplace_back(outputFieldNames[i]);
@@ -207,27 +210,28 @@ RowVectorPtr addWindowTimestampToOutput(
   newOutputFieldNames.emplace_back(fieldName);
   newOutputFields.emplace_back(windowStartVec);
   for (int i = fieldIndex + 1; i < output->childrenSize() + 1; ++i) {
-    newOutputFieldTypes.emplace_back(outputFieldTypes[i-1]);
-    newOutputFieldNames.emplace_back(outputFieldNames[i-1]);
-    newOutputFields.emplace_back(outputFields[i-1]);
+    newOutputFieldTypes.emplace_back(outputFieldTypes[i - 1]);
+    newOutputFieldNames.emplace_back(outputFieldNames[i - 1]);
+    newOutputFields.emplace_back(outputFields[i - 1]);
   }
-  auto newOutputRowType = std::make_shared<const RowType>(std::move(newOutputFieldNames), std::move(newOutputFieldTypes));
-  return std::make_shared<RowVector>(output->pool(),
-    newOutputRowType,
-    output->nulls(),
-    output->size(),
-    newOutputFields,
-    output->getNullCount()
-  );
+  auto newOutputRowType = std::make_shared<const RowType>(
+      std::move(newOutputFieldNames), std::move(newOutputFieldTypes));
+  return std::make_shared<RowVector>(
+      output->pool(),
+      newOutputRowType,
+      output->nulls(),
+      output->size(),
+      newOutputFields,
+      output->getNullCount());
 }
 
-void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) {
+void WindowAggregator::onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) {
   fireWindow(timer->key(), timer->timestamp(), timer->ns());
   clearWindow(timer->key(), timer->timestamp(), timer->ns());
 }
 
 template<typename K>
-void WindowAggregator::fireWindow(K key, int64_t timerTimestamp, int64_t windowEnd) {
+void WindowAggregator::fireWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd) {
   RowVectorPtr output = windowState_->value(key, windowEnd);
   if (!output) {
     LOG(INFO) << "No output found for key: " << key << ", window end: " << windowEnd;
@@ -254,7 +258,7 @@ void WindowAggregator::fireWindow(K key, int64_t timerTimestamp, int64_t windowE
 }
 
 template<typename K>
-void WindowAggregator::clearWindow(K key, int64_t timerTimestamp, int64_t windowEnd) {
+void WindowAggregator::clearWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd) {
   windowState_->remove(key, windowEnd);
 }
 

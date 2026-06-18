@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
-#include <experimental/stateful/window/Window.h>
-#include <vector/ComplexVector.h>
-#include <vector/DictionaryVector.h>
+#include "velox/experimental/stateful/window/Window.h"
+#include "velox/vector/ComplexVector.h"
+#include "velox/vector/DictionaryVector.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include <cstdint>
 #include <numeric>

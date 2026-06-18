@@ -78,13 +78,13 @@ class WindowAggregator : public StatefulOperator,
 
   int64_t sliceStateMergeTarget(int64_t sliceToMerge);
 
-  void onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer);
+  void onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer);
 
   template<typename K>
-  void fireWindow(K key, int64_t timerTImestamp, int64_t windowEnd);
+  void fireWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd);
 
   template<typename K>
-  void clearWindow(K key, int64_t timerTimestamp, int64_t windowEnd);
+  void clearWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd);
 
   std::unique_ptr<exec::Operator> localAggregator_;
   std::unique_ptr<KeySelector> keySelector_;
@@ -95,8 +95,8 @@ class WindowAggregator : public StatefulOperator,
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   const bool isEventTime_ = true;
-  const int windowStartIndex_ = -1;
-  const int windowEndIndex_ = -1;
+  const int32_t windowStartIndex_ = -1;
+  const int32_t windowEndIndex_ = -1;
 
   RowVectorPtr input_;
   int64_t currentProgress_ = 0;

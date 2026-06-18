@@ -30,7 +30,7 @@ enum class WindowType : int {
   CUMULATIVE
 };
 
-// This class is relevent to flink WindowBuffer.
+// This class is relevant to Flink WindowBuffer.
 class Window {
  public:
   virtual int64_t maxTimestamp() = 0;
@@ -38,7 +38,7 @@ class Window {
   virtual bool operator<(const Window& other) const = 0;
 
   virtual std::string toString() const = 0;
-  
+
   static WindowType getType(const int32_t t) {
     if (t >= 0 && t <= 3) {
       return static_cast<WindowType>(t);
