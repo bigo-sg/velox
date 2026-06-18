@@ -21,8 +21,6 @@
 #include "velox/experimental/stateful/state/Snapshotable.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
-#include "velox/experimental/stateful/state/InternalKeyContext.h"
-#include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/window/Window.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/common/memory/MemoryPool.h"
@@ -59,16 +57,16 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
       createGroupWindowAggTimerService(Triggerable<int64_t, TimeWindow>* triggerable) = 0;
 
   void setCurrentKey(const uint32_t key) {
-    keyContext_->setCurrentKey(key);
+    currentKey_ = key;
   }
 
   const uint32_t getCurrentKey() {
-    return keyContext_->getCurrentKey();
+    return currentKey_;
   }
 
-private:
-    std::shared_ptr<InternalKeyContext<uint32_t>> keyContext_;
-    velox::memory::MemoryPool* memoryPool;
+ private:
+  uint32_t currentKey_{};
+  velox::memory::MemoryPool* memoryPool;
 };
 
 using KeyedStateBackendPtr = std::shared_ptr<KeyedStateBackend>;

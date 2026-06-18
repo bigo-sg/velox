@@ -15,7 +15,6 @@
  */
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include <cstdint>
-#include <exception>
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
@@ -27,9 +26,6 @@ void StatefulOperator::initialize() {
   operator_->initialize();
   for (auto& target : targets_) {
     target->initialize();
-  }
-  if (watermarkGenerator_) {
-    watermarkGenerator_->initialize();
   }
   combinedWatermarkStatus_ =
       std::make_unique<CombinedWatermarkStatus>(numInputs());
@@ -56,46 +52,12 @@ bool StatefulOperator::sourceEmpty() {
 }
 
 void StatefulOperator::close() {
-  std::exception_ptr firstError;
-
-  if (watermarkGenerator_) {
-    try {
-      watermarkGenerator_->close();
-    } catch (...) {
-      firstError = std::current_exception();
-    }
-    watermarkGenerator_.reset();
-  }
-
+  operator_->close();
   for (auto& target : targets_) {
-    try {
-      target->close();
-    } catch (...) {
-      if (!firstError) {
-        firstError = std::current_exception();
-      }
-    }
+    target->close();
   }
+  operator_.reset();
   targets_.clear();
-
-  if (operator_) {
-    try {
-      operator_->close();
-    } catch (...) {
-      if (!firstError) {
-        firstError = std::current_exception();
-      }
-    }
-    operator_.reset();
-  }
-
-  // Release state-owned references even if close failed.
-  stateHandler_.reset();
-  combinedWatermarkStatus_.reset();
-
-  if (firstError) {
-    std::rethrow_exception(firstError);
-  }
 }
 
 void StatefulOperator::advance() {
@@ -106,13 +68,7 @@ void StatefulOperator::advance() {
   }
   sourceEmpty_ = false;
   pushOutput(std::make_shared<StreamRecord>(
-      getPlanNodeId(), intermediateResult));
-  if (watermarkGenerator_ && intermediateResult->size() > 0) {
-    int64_t currentWatermark = watermarkGenerator_->generate(intermediateResult);
-    if (currentWatermark > 0) {
-      emitWatermark(currentWatermark);
-    }
-  }
+      getPlanNodeId(), std::move(intermediateResult)));
 }
 
 void StatefulOperator::pushOutput(StreamElementPtr output) {

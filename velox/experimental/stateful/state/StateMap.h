@@ -17,14 +17,26 @@
 
 #include "velox/common/base/BitUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
-#include "velox/experimental/stateful/utils/MathUtils.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <set>
 #include <climits>
 
 namespace facebook::velox::stateful {
+
+namespace {
+int32_t roundUpToPowerOfTwo(int32_t x) {
+  x = x - 1;
+  x |= x >> 1;
+  x |= x >> 2;
+  x |= x >> 4;
+  x |= x >> 8;
+  x |= x >> 16;
+  return x + 1;
+}
+} // namespace
 
 template<typename K, typename N, typename S>
 struct StateMapEntry {
@@ -76,9 +88,11 @@ class StateMap {
       incrementalRehashTable_ = empty_;
       highestRequiredSnapshotVersion_ = 0;
       stateMapVersion_ = 0;
+      rehashIndex_ = 0;
       primaryTableSize_ = 0;
       incrementalRehashTableSize_ = 0;
       modCount_ = 0;
+      lastNamespace_ = N{};
 
       if (capacity < 0) {
         threshold_ = -1;
@@ -139,10 +153,6 @@ class StateMap {
     removeEntry(key, ns);
   }
 
-  void clear() {
-
-  }
-
   size_t size() {
     return primaryTableSize_ + incrementalRehashTableSize_;
   }
@@ -153,10 +163,8 @@ class StateMap {
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> empty_;
   int32_t highestRequiredSnapshotVersion_{0};
   int32_t stateMapVersion_{0};
-  // Must be zero-initialized: selectActiveTable() compares this against
-  // (hash & (primaryTable_.size() - 1)) to decide which table holds an entry.
-  // An indeterminate value here can route lookups to the empty rehash table
-  // and cause an out-of-bounds read in get()/put(), leading to SIGSEGV.
+  // selectActiveTable() routes lookups using rehashIndex_; garbage here sends
+  // get()/put() to the empty incremental table and causes tab[index] OOB.
   int32_t rehashIndex_{0};
   uint64_t primaryTableSize_{0};
   uint64_t incrementalRehashTableSize_{0};
@@ -322,6 +330,7 @@ class StateMap {
     if (oldCapacity == MAXIMUM_CAPACITY) {
       return;
     }
+    rehashIndex_ = 0;
     incrementalRehashTable_ = makeTable(oldCapacity * 2);
   }
 

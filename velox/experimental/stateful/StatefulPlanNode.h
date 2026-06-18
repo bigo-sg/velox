@@ -155,35 +155,36 @@ private:
   const int64_t watermarkInterval_;
   const int32_t rowtimeFieldIndex_;
 };
+  
 
 class TableScanNodeWithWatermark : public core::TableScanNode {
-public:
-  TableScanNodeWithWatermark(
-    const core::PlanNodeId& id,
-    RowTypePtr outputType,
-    const std::shared_ptr<connector::ConnectorTableHandle>& tableHandle,
-    const std::unordered_map<
-        std::string,
-        std::shared_ptr<connector::ColumnHandle>>& assignments,
-    const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec)
-       : core::TableScanNode(id, outputType, tableHandle, assignments),
-       watermarkPushDownSpec_(watermarkPushDownSpec) {}
-
-  const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec() const {
-    return watermarkPushDownSpec_;
-  }
-
-  std::string_view name() const override {
-    return "TableScanWithWatermark";
-  }
-
-  folly::dynamic serialize() const override;
-
-  static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
-
-private:
-  const std::shared_ptr<WatermarkPushDownSpec> watermarkPushDownSpec_;
+  public:
+    TableScanNodeWithWatermark(
+      const core::PlanNodeId& id,
+      RowTypePtr outputType,
+      const std::shared_ptr<connector::ConnectorTableHandle>& tableHandle,
+      const std::unordered_map<
+          std::string,
+          std::shared_ptr<connector::ColumnHandle>>& assignments,
+      const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec)
+         : core::TableScanNode(id, outputType, tableHandle, assignments),
+         watermarkPushDownSpec_(watermarkPushDownSpec) {}
   
+    const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec() const {
+      return watermarkPushDownSpec_;
+    }
+  
+    std::string_view name() const override {
+      return "TableScanWithWatermark";
+    }
+  
+    folly::dynamic serialize() const override;
+  
+    static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
+  
+  private:
+    const std::shared_ptr<WatermarkPushDownSpec> watermarkPushDownSpec_;
+    
 };
 
 class StreamJoinNode : public core::PlanNode {

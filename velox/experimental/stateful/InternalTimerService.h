@@ -15,121 +15,84 @@
  */
 #pragma once
 #include <cstdint>
-
-#include "velox/experimental/stateful/ProcessingTimeService.h"
-#include "velox/experimental/stateful/InternalPriorityQueue.h"
-#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
-#include "velox/experimental/stateful/Triggerable.h"
-#include <limits>
 #include <memory>
-#include <optional>
-#include <string>
+
+#include "velox/experimental/stateful/EventTimeTimerService.h"
+#include "velox/experimental/stateful/ProcessingTimeScheduler.h"
+#include "velox/experimental/stateful/ProcessingTimeTimerService.h"
+#include "velox/experimental/stateful/Triggerable.h"
 
 namespace facebook::velox::stateful {
 
 // This class is relevant to Flink InternalTimerServiceImpl.
+//
+// External facade kept for backward compatibility: one instance per operator
+// composes an EventTimeTimerService and a ProcessingTimeTimerService and
+// delegates the corresponding calls.
+//
+// Layout:
+//   InternalTimerService           <- facade
+//   ├── EventTimeTimerService      <- event-time queue + advanceWatermark
+//   └── ProcessingTimeTimerService <- processing-time queue + scheduling
 template <typename K, typename N>
 class InternalTimerService {
  public:
-  InternalTimerService(Triggerable<K, N>* triggerable)
-      : triggerable_(triggerable), processingTimeService_(std::make_shared<SystemProcessingTimeService>()) {}
+  explicit InternalTimerService(Triggerable<K, N>* triggerable)
+      : eventTimeService_(triggerable),
+        processingTimeService_(
+            triggerable,
+            std::make_unique<SystemProcessingTimeScheduler>()) {}
 
-  void registerEventTimeTimer(K key, N ns, int64_t time) {
-    eventTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  InternalTimerService(
+      Triggerable<K, N>* triggerable,
+      std::unique_ptr<ProcessingTimeScheduler> scheduler)
+      : eventTimeService_(triggerable),
+        processingTimeService_(triggerable, std::move(scheduler)) {}
+
+  void registerEventTimeTimer(const K& key, const N& ns, int64_t time) {
+    eventTimeService_.registerTimer(key, ns, time);
   }
 
-  void deleteEventTimeTimer(K key, N ns, int64_t time) {
-    eventTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void deleteEventTimeTimer(const K& key, const N& ns, int64_t time) {
+    eventTimeService_.deleteTimer(key, ns, time);
   }
 
-  void registerProcessingTimeTimer(K key, N ns, int64_t time) {
-    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& oldHead = processingTimeTimersQueue_.empty() ? nullptr : processingTimeTimersQueue_.peek();
-    if (processingTimeTimersQueue_.add(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns))) {
-      int64_t nextTriggerTime = oldHead != nullptr ? oldHead->timestamp() :  std::numeric_limits<int64_t>::max() ;
-      if (time < nextTriggerTime) {
-        if (nextTimer_.has_value()) {
-          processingTimeService_->cancel(nextTimer_.value());
-        }
-        nextTimer_ = processingTimeService_->registerTimer(time, ProcessingTimerTask(time, [&](int64_t processingTime) {
-          onProcessingTime(processingTime);
-        }));
-      }
-    }
+  void registerProcessingTimeTimer(const K& key, const N& ns, int64_t time) {
+    processingTimeService_.registerTimer(key, ns, time);
   }
 
-  void deleteProcessingTimeTimer(K key, N ns, int64_t time) {
-    processingTimeTimersQueue_.remove(std::make_shared<TimerHeapInternalTimer<K, N>>(time, key, ns));
+  void deleteProcessingTimeTimer(const K& key, const N& ns, int64_t time) {
+    processingTimeService_.deleteTimer(key, ns, time);
   }
 
   int64_t currentWatermark() {
-    // TODO: Implement watermark logic if needed.
-    const std::shared_ptr<TimerHeapInternalTimer<K, N>>& timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
-    if (timer != nullptr) {
-      return timer->timestamp();
-    }
-    return 0; // or some other default value
+    return eventTimeService_.currentWatermark();
   }
 
   int64_t currentProcessingTime() {
-    // TODO: Implement processing time logic if needed.
-    return 0; // or some other default value
+    return processingTimeService_.currentProcessingTime();
   }
 
   void advanceWatermark(int64_t time) {
-    std::shared_ptr<TimerHeapInternalTimer<K, N>> timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
-    while (timer != nullptr && timer->timestamp() <= time) {
-      eventTimeTimersQueue_.poll();
-      triggerable_->onEventTime(timer);
-      timer = eventTimeTimersQueue_.empty() ? nullptr : eventTimeTimersQueue_.peek();
-    }
+    eventTimeService_.advanceWatermark(time);
   }
 
   void close() {
-    eventTimeTimersQueue_.clear();
-    processingTimeTimersQueue_.clear();
-    processingTimeService_->close();
+    eventTimeService_.close();
+    processingTimeService_.close();
+  }
+
+  EventTimeTimerService<K, N>& eventTimeTimerService() {
+    return eventTimeService_;
+  }
+
+  ProcessingTimeTimerService<K, N>& processingTimeTimerService() {
+    return processingTimeService_;
   }
 
  private:
-  void onProcessingTime(int64_t time) {
-    std::string taskName = "";
-    if (nextTimer_.has_value()) {
-      taskName = nextTimer_.value();
-    }
-    nextTimer_ = std::nullopt;
-    std::shared_ptr<TimerHeapInternalTimer<K, N>> timer = nullptr;
-    bool triggerOnProcessingTime = true;
-    const std::shared_ptr<std::mutex> mtx = triggerable_->getMutex();
-    if (mtx) {
-      std::lock_guard<std::mutex> lock(*mtx);
-      while (triggerOnProcessingTime && !processingTimeTimersQueue_.empty()) {
-        timer = processingTimeTimersQueue_.peek();
-        if (!timer || timer->timestamp() > time) {
-          triggerOnProcessingTime = false;
-          continue;
-        }
-        processingTimeTimersQueue_.poll();
-        triggerable_->onProcessingTime(timer);
-        timer = nullptr;
-      }
-      triggerable_->processProcessingTimeByJni(time);
-      if (!taskName.empty()) {
-        processingTimeService_->unregister(taskName);
-      }
-    }
-
-    if (timer != nullptr && !nextTimer_.has_value()) {
-      nextTimer_ = processingTimeService_->registerTimer(timer->timestamp(), ProcessingTimerTask(timer->timestamp(), [&](int64_t processingTime) {
-        onProcessingTime(processingTime);
-      }));
-    }
-  }
-
-  Triggerable<K, N>* triggerable_;
-  std::optional<std::string> nextTimer_;
-  std::shared_ptr<ProcessingTimeService> processingTimeService_;
-  HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>, HeapTimerComparator<K, N>, HeapTimerHasher<K, N>, HeapTimerEquals<K, N>> eventTimeTimersQueue_;
-  HeapPriorityQueue<std::shared_ptr<TimerHeapInternalTimer<K, N>>, HeapTimerComparator<K, N>, HeapTimerHasher<K, N>, HeapTimerEquals<K, N>> processingTimeTimersQueue_;
+  EventTimeTimerService<K, N> eventTimeService_;
+  ProcessingTimeTimerService<K, N> processingTimeService_;
 };
 
 } // namespace facebook::velox::stateful

@@ -15,21 +15,30 @@
  */
 #pragma once
 
-#include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <utility>
+
+#include "velox/common/base/Exceptions.h"
+#include "velox/common/base/IndexedPriorityQueue.h"
 
 namespace facebook::velox::stateful {
 
+// Flink-style internal priority queue interface.
+//
 // This class is relevant to Flink InternalPriorityQueue.
 template <typename T>
 class InternalPriorityQueue {
  public:
+  virtual ~InternalPriorityQueue() = default;
+
   virtual bool add(const T& toAdd) = 0;
 
   virtual bool add(T&& toAdd) = 0;
 
   virtual T poll() = 0;
 
-  virtual T& peek() = 0;
+  virtual const T& peek() const = 0;
 
   virtual void clear() = 0;
 
@@ -42,218 +51,106 @@ class InternalPriorityQueue {
   virtual bool contains(const T& value) const = 0;
 };
 
+// Heap-backed implementation of InternalPriorityQueue, layered on top of
+// velox::IndexedPriorityQueue without modifying the latter.
+//
+// Template parameters:
+//   - T: element type.
+//   - PriorityFn: callable producing an int64_t priority from a const T&.
+//                 The priority defines ordering; ties are broken by
+//                 IndexedPriorityQueue using insertion/update order (FIFO).
+//   - kMaxQueue: false for min-heap (default), true for max-heap.
+//   - Allocator/Hash/EqualTo: forwarded to IndexedPriorityQueue.
+//
+// CONTRACT for remove(value):
+//   The implementation evicts arbitrary values by reassigning their priority
+//   to a sentinel that is strictly more extreme than any real priority and
+//   then popping the head. Therefore:
+//     - For min-heap: real priorities MUST be > std::numeric_limits<int64_t>::min().
+//     - For max-heap: real priorities MUST be < std::numeric_limits<int64_t>::max().
+//   Timer services using timestamps satisfy this trivially.
 template <
     typename T,
-    typename Compare = std::less<T>,
+    typename PriorityFn,
+    bool kMaxQueue = false,
+    typename Allocator = std::allocator<T>,
     typename Hash = std::hash<T>,
     typename EqualTo = std::equal_to<T>>
-class HeapPriorityQueue : public InternalPriorityQueue<T> {
+class HeapPriorityQueue
+    : public InternalPriorityQueue<T>,
+      public velox::IndexedPriorityQueue<T, kMaxQueue, Allocator, Hash, EqualTo> {
  public:
-  explicit HeapPriorityQueue(const Compare& comp = Compare())
-      : comparator_(comp) {}
+  using IndexedBase =
+      velox::IndexedPriorityQueue<T, kMaxQueue, Allocator, Hash, EqualTo>;
 
-  /// Constructs a priority queue with elements from the range [first, last).
-  template <typename InputIt>
-  HeapPriorityQueue(InputIt first, InputIt last, const Compare& comp = Compare())
-      : comparator_(comp), heap_(first, last) {
-    buildHeap();
-  }
+  HeapPriorityQueue() = default;
 
-  /// Returns the top element without removing it.
-  /// Throws if the queue is empty.
-  T& peek() override {
-    VELOX_CHECK(!empty(), "Cannot peek from an empty priority queue");
-    return heap_[0];
-  }
+  explicit HeapPriorityQueue(
+      PriorityFn priorityFn,
+      const Allocator& allocator = {})
+      : IndexedBase(allocator), priorityFn_(std::move(priorityFn)) {}
 
-  /// Removes and returns the top element.
-  /// Throws if the queue is empty.
-  T poll() override {
-    VELOX_CHECK(!empty(), "Cannot poll from an empty priority queu");
-    return removeAt(0);
-  }
-
-  /// Adds an element to the queue.
+  // Adds an element. Returns true if the queue logically changed (new value
+  // inserted, or an existing value's priority changed); false if the value
+  // was already present with the same priority.
   bool add(const T& value) override {
-    addImpl(value);
-    return true;
+    return IndexedBase::addOrUpdate(value, priorityFn_(value));
   }
 
-  /// Adds an element to the queue (move version).
   bool add(T&& value) override {
-    addImpl(std::move(value));
-    return true;
+    const int64_t priority = priorityFn_(value);
+    return IndexedBase::addOrUpdate(value, priority);
   }
 
-  /// Removes the first occurrence of the specified element from the queue.
-  /// Returns true if the element was found and removed, false otherwise.
+  // Returns and removes the head. Throws if empty.
+  T poll() override {
+    VELOX_CHECK(!IndexedBase::empty(), "Cannot poll from an empty priority queue");
+    return IndexedBase::pop();
+  }
+
+  // Returns the head without removing it. Throws if empty.
+  const T& peek() const override {
+    VELOX_CHECK(!IndexedBase::empty(), "Cannot peek from an empty priority queue");
+    return IndexedBase::top();
+  }
+
+  // Removes the first occurrence of `value`. Returns true if removed.
+  // Complexity: O(log n) plus one extra percolate compared to a native
+  // remove-at-index implementation.
   bool remove(const T& value) override {
-    auto it = valueToIndex_.find(value);
-    if (it == valueToIndex_.end()) {
+    const auto idx = IndexedBase::getValueIndex(value);
+    if (!idx.has_value()) {
       return false;
     }
-    removeAt(it->second);
+    constexpr int64_t kSentinel = kMaxQueue
+        ? std::numeric_limits<int64_t>::max()
+        : std::numeric_limits<int64_t>::min();
+    IndexedBase::updatePriority(idx.value(), kSentinel);
+    IndexedBase::pop();
     return true;
   }
 
-  /// Adds all elements from the range [first, last) to the queue.
-  template <typename InputIt>
-  void addAll(InputIt first, InputIt last) {
-    for (auto it = first; it != last; ++it) {
-      add(*it);
-    }
-  }
-
-  /// Adds all elements from the container to the queue.
-  template <typename Container>
-  void addAll(const Container& container) {
-    addAll(container.begin(), container.end());
-  }
-
-  /// Returns the number of elements in the queue.
-  size_t size() const override {
-    return heap_.size();
-  }
-
-  /// Returns true if the queue is empty.
-  bool empty() const override {
-    return heap_.empty();
-  }
-
-  /// Removes all elements from the queue.
+  // Removes all elements. Complexity: O(n log n).
   void clear() override {
-    heap_.clear();
-    valueToIndex_.clear();
+    while (!IndexedBase::empty()) {
+      IndexedBase::pop();
+    }
   }
 
-  /// Returns true if the queue contains the specified element.
-  bool contains(const T& value) const {
-    return valueToIndex_.find(value) != valueToIndex_.end();
+  bool empty() const override {
+    return IndexedBase::empty();
+  }
+
+  size_t size() const override {
+    return static_cast<size_t>(IndexedBase::size());
+  }
+
+  bool contains(const T& value) const override {
+    return IndexedBase::getValueIndex(value).has_value();
   }
 
  private:
-  Compare comparator_;
-  std::vector<T> heap_;
-  std::unordered_map<T, size_t, Hash, EqualTo> valueToIndex_;
-
-  void addImpl(const T& value) {
-    // Check if value already exists
-    if (valueToIndex_.find(value) != valueToIndex_.end()) {
-      // Update existing element
-      size_t index = valueToIndex_[value];
-      heap_[index] = value;
-      // Re-heapify from this position
-      percolateUp(index);
-      percolateDown(index);
-    } else {
-      // Add new element
-      size_t index = heap_.size();
-      heap_.push_back(value);
-      valueToIndex_[value] = index;
-      percolateUp(index);
-    }
-  }
-
-  void addImpl(T&& value) {
-    // Check if value already exists
-    auto it = valueToIndex_.find(value);
-    if (it != valueToIndex_.end()) {
-      // Update existing element
-      size_t index = it->second;
-      heap_[index] = std::move(value);
-      // Re-heapify from this position
-      percolateUp(index);
-      percolateDown(index);
-    } else {
-      // Add new element
-      size_t index = heap_.size();
-      heap_.push_back(std::move(value));
-      valueToIndex_[heap_.back()] = index;
-      percolateUp(index);
-    }
-  }
-
-  T removeAt(size_t index) {
-    if (index >= heap_.size()) {
-      VELOX_FAIL("Logical error, the removed index {} is greater than heap size {}", index, heap_.size());
-    }
-    T t = std::move(heap_[index]);
-    // Remove from valueToIndex_
-    valueToIndex_.erase(t);
-
-    if (index == heap_.size() - 1) {
-      // Removing the last element
-      heap_.pop_back();
-      return t;
-    }
-
-    // Move last element to the removed position
-    T last = std::move(heap_.back());
-    heap_.pop_back();
-    heap_[index] = std::move(last);
-    valueToIndex_[heap_[index]] = index;
-
-    // Re-heapify
-    percolateUp(index);
-    percolateDown(index);
-    return t;
-  }
-
-  void percolateUp(size_t index) {
-    while (index > 0) {
-      size_t parent = (index - 1) / 2;
-      if (!comparator_(heap_[index], heap_[parent])) {
-        break;
-      }
-      swapElements(index, parent);
-      index = parent;
-    }
-  }
-
-  void percolateDown(size_t index) {
-    while (true) {
-      size_t left = 2 * index + 1;
-      size_t right = 2 * index + 2;
-      size_t smallest = index;
-
-      if (left < heap_.size() && comparator_(heap_[left], heap_[smallest])) {
-        smallest = left;
-      }
-      if (right < heap_.size() && comparator_(heap_[right], heap_[smallest])) {
-        smallest = right;
-      }
-
-      if (smallest == index) {
-        break;
-      }
-
-      swapElements(index, smallest);
-      index = smallest;
-    }
-  }
-
-  void swapElements(size_t i, size_t j) {
-    std::swap(heap_[i], heap_[j]);
-    valueToIndex_[heap_[i]] = i;
-    valueToIndex_[heap_[j]] = j;
-  }
-
-  void buildHeap() {
-    // Build index map
-    valueToIndex_.clear();
-    for (size_t i = 0; i < heap_.size(); ++i) {
-      valueToIndex_[heap_[i]] = i;
-    }
-
-    // Build heap from the bottom up
-    for (int i = static_cast<int>(heap_.size()) / 2 - 1; i >= 0; --i) {
-      percolateDown(static_cast<size_t>(i));
-    }
-  }
-
- private:
-  std::vector<T> queue_;
-  int size_ = 0;
+  PriorityFn priorityFn_{};
 };
 
 } // namespace facebook::velox::stateful

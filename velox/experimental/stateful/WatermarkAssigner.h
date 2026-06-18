@@ -42,9 +42,9 @@ class WatermarkAssigner : public StatefulOperator {
     return "WatermarkAssigner";
   }
 
-  void close() override;
-
  private:
+  void advanceWatermark();
+
   RowVectorPtr input_;
   const int64_t idleTimeout_;
   const int rowtimeFieldIndex_;

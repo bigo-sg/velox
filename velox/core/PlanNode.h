@@ -2196,11 +2196,17 @@ class PartitionFunction {
       const RowVector& input,
       std::vector<uint32_t>& partitions) = 0;
 
+  /// @param input RowVector to split into partitions.
+  /// @param [out] partitions Computed partition numbers for each row in
+  /// 'input'.
+  /// @return Returns partition number in case all rows of 'input' are
+  /// assigned to the same partition. In this case 'partitions' vector is left
+  /// unchanged. Used to optimize round-robin partitioning in local exchange.
   virtual std::optional<int64_t> partition(
       const RowVector& input,
       std::vector<int64_t>& partitions) {
-        return std::nullopt;
-    }
+    return std::nullopt;
+  }
 };
 
 /// Factory class for creating PartitionFunction instances.

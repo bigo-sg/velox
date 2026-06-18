@@ -122,7 +122,7 @@ RocksDBKeyedStateBackend::getOrCreateValueState(
   memory::MemoryPool* pool = stateDescriptor.memoryPool();
   std::shared_ptr<ValueSerializer<int64_t>> keySerializer =
       std::dynamic_pointer_cast<ValueSerializer<int64_t>>(createSerializer(
-          std::make_shared<ScalarType<TypeKind::INTEGER>>(), true, pool));
+          std::make_shared<ScalarType<TypeKind::BIGINT>>(), false, pool));
   std::shared_ptr<ValueSerializer<int64_t>> namespaceSerializer =
       std::dynamic_pointer_cast<ValueSerializer<int64_t>>(
           createSerializer(stateNamespaces_[stateName], false, pool));
