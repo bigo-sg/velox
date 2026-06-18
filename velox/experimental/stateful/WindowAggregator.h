@@ -45,8 +45,8 @@ class WindowAggregator : public StatefulOperator,
     const int64_t windowSize,
     const bool useDayLightSaving,
     const bool isEventTime,
-    const int windowStartIndex,
-    const int windowEndIndex);
+    const int32_t windowStartIndex,
+    const int32_t windowEndIndex);
 
   void initialize() override;
 
@@ -80,10 +80,10 @@ class WindowAggregator : public StatefulOperator,
 
   void onTimer(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer);
 
-  template<typename K>
+  template <typename K>
   void fireWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd);
 
-  template<typename K>
+  template <typename K>
   void clearWindow(const K& key, int64_t timerTimestamp, int64_t windowEnd);
 
   std::unique_ptr<exec::Operator> localAggregator_;
