@@ -40,8 +40,7 @@ TEST_F(FileSystemConnectorTest, testConfig) {
       writeConfig->exists(connector::filesystem::FileSystemWriteConfig::kPath));
   ASSERT_TRUE(writeConfig->exists(
       connector::filesystem::FileSystemWriteConfig::kFormat));
-  ASSERT_TRUE(writeConfig->exists(
-      connector::filesystem::FileSystemWriteConfig::kTaskId));
+  ASSERT_TRUE(writeConfig->exists(kTaskIdKey));
 }
 
 TEST_F(FileSystemConnectorTest, testWriteNonPartitionedTable) {

@@ -18,8 +18,12 @@ add_test(velox_filesystem_connector_test velox_filesystem_connector_test)
 target_link_libraries(
   velox_filesystem_connector_test
   velox_filesystem_connector
+  velox_dwio_text_writer_register
   velox_vector_test_lib
   velox_exec
   velox_exec_test_lib
   GTest::gtest
-  GTest::gtest_main)
+  GTest::gtest_main
+  -Wl,--whole-archive
+  velox_caching
+  -Wl,--no-whole-archive)

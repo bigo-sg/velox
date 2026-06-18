@@ -17,6 +17,7 @@ add_test(velox_stateful_udf_test velox_stateful_udf_test)
 
 target_link_libraries(
   velox_stateful_udf_test
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
