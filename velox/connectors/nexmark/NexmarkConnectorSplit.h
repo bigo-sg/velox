@@ -16,17 +16,17 @@
 #pragma once
 
 #include "velox/connectors/Connector.h"
-#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 
 namespace facebook::velox::connector::nexmark {
 
 struct NexmarkConnectorSplit : public connector::ConnectorSplit {
   explicit NexmarkConnectorSplit(
       const std::string& connectorId,
-      GeneratorConfig config)
+      NexmarkGeneratorConfig config)
       : ConnectorSplit(connectorId), config(std::move(config)) {}
 
-  GeneratorConfig config;
+  NexmarkGeneratorConfig config;
 
   folly::dynamic serialize() const override {
     folly::dynamic obj = folly::dynamic::object;
@@ -39,7 +39,7 @@ struct NexmarkConnectorSplit : public connector::ConnectorSplit {
   static std::shared_ptr<NexmarkConnectorSplit> create(
       const folly::dynamic& obj) {
     const auto connectorId = obj["connectorId"].asString();
-    auto config = GeneratorConfig::deserialize(obj["config"]);
+    auto config = NexmarkGeneratorConfig::deserialize(obj["config"]);
     return std::make_shared<NexmarkConnectorSplit>(
         connectorId, std::move(config));
   }

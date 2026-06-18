@@ -30,12 +30,12 @@ ConnectorTableHandlePtr NexmarkTableHandle::create(
     void* context) {
   auto connectorId = obj["connectorId"].asString();
   // TODO: get config from obj
-  auto config = GeneratorConfig(
+  auto config = NexmarkGeneratorConfig(
       NexmarkConfiguration(),
       std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch())
           .count(),
-      1, 0, 1); // GeneratorConfig::deserialize(obj["config"]);
+      1, 0, 1); // NexmarkGeneratorConfig::deserialize(obj["config"]);
 
   return std::make_shared<const NexmarkTableHandle>(
       connectorId, std::move(config));

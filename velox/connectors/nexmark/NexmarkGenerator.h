@@ -17,7 +17,7 @@
 
 #include "velox/connectors/nexmark/AuctionGenerator.h"
 #include "velox/connectors/nexmark/BidGenerator.h"
-#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 
 #include <random>
@@ -29,7 +29,7 @@ namespace facebook::velox::connector::nexmark {
 class NexmarkGenerator {
  public:
   NexmarkGenerator(
-      const GeneratorConfig& config,
+      const NexmarkGeneratorConfig& config,
       int64_t eventsCountSoFar,
       int64_t wallclockBaseTime,
       memory::MemoryPool* pool)
@@ -52,7 +52,7 @@ class NexmarkGenerator {
  private:
   int64_t getNextEventId(int64_t eventsCountSoFar) const;
 
-  const GeneratorConfig config_;
+  const NexmarkGeneratorConfig config_;
   int64_t eventsCountSoFar_;
   int64_t wallclockBaseTime_;
   memory::MemoryPool* pool_;

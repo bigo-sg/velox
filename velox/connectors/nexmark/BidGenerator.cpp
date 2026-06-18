@@ -23,7 +23,7 @@ RowVectorPtr BidGenerator::nextBidBatch(
     const FlatVector<int64_t>& eventIdVector,
     pcg32_fast& random,
     const FlatVector<int64_t>& timestampVector,
-    const GeneratorConfig& config,
+    const NexmarkGeneratorConfig& config,
     memory::MemoryPool* pool) {
   auto bidVector = Bid::createVector(rows, pool);
   auto auctionVector = bidVector->childAt(0)->asFlatVector<int64_t>();
