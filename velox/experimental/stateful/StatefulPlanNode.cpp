@@ -15,6 +15,7 @@
  */
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
+#include "velox/exec/PartitionFunction.h"
 #include <cstdint>
 
 namespace facebook::velox::stateful {
@@ -62,7 +63,7 @@ core::PlanNodePtr StatefulPlanNode::create(
 }
 
 void StatefulPlanNode::registerSerDe() {
-  registerPartitionFunctionSerDe();
+  exec::registerPartitionFunctionSerDe();
 
   auto& registry = DeserializationWithContextRegistryForSharedPtr();
 

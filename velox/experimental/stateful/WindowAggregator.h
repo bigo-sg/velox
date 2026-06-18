@@ -69,7 +69,7 @@ class WindowAggregator : public StatefulOperator,
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                        timer) override;
 
-  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, long>> timer) override;
+  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;
 
   void processProcessingTimeByJni(int64_t timestamp) override;
 

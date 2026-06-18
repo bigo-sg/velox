@@ -37,7 +37,7 @@ WindowAggregator::WindowAggregator(
     const bool isEventTime,
     const int windowStartIndex,
     const int windowEndIndex)
-    : StatefulOperator(std::move(globalAggregator), std::move(targets)), Triggerable<int64_t, long>(),
+    : StatefulOperator(std::move(globalAggregator), std::move(targets)), Triggerable<int64_t, int64_t>(),
       localAggregator_(std::move(localAggregator)),
       keySelector_(std::move(keySelector)),
       sliceAssigner_(std::move(sliceAssigner)),
