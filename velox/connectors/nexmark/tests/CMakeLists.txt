@@ -24,15 +24,23 @@ target_link_libraries(
   GTest::gtest
   GTest::gtest_main)
 
-add_executable(velox_nexmark_generator_random_test NexmarkGeneratorRandomTest.cpp)
+add_executable(velox_nexmark_generator_test NexmarkGeneratorTest.cpp)
 
-add_test(velox_nexmark_generator_random_test velox_nexmark_generator_random_test)
+add_test(velox_nexmark_generator_test velox_nexmark_generator_test)
 
 target_link_libraries(
-  velox_nexmark_generator_random_test
+  velox_nexmark_generator_test
   velox_nexmark_connector
   velox_vector_test_lib
-  velox_exec_test_lib
-  velox_aggregates
+  GTest::gtest
+  GTest::gtest_main)
+
+add_executable(velox_nexmark_utils_test NexmarkUtilsTest.cpp)
+
+add_test(velox_nexmark_utils_test velox_nexmark_utils_test)
+
+target_link_libraries(
+  velox_nexmark_utils_test
+  velox_nexmark_connector
   GTest::gtest
   GTest::gtest_main)

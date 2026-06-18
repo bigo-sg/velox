@@ -18,6 +18,7 @@
 #include "velox/connectors/nexmark/AuctionGenerator.h"
 #include "velox/connectors/nexmark/BidGenerator.h"
 #include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 
 #include <random>
@@ -37,7 +38,10 @@ class NexmarkGenerator {
         eventsCountSoFar_(eventsCountSoFar),
         wallclockBaseTime_(wallclockBaseTime),
         pool_(pool),
-        random_(pcg_extras::seed_seq_from<std::random_device>()) {}
+        random_(computeNexmarkSeed(
+            config_.firstEventId,
+            config_.maxEvents,
+            config_.firstEventNumber)) {}
 
   ~NexmarkGenerator() = default;
 
