@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <cppkafka/cppkafka.h>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/connectors/Connector.h"
@@ -22,7 +23,6 @@
 #include "velox/connectors/kafka/KafkaConsumer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
-#include <cppkafka/cppkafka.h>
 
 namespace facebook::velox::connector::kafka {
 
@@ -31,6 +31,7 @@ using ConnectorSplitPtr = std::shared_ptr<ConnectorSplit>;
 
 class KafkaRecordDeserializer;
 using KafkaRecordDeserializerPtr = std::shared_ptr<KafkaRecordDeserializer>;
+struct KafkaConnectorSplit;
 
 class KafkaDataSource : public DataSource {
  public:
@@ -62,12 +63,12 @@ class KafkaDataSource : public DataSource {
   std::unordered_map<std::string, RuntimeCounter> runtimeStats() override;
 
   /// For test.
-  const KafkaConsumerPtr & getConsumer() const {
+  const KafkaConsumerPtr& getConsumer() const {
     return consumer_;
   }
 
   /// For test.
-  const KafkaRecordDeserializerPtr & getDeserializer() const {
+  const KafkaRecordDeserializerPtr& getDeserializer() const {
     return deserializer_;
   }
 
@@ -78,8 +79,6 @@ class KafkaDataSource : public DataSource {
   ConnectionConfigPtr config_;
   /// The type of output.
   RowTypePtr outputType_;
-  /// The kafka topics to be consumed.
-  std::vector<std::string> topics_;
   /// The kafka consumer.
   KafkaConsumerPtr consumer_;
   /// The kafka record deserializer.
@@ -91,8 +90,9 @@ class KafkaDataSource : public DataSource {
   /// The output row to be returned.
   VectorPtr outRow_;
   /// The batch size of data are consumed/processed at once .
-  /// If batchSize_ = 1, it means to process the consumed messages one by one, which likes valina flink does.
-  /// If batchSize_ > 1, it means to process the consumed messages by a entrie batch.
+  /// If batchSize_ = 1, it means to process the consumed messages one by one,
+  /// which likes valina flink does. If batchSize_ > 1, it means to process the
+  /// consumed messages by a entrie batch.
   uint64_t batchSize_;
   /// The cache queue for storing consumed data.
   std::vector<std::string> queue_;
@@ -113,6 +113,18 @@ class KafkaDataSource : public DataSource {
   void createRecordDeserializer(
       const std::string& format,
       const RowTypePtr& outputType);
+
+  cppkafka::TopicPartitionList getSplitTopicPartitions(
+      const KafkaConnectorSplit& split);
+
+  cppkafka::TopicPartitionList selectPartitionsForTask(
+      const cppkafka::TopicPartitionList& topicPartitions) const;
+
+  int32_t getTaskIndex() const;
+
+  int32_t getTaskParallelism() const;
+
+  void applyTaskScopedClientId();
 };
 
 } // namespace facebook::velox::connector::kafka

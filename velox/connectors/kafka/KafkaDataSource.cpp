@@ -16,14 +16,19 @@
 
 #include "velox/connectors/kafka/KafkaDataSource.h"
 #include "velox/common/base/RuntimeMetrics.h"
+#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaTableHandle.h"
 #include "velox/connectors/kafka/format/CSVRecordDeserializer.h"
 #include "velox/connectors/kafka/format/RawRecordDeserializer.h"
 #include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
-#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/vector/BaseVector.h"
 
 namespace facebook::velox::connector::kafka {
+
+namespace {
+constexpr const char* kTaskIndex = "task_index";
+constexpr const char* kTaskParallelism = "task_parallelism";
+} // namespace
 
 KafkaDataSource::KafkaDataSource(
     const RowTypePtr& outputType,
@@ -46,6 +51,7 @@ KafkaDataSource::KafkaDataSource(
         "The table handle {} is not supported for kafka data source.",
         tableHandle->connectorId());
   }
+  applyTaskScopedClientId();
   if (consumerCanbeCreated()) {
     cppkafka::Configuration cppKafkaConfig =
         config_->getCppKafkaConfiguration();
@@ -57,10 +63,10 @@ KafkaDataSource::KafkaDataSource(
 
 bool KafkaDataSource::consumerCanbeCreated() {
   return config_->exists(ConnectionConfig::kBootstrapServers) &&
-         config_->exists(ConnectionConfig::kClientId) &&
-         config_->exists(ConnectionConfig::kTopic) &&
-         config_->exists(ConnectionConfig::kGroupId) &&
-         config_->exists(ConnectionConfig::kFormat) && !consumer_.get();
+      config_->exists(ConnectionConfig::kClientId) &&
+      config_->exists(ConnectionConfig::kTopic) &&
+      config_->exists(ConnectionConfig::kGroupId) &&
+      config_->exists(ConnectionConfig::kFormat) && !consumer_.get();
 }
 
 void KafkaDataSource::createConsumer(cppkafka::Configuration& config) {
@@ -72,9 +78,6 @@ void KafkaDataSource::createConsumer(cppkafka::Configuration& config) {
   cppKafkaConsumer->set_destroy_flags(RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE);
   consumer_ = std::make_shared<KafkaConsumer>(
       cppKafkaConsumer, config_->getPollTimeoutMills(), batchSize_);
-  std::string topic = config_->getTopic();
-  topics_.emplace_back(topic);
-  consumer_->subscribe(topics_);
 }
 
 void KafkaDataSource::createCachedQueue(const uint32_t size) {
@@ -104,24 +107,88 @@ void KafkaDataSource::createRecordDeserializer(
 }
 
 void KafkaDataSource::addSplit(ConnectorSplitPtr split) {
-  KafkaConnectorSplit* kafkaConnectorSplit =
-      static_cast<KafkaConnectorSplit*>(split.get());
+  const auto kafkaConnectorSplit =
+      std::dynamic_pointer_cast<KafkaConnectorSplit>(split);
   VELOX_CHECK_NOT_NULL(
-      kafkaConnectorSplit,
+      kafkaConnectorSplit.get(),
       "Failed to add split, because the kafka connector split is null.");
   VELOX_CHECK_NOT_NULL(
       consumer_.get(),
       "Failed to add split, because the kafka consumer is null.");
+  VELOX_CHECK_EQ(
+      kafkaConnectorSplit->bootstrapServers_,
+      config_->getBootstrapServers(),
+      "Failed to add split, because split bootstrap servers are different from kafka config.");
+  VELOX_CHECK_EQ(
+      kafkaConnectorSplit->groupId_,
+      config_->getGroupId(),
+      "Failed to add split, because split group id is different from kafka config.");
+  VELOX_CHECK_EQ(
+      kafkaConnectorSplit->format_,
+      config_->getFormat(),
+      "Failed to add split, because split format is different from kafka config.");
   cppkafka::TopicPartitionList topicPartitions =
-      kafkaConnectorSplit->getCppKafkaTopicPartitions();
-  if (topicPartitions.size() == 0) {
-    const auto tps =
-        consumer_->getTopicPartitions(topics_[0], config_->getStartupMode());
-    consumer_->assign(tps);
-  } else {
-    consumer_->setTopicPartitionsOffset(topicPartitions, config_->getStartupMode());
-    consumer_->assign(topicPartitions);
+      getSplitTopicPartitions(*kafkaConnectorSplit);
+  consumer_->setTopicPartitionsOffset(
+      topicPartitions, config_->getStartupMode());
+  consumer_->assign(topicPartitions);
+}
+
+cppkafka::TopicPartitionList KafkaDataSource::getSplitTopicPartitions(
+    const KafkaConnectorSplit& split) {
+  cppkafka::TopicPartitionList topicPartitions =
+      split.getCppKafkaTopicPartitions();
+  if (topicPartitions.empty()) {
+    return selectPartitionsForTask(consumer_->getTopicPartitions(
+        config_->getTopic(), config_->getStartupMode()));
   }
+  for (const auto& topicPartition : topicPartitions) {
+    VELOX_CHECK_EQ(
+        topicPartition.get_topic(),
+        config_->getTopic(),
+        "Failed to add split, because split topic is different from kafka config.");
+  }
+  return topicPartitions;
+}
+
+cppkafka::TopicPartitionList KafkaDataSource::selectPartitionsForTask(
+    const cppkafka::TopicPartitionList& topicPartitions) const {
+  const int32_t taskIndex = getTaskIndex();
+  const int32_t taskParallelism = getTaskParallelism();
+  VELOX_CHECK_GE(taskIndex, 0, "Kafka task index must not be negative.");
+  VELOX_CHECK_GT(
+      taskParallelism, 0, "Kafka task parallelism must be positive.");
+  VELOX_CHECK_LT(
+      taskIndex,
+      taskParallelism,
+      "Kafka task index must be less than task parallelism.");
+
+  cppkafka::TopicPartitionList selected;
+  for (const auto& topicPartition : topicPartitions) {
+    if (topicPartition.get_partition() % taskParallelism == taskIndex) {
+      selected.emplace_back(topicPartition);
+    }
+  }
+  return selected;
+}
+
+int32_t KafkaDataSource::getTaskIndex() const {
+  return std::stoi(
+      queryCtx_->sessionProperties()->get<std::string>(kTaskIndex, "0"));
+}
+
+int32_t KafkaDataSource::getTaskParallelism() const {
+  return std::stoi(
+      queryCtx_->sessionProperties()->get<std::string>(kTaskParallelism, "1"));
+}
+
+void KafkaDataSource::applyTaskScopedClientId() {
+  if (!config_->exists(ConnectionConfig::kClientId)) {
+    return;
+  }
+  config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(
+      {{ConnectionConfig::kClientId,
+        fmt::format("{}-{}", config_->getClientId(), getTaskIndex())}});
 }
 
 std::optional<RowVectorPtr> KafkaDataSource::next(
@@ -130,7 +197,8 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
   std::optional<RowVectorPtr> res;
   size_t consumedMsgBytes = 0;
   if (queue_.empty()) {
-    // consume the data batch from kafka, and stored the consumed data in the queue.
+    // consume the data batch from kafka, and stored the consumed data in the
+    // queue.
     consumer_->consumeBatch(queue_, consumedMsgBytes);
     consumePos_ = 0;
     // If nothing consumed, return directly.
@@ -139,15 +207,18 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
     }
   }
   outRow_->prepareForReuse();
-  // If batchSize > 1 and set `processDataSize = queue.size`, means to process the entrie batch that consumed and stored in the `queue` at once;
-  // If batchSize = 1 and set `processDataSize = 1`, means to process the consumed batch data one by one.
+  // If batchSize > 1 and set `processDataSize = queue.size`, means to process
+  // the entrie batch that consumed and stored in the `queue` at once; If
+  // batchSize = 1 and set `processDataSize = 1`, means to process the consumed
+  // batch data one by one.
   size_t processDataSize = batchSize_ > 1 ? queue_.size() : batchSize_;
   outRow_->resize(processDataSize);
-  // Deserialize the consumed data. The `processDataSize` determines how many data would be deserialized at once.
+  // Deserialize the consumed data. The `processDataSize` determines how many
+  // data would be deserialized at once.
   for (size_t pos = 0; pos < processDataSize; ++pos) {
-      deserializer_->deserialize(queue_[pos + consumePos_], pos, outRow_);
-      completedBytes_ += queue_[pos + consumePos_].size();
-      completedRows_ += 1;
+    deserializer_->deserialize(queue_[pos + consumePos_], pos, outRow_);
+    completedBytes_ += queue_[pos + consumePos_].size();
+    completedRows_ += 1;
   }
   res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
   consumePos_ += processDataSize;
@@ -158,7 +229,8 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
   return res;
 }
 
-std::unordered_map<std::string, RuntimeCounter> KafkaDataSource::runtimeStats() {
+std::unordered_map<std::string, RuntimeCounter>
+KafkaDataSource::runtimeStats() {
   std::unordered_map<std::string, RuntimeCounter> stats;
   return stats;
 }
