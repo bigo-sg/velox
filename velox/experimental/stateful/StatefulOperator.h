@@ -54,6 +54,8 @@ class StatefulOperator {
 
   virtual void advance();
 
+  void advanceWithFuture(ContinueFuture* future);
+
   bool sourceEmpty();
 
   virtual void close();

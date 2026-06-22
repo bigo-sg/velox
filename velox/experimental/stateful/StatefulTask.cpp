@@ -112,6 +112,11 @@ exec::TaskStats StatefulTask::statefulTaskStats() {
 }
 
 StreamElementPtr StatefulTask::next(int32_t& retCode) {
+  ContinueFuture future = ContinueFuture::makeEmpty();
+  return next(&future, retCode);
+}
+
+StreamElementPtr StatefulTask::next(ContinueFuture* future, int32_t& retCode) {
   retCode = 0;
   if (!pendings_.empty()) {
     return popOutput();
@@ -132,7 +137,10 @@ StreamElementPtr StatefulTask::next(int32_t& retCode) {
       exec::TaskState::kRunning,
       "Task has already finished processing.");
 
-  operatorChain_->advance();
+  operatorChain_->advanceWithFuture(future);
+  if (future != nullptr && future->valid()) {
+    return nullptr;
+  }
   if (pendings_.empty()) {
     if (operatorChain_->isFinished()) {
       finish();
