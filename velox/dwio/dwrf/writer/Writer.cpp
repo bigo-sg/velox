@@ -911,6 +911,27 @@ DwrfWriterFactory::createWriterOptions() {
   return std::make_unique<dwrf::WriterOptions>();
 }
 
+class OrcWriterFactory : public dwio::common::WriterFactory {
+ public:
+  OrcWriterFactory() : WriterFactory(dwio::common::FileFormat::ORC) {}
+
+  std::unique_ptr<dwio::common::Writer> createWriter(
+      std::unique_ptr<dwio::common::FileSink> sink,
+      const std::shared_ptr<dwio::common::WriterOptions>& options) override {
+    auto dwrfOptions = std::dynamic_pointer_cast<dwrf::WriterOptions>(options);
+    VELOX_CHECK_NOT_NULL(
+        dwrfOptions,
+        "ORC writer factory expected a DWRF WriterOptions object.");
+    return std::make_unique<Writer>(std::move(sink), *dwrfOptions);
+  }
+
+  std::unique_ptr<dwio::common::WriterOptions> createWriterOptions() override {
+    auto options = std::make_unique<dwrf::WriterOptions>();
+    options->format = DwrfFormat::kOrc;
+    return options;
+  }
+};
+
 void WriterOptions::processConfigs(
     const config::ConfigBase& connectorConfig,
     const config::ConfigBase& session) {
@@ -968,6 +989,14 @@ void registerDwrfWriterFactory() {
 
 void unregisterDwrfWriterFactory() {
   dwio::common::unregisterWriterFactory(dwio::common::FileFormat::DWRF);
+}
+
+void registerOrcWriterFactory() {
+  dwio::common::registerWriterFactory(std::make_shared<OrcWriterFactory>());
+}
+
+void unregisterOrcWriterFactory() {
+  dwio::common::unregisterWriterFactory(dwio::common::FileFormat::ORC);
 }
 
 } // namespace facebook::velox::dwrf
