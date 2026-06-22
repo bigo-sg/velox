@@ -15,6 +15,9 @@
  */
 
 #include "velox/connectors/pulsar/PulsarDataSource.h"
+#include <fmt/format.h>
+#include <folly/Conv.h>
+#include <folly/json.h>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/connectors/kafka/format/CSVRecordDeserializer.h"
 #include "velox/connectors/kafka/format/RawRecordDeserializer.h"
@@ -22,14 +25,21 @@
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
 #include "velox/vector/BaseVector.h"
-#include <fmt/format.h>
-#include <folly/Conv.h>
 
 namespace facebook::velox::connector::pulsar {
 
 namespace {
 
 constexpr uint32_t kReceiveTimeoutBackoffMillis = 1;
+
+std::string messageIdString(const ::pulsar::MessageId& messageId) {
+  return fmt::format(
+      "{}:{}:{}:{}",
+      messageId.ledgerId(),
+      messageId.entryId(),
+      messageId.batchIndex(),
+      messageId.partition());
+}
 
 } // namespace
 
@@ -47,6 +57,7 @@ PulsarDataSource::PulsarDataSource(
   const std::shared_ptr<PulsarTableHandle> pulsarTableHandle =
       std::dynamic_pointer_cast<PulsarTableHandle>(tableHandle);
   if (pulsarTableHandle) {
+    connectorId_ = pulsarTableHandle->connectorId();
     config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(
         pulsarTableHandle->tableParameters());
     baseConfig_ = config_;
@@ -83,6 +94,7 @@ void PulsarDataSource::resetSplitState() {
   consumer_.reset();
   queue_.clear();
   consumePos_ = 0;
+  checkpointStartMessageId_.clear();
   canceled_ = false;
   completeBlockingFuture();
 }
@@ -119,9 +131,7 @@ std::optional<RowVectorPtr> PulsarDataSource::blockOnReceiveTimeout(
       makeVeloxContinuePromiseContract("PulsarDataSource::next");
   blockingPromise_ = std::move(promise);
   scheduler_.addFunctionOnce(
-      [this]() {
-        completeBlockingFuture();
-      },
+      [this]() { completeBlockingFuture(); },
       fmt::format("PulsarDataSource::next.{}", ++blockingSequence_),
       std::chrono::milliseconds(kReceiveTimeoutBackoffMillis));
   future = std::move(blockedFuture);
@@ -200,6 +210,8 @@ void PulsarDataSource::addSplit(ConnectorSplitPtr split) {
   if (!pulsarConnectorSplit->startMessageId_.empty()) {
     splitConfigs[ConnectionConfig::kStartMessageId] =
         pulsarConnectorSplit->startMessageId_;
+    splitConfigs[ConnectionConfig::kStartMessageIdInclusive] =
+        pulsarConnectorSplit->startMessageIdInclusive_ ? "true" : "false";
   }
   if (!pulsarConnectorSplit->endMessageId_.empty()) {
     splitConfigs[ConnectionConfig::kEndMessageId] =
@@ -263,6 +275,7 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
     if (acknowledgeMessages && !useCumulativeAck) {
       consumer_->acknowledge(message.message, false);
     }
+    checkpointStartMessageId_ = messageIdString(message.message.getMessageId());
     completedBytes_ += message.payload.size();
     completedRows_ += 1;
   }
@@ -278,6 +291,23 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
     consumePos_ = 0;
   }
   return res;
+}
+
+std::vector<std::string> PulsarDataSource::checkpointState() {
+  if (checkpointStartMessageId_.empty()) {
+    return {};
+  }
+  PulsarConnectorSplit split(
+      connectorId_,
+      baseConfig_->getServiceUrl(),
+      baseConfig_->getTopic(),
+      baseConfig_->getSubscriptionName(),
+      baseConfig_->getFormat(),
+      config_->getPartitionIndex(),
+      checkpointStartMessageId_,
+      config_->getEndMessageId(),
+      false);
+  return {folly::toJson(split.serialize())};
 }
 
 std::unordered_map<std::string, RuntimeCounter>

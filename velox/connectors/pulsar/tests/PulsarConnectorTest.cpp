@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-#include "velox/connectors/pulsar/PulsarConfig.h"
-#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
-#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
-#include "velox/connectors/pulsar/PulsarTableHandle.h"
-#include "velox/common/base/tests/GTestUtils.h"
-#include "velox/type/Type.h"
-#include <cstdio>
-#include <fstream>
 #include <fmt/format.h>
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 #include <unistd.h>
+#include <cstdio>
+#include <fstream>
+#include "velox/common/base/tests/GTestUtils.h"
+#include "velox/connectors/pulsar/PulsarConfig.h"
+#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
+#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
+#include "velox/connectors/pulsar/PulsarTableHandle.h"
+#include "velox/type/Type.h"
 
 namespace facebook::velox::connector::pulsar::test {
 
@@ -252,7 +252,8 @@ TEST(PulsarConnectorTest, missingTokenFileFails) {
   }));
 
   VELOX_ASSERT_THROW(
-      config.getPulsarClientConfiguration(), "Failed to read Pulsar token file");
+      config.getPulsarClientConfiguration(),
+      "Failed to read Pulsar token file");
 }
 
 TEST(PulsarConnectorTest, splitSerialization) {
@@ -264,7 +265,8 @@ TEST(PulsarConnectorTest, splitSerialization) {
       "json",
       3,
       "1:2",
-      "3:4");
+      "3:4",
+      false);
 
   const auto serialized = split.serialize();
   const auto copy = PulsarConnectorSplit::create(serialized);
@@ -277,6 +279,7 @@ TEST(PulsarConnectorTest, splitSerialization) {
   EXPECT_EQ(copy->partitionIndex_, 3);
   EXPECT_EQ(copy->startMessageId_, "1:2");
   EXPECT_EQ(copy->endMessageId_, "3:4");
+  EXPECT_FALSE(copy->startMessageIdInclusive_);
   EXPECT_NE(
       copy->toString().find("persistent://public/default/topic"),
       std::string::npos);
@@ -320,6 +323,7 @@ TEST(PulsarConnectorTest, splitSerializationDefaults) {
   EXPECT_EQ(copy->partitionIndex_, -1);
   EXPECT_EQ(copy->startMessageId_, "");
   EXPECT_EQ(copy->endMessageId_, "");
+  EXPECT_TRUE(copy->startMessageIdInclusive_);
 }
 
 TEST(PulsarConnectorTest, partitionedTopicName) {

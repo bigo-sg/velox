@@ -42,6 +42,7 @@ folly::dynamic PulsarConnectorSplit::serialize() const {
   obj["partitionIndex"] = partitionIndex_;
   obj["startMessageId"] = startMessageId_;
   obj["endMessageId"] = endMessageId_;
+  obj["startMessageIdInclusive"] = startMessageIdInclusive_;
   return obj;
 }
 
@@ -55,7 +56,8 @@ std::shared_ptr<PulsarConnectorSplit> PulsarConnectorSplit::create(
       obj["format"].asString(),
       obj.getDefault("partitionIndex", -1).asInt(),
       obj.getDefault("startMessageId", "").asString(),
-      obj.getDefault("endMessageId", "").asString());
+      obj.getDefault("endMessageId", "").asString(),
+      obj.getDefault("startMessageIdInclusive", true).asBool());
 }
 
 void PulsarConnectorSplit::registerSerDe() {

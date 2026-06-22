@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <folly/experimental/FunctionScheduler.h>
+#include <atomic>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/connectors/Connector.h"
@@ -23,8 +25,6 @@
 #include "velox/connectors/pulsar/PulsarConsumer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
-#include <folly/experimental/FunctionScheduler.h>
-#include <atomic>
 
 namespace facebook::velox::connector::pulsar {
 
@@ -60,6 +60,8 @@ class PulsarDataSource : public DataSource {
     return completedRows_;
   }
 
+  std::vector<std::string> checkpointState() override;
+
   std::unordered_map<std::string, RuntimeCounter> runtimeStats() override;
 
   const PulsarConsumerPtr& getConsumer() const {
@@ -75,6 +77,7 @@ class PulsarDataSource : public DataSource {
   ConnectionConfigPtr baseConfig_;
   ConnectionConfigPtr config_;
   RowTypePtr outputType_;
+  std::string connectorId_;
   PulsarConsumerPtr consumer_;
   kafka::KafkaRecordDeserializerPtr deserializer_;
   folly::FunctionScheduler scheduler_;
@@ -94,6 +97,7 @@ class PulsarDataSource : public DataSource {
   uint64_t negativelyAcknowledgedMessages_ = 0;
   uint64_t deserializeFailures_ = 0;
   uint64_t skippedMessagesAfterEnd_ = 0;
+  std::string checkpointStartMessageId_;
 
   bool consumerCanbeCreated() const;
   void createConsumer();
