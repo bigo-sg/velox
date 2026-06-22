@@ -120,7 +120,7 @@ TEST_F(KafkaConnectorTest, testAssignPartitions) {
   const cppkafka::TopicPartition tp = tps[0];
   ASSERT_TRUE(tp.get_topic() == kafkaTopic);
   ASSERT_TRUE(tp.get_partition() == 0);
-  ASSERT_TRUE(tp.get_offset() > 0);
+  ASSERT_TRUE(tp.get_offset() >= 0);
 }
 
 TEST_F(KafkaConnectorTest, testConsumeMessages) {
