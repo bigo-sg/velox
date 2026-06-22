@@ -204,6 +204,11 @@ void StatefulTask::snapshotState() {
   operatorChain_->snapshotState();
 }
 
+std::vector<std::string> StatefulTask::snapshotSourceState() {
+  return operatorChain_ ? operatorChain_->snapshotSourceState()
+                        : std::vector<std::string>{};
+}
+
 std::vector<std::string> StatefulTask::notifyCheckpointComplete(
     int64_t checkpointId) {
   return operatorChain_->notifyCheckpointComplete(checkpointId);

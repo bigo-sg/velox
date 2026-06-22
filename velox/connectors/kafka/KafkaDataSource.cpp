@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/kafka/KafkaDataSource.h"
+#include <folly/json.h>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaTableHandle.h"
@@ -60,6 +61,7 @@ KafkaDataSource::KafkaDataSource(
   const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
       std::dynamic_pointer_cast<KafkaTableHandle>(tableHandle);
   if (kafkaTableHandle) {
+    connectorId_ = kafkaTableHandle->connectorId();
     const std::unordered_map<std::string, std::string>& tableParams =
         kafkaTableHandle->tableParameters();
     config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(tableParams);
@@ -95,6 +97,17 @@ void KafkaDataSource::createConsumer(cppkafka::Configuration& config) {
   cppKafkaConsumer->set_destroy_flags(RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE);
   consumer_ = std::make_shared<KafkaConsumer>(
       cppKafkaConsumer, config_->getPollTimeoutMills(), batchSize_);
+}
+
+void KafkaDataSource::updateCheckpointOffsets(
+    const cppkafka::TopicPartitionList& topicPartitions) {
+  checkpointOffsets_.clear();
+  for (const auto& topicPartition : topicPartitions) {
+    if (topicPartition.get_offset() >= 0) {
+      checkpointOffsets_[topicPartition.get_topic()][static_cast<uint32_t>(
+          topicPartition.get_partition())] = topicPartition.get_offset();
+    }
+  }
 }
 
 void KafkaDataSource::createCachedQueue(const uint32_t size) {
@@ -148,6 +161,7 @@ void KafkaDataSource::addSplit(ConnectorSplitPtr split) {
       getSplitTopicPartitions(*kafkaConnectorSplit);
   consumer_->setTopicPartitionsOffset(
       topicPartitions, config_->getStartupMode());
+  updateCheckpointOffsets(topicPartitions);
   consumer_->assign(topicPartitions);
 }
 
@@ -240,9 +254,13 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
   // Deserialize the consumed data. The `processDataSize` determines how many
   // data would be deserialized at once.
   for (size_t pos = 0; pos < processDataSize; ++pos) {
-    deserializer_->deserialize(queue_[pos + consumePos_], pos, outRow_);
-    completedBytes_ += queue_[pos + consumePos_].size();
+    const auto& message = queue_[pos + consumePos_];
+    deserializer_->deserialize(message.payload, pos, outRow_);
+    completedBytes_ += message.payload.size();
     completedRows_ += 1;
+    checkpointOffsets_[message.topic]
+                      [static_cast<uint32_t>(message.partition)] =
+                          message.offset + 1;
   }
   res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
   consumePos_ += processDataSize;
@@ -251,6 +269,29 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
     consumePos_ = 0;
   }
   return res;
+}
+
+std::vector<std::string> KafkaDataSource::checkpointState() {
+  if (checkpointOffsets_.empty()) {
+    return {};
+  }
+  std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>>
+      topicPartitions;
+  for (const auto& topicOffset : checkpointOffsets_) {
+    auto& partitions = topicPartitions[topicOffset.first];
+    for (const auto& partitionOffset : topicOffset.second) {
+      partitions.push_back({partitionOffset.first, partitionOffset.second});
+    }
+  }
+  KafkaConnectorSplit split(
+      connectorId_,
+      config_->getBootstrapServers(),
+      config_->getGroupId(),
+      config_->getFormat(),
+      config_->getEnableAutoCommit(),
+      config_->getStartupMode(),
+      topicPartitions);
+  return {folly::toJson(split.serialize())};
 }
 
 std::unordered_map<std::string, RuntimeCounter>

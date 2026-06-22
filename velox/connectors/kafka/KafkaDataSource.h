@@ -62,6 +62,8 @@ class KafkaDataSource : public DataSource {
 
   std::unordered_map<std::string, RuntimeCounter> runtimeStats() override;
 
+  std::vector<std::string> checkpointState() override;
+
   /// For test.
   const KafkaConsumerPtr& getConsumer() const {
     return consumer_;
@@ -101,7 +103,10 @@ class KafkaDataSource : public DataSource {
   /// consumed messages by a entrie batch.
   uint64_t batchSize_;
   /// The cache queue for storing consumed data.
-  std::vector<std::string> queue_;
+  std::vector<KafkaMessage> queue_;
+  std::unordered_map<std::string, std::unordered_map<uint32_t, int64_t>>
+      checkpointOffsets_;
+  std::string connectorId_;
   /// The consumed position of the cache queue.
   size_t consumePos_ = 0;
 
@@ -113,6 +118,9 @@ class KafkaDataSource : public DataSource {
 
   /// Create message queue with given size.
   void createCachedQueue(const uint32_t size);
+
+  void updateCheckpointOffsets(
+      const cppkafka::TopicPartitionList& topicPartitions);
 
   /// Create deserializer to deserialize the consumed recored to the given row
   /// type.

@@ -16,13 +16,20 @@
 
 #pragma once
 
-#include "velox/connectors/kafka/KafkaConfig.h"
 #include <cppkafka/cppkafka.h>
 #include <cppkafka/topic_partition_list.h>
+#include "velox/connectors/kafka/KafkaConfig.h"
 
 namespace facebook::velox::connector::kafka {
 
 using CppKafkaConsumerPtr = std::shared_ptr<cppkafka::Consumer>;
+
+struct KafkaMessage {
+  std::string payload;
+  std::string topic;
+  int partition;
+  int64_t offset;
+};
 
 /// Class for consume records from kafka topic
 class KafkaConsumer {
@@ -33,7 +40,9 @@ class KafkaConsumer {
       const uint32_t pollBatchSize)
       : consumer_(consumer),
         pollTimeOutMillis_(pollTimeOut),
-        pollBatchSize_(pollBatchSize > 1 ? pollBatchSize : ConnectionConfig::defaultPollBatchSize) {}
+        pollBatchSize_(
+            pollBatchSize > 1 ? pollBatchSize
+                              : ConnectionConfig::defaultPollBatchSize) {}
 
   ~KafkaConsumer() {}
 
@@ -51,7 +60,7 @@ class KafkaConsumer {
   /// Assign the consumer to the given topic partitions.
   void assign(const cppkafka::TopicPartitionList& tps);
   /// Consume a batch of messages.
-  const void consumeBatch(std::vector<std::string>& msgs, size_t& msgBytes);
+  const void consumeBatch(std::vector<KafkaMessage>& msgs, size_t& msgBytes);
   /// For test, Get the kafka topics that already subscribed.
   const std::vector<std::string> getSubscribedTopics();
   /// For test, Get the kafka assigned topic and partitions.

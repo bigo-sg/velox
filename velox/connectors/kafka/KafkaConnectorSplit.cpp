@@ -46,6 +46,7 @@ std::string KafkaConnectorSplit::toString() const {
 
 folly::dynamic KafkaConnectorSplit::serialize() const {
   folly::dynamic obj = folly::dynamic::object;
+  obj["name"] = "KafkaConnectorSplit";
   obj["connectorId"] = clientId_;
   obj["bootstrapServers"] = bootstrapServers_;
   obj["groupId"] = groupId_;
@@ -53,7 +54,6 @@ folly::dynamic KafkaConnectorSplit::serialize() const {
   obj["enableAutoCommit"] = enableAutoCommit_;
   obj["autoResetOffset"] = autoResetOffset_;
   folly::dynamic tpObjs = folly::dynamic::array;
-  size_t j = 0;
   for (const auto& tp : topicPartitions_) {
     std::string topic = tp.first;
     for (size_t i = 0; i < tp.second.size(); ++i) {
@@ -61,8 +61,7 @@ folly::dynamic KafkaConnectorSplit::serialize() const {
       d["topic"] = topic;
       d["partition"] = tp.second[i].first;
       d["offset"] = tp.second[i].second;
-      tpObjs[j] = d;
-      j++;
+      tpObjs.push_back(d);
     }
   }
   obj["topicPartitions"] = tpObjs;
@@ -71,7 +70,8 @@ folly::dynamic KafkaConnectorSplit::serialize() const {
 
 std::shared_ptr<KafkaConnectorSplit> KafkaConnectorSplit::create(
     const folly::dynamic& obj) {
-  std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>> topics;
+  std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>>
+      topics;
   if (obj["topicPartitions"].isArray()) {
     const auto tpObjs = obj["topicPartitions"];
     for (const auto& tp : tpObjs) {

@@ -169,11 +169,14 @@ TEST_F(KafkaConnectorTest, testConsumeMessages) {
   sendMessageToKafka(testMsg);
   const auto& kafkaConsumer = kafkaDataSource->getConsumer();
   ASSERT_TRUE(kafkaConsumer != nullptr);
-  std::vector<std::string> msgs;
+  std::vector<KafkaMessage> msgs;
   size_t msgBytes = 0;
   kafkaConsumer->consumeBatch(msgs, msgBytes);
   ASSERT_TRUE(msgs.size() == 1);
-  ASSERT_TRUE(msgs[0] == testMsg);
+  ASSERT_TRUE(msgs[0].payload == testMsg);
+  ASSERT_TRUE(msgs[0].topic == kafkaTopic);
+  ASSERT_TRUE(msgs[0].partition == 0);
+  ASSERT_TRUE(msgs[0].offset >= 0);
   ASSERT_TRUE(msgBytes == testMsg.size());
 }
 
