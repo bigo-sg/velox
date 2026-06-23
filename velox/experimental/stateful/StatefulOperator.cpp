@@ -60,6 +60,27 @@ void StatefulOperator::close() {
   targets_.clear();
 }
 
+void StatefulOperator::finish() {
+  if (!isSource()) {
+    operator_->noMoreInput();
+    do {
+      sourceEmpty_ = true;
+      auto intermediateResult = operator_->getOutput();
+      if (!intermediateResult) {
+        break;
+      }
+      if (!isSink()) {
+        sourceEmpty_ = false;
+        pushOutput(std::make_shared<StreamRecord>(
+            getPlanNodeId(), std::move(intermediateResult)));
+      }
+    } while (!operator_->isFinished());
+  }
+  for (auto& target : targets_) {
+    target->finish();
+  }
+}
+
 void StatefulOperator::advanceWithFuture(ContinueFuture* future) {
   if (numInputs() > 1) {
     advance();
@@ -137,8 +158,7 @@ void StatefulOperator::processWatermark(int64_t timestamp) {
 void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   if (!stateHandler_) {
     stateHandler_ = std::make_shared<StreamOperatorStateHandler>(
-        op()->operatorId(),
-        stateBackend->createKeyedStateBackend());
+        op()->operatorId(), stateBackend->createKeyedStateBackend());
   }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {

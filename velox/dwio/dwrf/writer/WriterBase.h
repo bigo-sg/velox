@@ -24,8 +24,10 @@ namespace facebook::velox::dwrf {
 
 class WriterBase {
  public:
-  explicit WriterBase(std::unique_ptr<dwio::common::FileSink> sink)
-      : sink_{std::move(sink)} {
+  explicit WriterBase(
+      std::unique_ptr<dwio::common::FileSink> sink,
+      DwrfFormat format = DwrfFormat::kDwrf)
+      : sink_{std::move(sink)}, format_{format} {
     VELOX_CHECK_NOT_NULL(sink_);
   }
 
@@ -134,15 +136,18 @@ class WriterBase {
   proto::StripeInformation& addStripeInfo() {
     auto stripe = footer_.add_stripes();
     stripe->set_numberofrows(context_->stripeRowCount());
-    if (context_->stripeRawSize() > 0 || context_->stripeRowCount() == 0) {
+    if (format_ != DwrfFormat::kOrc &&
+        (context_->stripeRawSize() > 0 || context_->stripeRowCount() == 0)) {
       // ColumnTransformWriter, when rewriting presto written
       // file does not have rawSize.
       stripe->set_rawdatasize(context_->stripeRawSize());
     }
 
-    auto* checksum = writerSink_->getChecksum();
-    if (checksum != nullptr) {
-      stripe->set_checksum(checksum->getDigest());
+    if (format_ != DwrfFormat::kOrc) {
+      auto* checksum = writerSink_->getChecksum();
+      if (checksum != nullptr) {
+        stripe->set_checksum(checksum->getDigest());
+      }
     }
     return *stripe;
   }
@@ -170,6 +175,7 @@ class WriterBase {
   std::unique_ptr<WriterContext> context_;
   std::unique_ptr<dwio::common::FileSink> sink_;
   std::unique_ptr<WriterSink> writerSink_;
+  DwrfFormat format_;
   proto::Footer footer_;
   std::unordered_map<std::string, std::string> userMetadata_;
 

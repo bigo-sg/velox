@@ -69,10 +69,11 @@ void StatefulTask::initStateBackend(
         std::make_unique<RocksDBStateBackend>(rocksdbStateParameters);
   } else {
     if (!parameters) {
-      statebackend_ = std::make_unique<HashMapStateBackend>(std::make_shared<const KeyedStateBackendParameters>(
-          StateBackendType::HEAP, 
-          operatorChain_->op()->operatorCtx()->driverCtx()->task->taskId(),
-          std::to_string(operatorChain_->op()->operatorId())));
+      statebackend_ = std::make_unique<HashMapStateBackend>(
+          std::make_shared<const KeyedStateBackendParameters>(
+              StateBackendType::HEAP,
+              operatorChain_->op()->operatorCtx()->driverCtx()->task->taskId(),
+              std::to_string(operatorChain_->op()->operatorId())));
     } else {
       statebackend_ = std::make_unique<HashMapStateBackend>(parameters);
     }
@@ -143,6 +144,8 @@ StreamElementPtr StatefulTask::next(ContinueFuture* future, int32_t& retCode) {
   }
   if (pendings_.empty()) {
     if (operatorChain_->isFinished()) {
+      operatorChain_->finish();
+      operatorChain_->notifyCheckpointComplete(0);
       finish();
       // finish may trigger window flush and generate output.
       if (pendings_.empty()) {

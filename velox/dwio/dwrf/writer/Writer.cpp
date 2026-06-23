@@ -157,7 +157,8 @@ Writer::Writer(
     std::unique_ptr<dwio::common::FileSink> sink,
     const WriterOptions& options,
     std::shared_ptr<memory::MemoryPool> pool)
-    : writerBase_(std::make_unique<WriterBase>(std::move(sink))),
+    : writerBase_(
+          std::make_unique<WriterBase>(std::move(sink), options.format)),
       schema_{dwio::common::TypeWithId::create(options.schema)},
       spillConfig_{options.spillConfig},
       nonReclaimableSection_(options.nonReclaimableSection) {
@@ -928,6 +929,9 @@ class OrcWriterFactory : public dwio::common::WriterFactory {
   std::unique_ptr<dwio::common::WriterOptions> createWriterOptions() override {
     auto options = std::make_unique<dwrf::WriterOptions>();
     options->format = DwrfFormat::kOrc;
+    options->serdeParameters.emplace(
+        Config::WRITER_VERSION.key,
+        std::to_string(static_cast<int32_t>(WriterVersion::ORIGINAL)));
     return options;
   }
 };

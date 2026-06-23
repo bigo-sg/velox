@@ -27,7 +27,7 @@ namespace facebook::velox::stateful {
 
 class JniCaller {
  public:
-    virtual void call(
+  virtual void call(
       const std::string& clazzName,
       const std::string& methodName,
       const std::string& arg) = 0;
@@ -59,6 +59,8 @@ class StatefulOperator {
   bool sourceEmpty();
 
   virtual void close();
+
+  virtual void finish();
 
   virtual void processWatermark(int64_t timestamp, int index);
 
@@ -111,7 +113,8 @@ class StatefulOperator {
     return jniCaller_;
   }
 
-  /// Optional JNI / Java callback hook (e.g. Gluten); set from the embedding layer.
+  /// Optional JNI / Java callback hook (e.g. Gluten); set from the embedding
+  /// layer.
   static void setJniCaller(const std::shared_ptr<JniCaller> caller) {
     jniCaller_ = caller;
   }
@@ -130,6 +133,10 @@ class StatefulOperator {
  private:
   bool isSink() {
     return sink;
+  }
+
+  bool isSource() const {
+    return !operator_->needsInput();
   }
 
   std::unique_ptr<exec::Operator> operator_;
