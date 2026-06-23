@@ -65,6 +65,10 @@
       return 2;
     }
 
+    bool needsFinishDrain() const override {
+      return false;
+    }
+
    private:
     void join(uint32_t key, int64_t windowEnd);
 

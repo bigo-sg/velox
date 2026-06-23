@@ -64,6 +64,8 @@ class StatefulOperator {
 
   virtual void close();
 
+  virtual void finish();
+
   virtual void processWatermark(int64_t timestamp, int index);
 
   virtual void processWatermark(int64_t timestamp);
@@ -115,7 +117,8 @@ class StatefulOperator {
     return jniCaller_;
   }
 
-  /// Optional JNI / Java callback hook (e.g. Gluten); set from the embedding layer.
+  /// Optional JNI / Java callback hook (e.g. Gluten); set from the embedding
+  /// layer.
   static void setJniCaller(const std::shared_ptr<JniCaller> caller) {
     jniCaller_ = caller;
   }
@@ -129,6 +132,10 @@ class StatefulOperator {
     sourceEmpty_ = sourceEmpty;
   }
 
+  virtual bool needsFinishDrain() const {
+    return !isSource();
+  }
+
   virtual int numInputs() const {
     return 1;
   }
@@ -139,6 +146,10 @@ class StatefulOperator {
  private:
   bool isSink() {
     return sink;
+  }
+
+  bool isSource() const {
+    return !operator_->needsInput();
   }
 
   std::unique_ptr<exec::Operator> operator_;

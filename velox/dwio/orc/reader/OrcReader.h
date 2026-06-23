@@ -28,7 +28,9 @@ class OrcReaderFactory : public dwio::common::ReaderFactory {
   std::unique_ptr<dwio::common::Reader> createReader(
       std::unique_ptr<dwio::common::BufferedInput> input,
       const dwio::common::ReaderOptions& options) override {
-    return velox::dwrf::DwrfReader::create(std::move(input), options);
+    auto orcOptions = options;
+    orcOptions.setFileFormat(dwio::common::FileFormat::ORC);
+    return velox::dwrf::DwrfReader::create(std::move(input), orcOptions);
   }
 };
 

@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#include <array>
+#include <fstream>
+
 #include <gtest/gtest.h>
 #include "velox/exec/tests/utils/HiveConnectorTestBase.h"
 
@@ -203,12 +206,17 @@ class HiveDataSinkTest : public exec::test::HiveConnectorTestBase {
     return files;
   }
 
-  void verifyWrittenData(const std::string& dirPath, int32_t numFiles = 1) {
+  void verifyWrittenData(
+      const std::string& dirPath,
+      int32_t numFiles = 1,
+      dwio::common::FileFormat fileFormat = dwio::common::FileFormat::DWRF) {
     const std::vector<std::string> filePaths = listFiles(dirPath);
     ASSERT_EQ(filePaths.size(), numFiles);
     std::vector<std::shared_ptr<connector::ConnectorSplit>> splits;
     std::for_each(filePaths.begin(), filePaths.end(), [&](auto filePath) {
-      splits.push_back(makeHiveConnectorSplit(filePath));
+      auto fileSplits = makeHiveConnectorSplits(filePath, 1, fileFormat);
+      ASSERT_EQ(fileSplits.front()->fileFormat, fileFormat);
+      splits.insert(splits.end(), fileSplits.begin(), fileSplits.end());
     });
     HiveConnectorTestBase::assertQuery(
         PlanBuilder().tableScan(rowType_).planNode(),
@@ -541,6 +549,34 @@ TEST_F(HiveDataSinkTest, basic) {
 
   createDuckDbTable(vectors);
   verifyWrittenData(outputDirectory->getPath());
+}
+
+TEST_F(HiveDataSinkTest, basicOrc) {
+  const auto outputDirectory = TempDirectoryPath::create();
+  auto dataSink = createDataSink(
+      rowType_, outputDirectory->getPath(), dwio::common::FileFormat::ORC);
+
+  const int numBatches = 10;
+  const auto vectors = createVectors(500, numBatches);
+  for (const auto& vector : vectors) {
+    dataSink->appendData(vector);
+  }
+  ASSERT_TRUE(dataSink->finish());
+  dataSink->close();
+
+  const auto filePaths = listFiles(outputDirectory->getPath());
+  ASSERT_EQ(filePaths.size(), 1);
+
+  std::ifstream file(filePaths.front(), std::ios::binary);
+  ASSERT_TRUE(file.good());
+
+  std::array<char, 3> magic;
+  file.read(magic.data(), magic.size());
+  ASSERT_EQ(std::string(magic.data(), magic.size()), "ORC");
+
+  file.seekg(-4, std::ios::end);
+  file.read(magic.data(), magic.size());
+  ASSERT_EQ(std::string(magic.data(), magic.size()), "ORC");
 }
 
 TEST_F(HiveDataSinkTest, basicBucket) {

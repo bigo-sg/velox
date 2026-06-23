@@ -22,4 +22,8 @@ void registerDwrfWriterFactory();
 
 void unregisterDwrfWriterFactory();
 
+void registerOrcWriterFactory();
+
+void unregisterOrcWriterFactory();
+
 } // namespace facebook::velox::dwrf
