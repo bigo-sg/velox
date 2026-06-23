@@ -100,6 +100,7 @@ void WriterBase::writeFooter(const Type& type) {
     ps.add_version(kOrcFileVersionMajor);
     ps.add_version(kOrcFileVersionMinor);
     ps.set_writerversion(kOrcCppOriginalWriterVersion);
+    ps.set_magic({ORC_MAGIC.data(), ORC_MAGIC_LEN});
     writeProto(ps, common::CompressionKind::CompressionKind_NONE);
   } else {
     proto::PostScript ps;

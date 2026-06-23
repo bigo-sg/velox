@@ -242,6 +242,7 @@ std::string SplitReader::toString() const {
 }
 
 void SplitReader::createReader() {
+  baseReaderOpts_.setFileFormat(hiveSplit_->fileFormat);
   VELOX_CHECK_NE(
       baseReaderOpts_.fileFormat(), dwio::common::FileFormat::UNKNOWN);
 
@@ -277,7 +278,7 @@ void SplitReader::createReader() {
       fsStats_,
       executor_);
 
-  baseReader_ = dwio::common::getReaderFactory(baseReaderOpts_.fileFormat())
+  baseReader_ = dwio::common::getReaderFactory(hiveSplit_->fileFormat)
                     ->createReader(std::move(baseFileInput), baseReaderOpts_);
 }
 
