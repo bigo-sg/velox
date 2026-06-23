@@ -72,6 +72,12 @@ class KafkaDataSource : public DataSource {
     return deserializer_;
   }
 
+  /// For test.
+  cppkafka::TopicPartitionList selectPartitionsForTaskForTest(
+      const cppkafka::TopicPartitionList& topicPartitions) const {
+    return selectPartitionsForTask(topicPartitions);
+  }
+
  private:
   /// The context of kafka connector for query.
   const ConnectorQueryCtx* queryCtx_;

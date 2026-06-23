@@ -168,12 +168,9 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
         kKafkaConnectorId, kafkaTopic, outputType);
   }
 
-  const std::shared_ptr<connector::ConnectorQueryCtx> createQueryCtx(
-      int32_t taskIndex = 0,
-      int32_t taskParallelism = 1) {
-    std::unordered_map<std::string, std::string> sessionConfig;
-    sessionConfig["task_index"] = std::to_string(taskIndex);
-    sessionConfig["task_parallelism"] = std::to_string(taskParallelism);
+  const std::shared_ptr<connector::ConnectorQueryCtx>
+  createQueryCtxWithSessionProperties(
+      std::unordered_map<std::string, std::string> sessionConfig) {
     sessionProperties_ =
         std::make_shared<const config::ConfigBase>(std::move(sessionConfig));
     queryCtx_ = std::make_shared<connector::ConnectorQueryCtx>(
@@ -192,6 +189,21 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
     return queryCtx_;
   }
 
+  const std::shared_ptr<connector::ConnectorQueryCtx> createQueryCtx(
+      int32_t taskIndex = 0,
+      int32_t taskParallelism = 1) {
+    std::unordered_map<std::string, std::string> sessionConfig;
+    sessionConfig["task_index"] = std::to_string(taskIndex);
+    sessionConfig["task_parallelism"] = std::to_string(taskParallelism);
+    return createQueryCtxWithSessionProperties(std::move(sessionConfig));
+  }
+
+  const std::shared_ptr<connector::ConnectorQueryCtx>
+  createQueryCtxWithoutTaskProperties() {
+    std::unordered_map<std::string, std::string> sessionConfig;
+    return createQueryCtxWithSessionProperties(std::move(sessionConfig));
+  }
+
   const std::unique_ptr<DataSource> createDataSource(
       int32_t taskIndex = 0,
       int32_t taskParallelism = 1) {
@@ -206,6 +218,35 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
         kafkaTableHandle,
         columnHandles,
         createQueryCtx(taskIndex, taskParallelism).get());
+  }
+
+  const std::unique_ptr<DataSource> createDataSourceWithoutTaskProperties() {
+    std::shared_ptr<connector::Connector> kafkaConnector =
+        getConnector(kKafkaConnectorId);
+    const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
+        createKafkaTableHandle();
+    std::unordered_map<std::string, std::shared_ptr<ColumnHandle>>
+        columnHandles;
+    return kafkaConnector->createDataSource(
+        outputType,
+        kafkaTableHandle,
+        columnHandles,
+        createQueryCtxWithoutTaskProperties().get());
+  }
+
+  const std::unique_ptr<DataSource> createDataSourceWithSessionProperties(
+      std::unordered_map<std::string, std::string> sessionConfig) {
+    std::shared_ptr<connector::Connector> kafkaConnector =
+        getConnector(kKafkaConnectorId);
+    const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
+        createKafkaTableHandle();
+    std::unordered_map<std::string, std::shared_ptr<ColumnHandle>>
+        columnHandles;
+    return kafkaConnector->createDataSource(
+        outputType,
+        kafkaTableHandle,
+        columnHandles,
+        createQueryCtxWithSessionProperties(std::move(sessionConfig)).get());
   }
 
   const void sendMessageToKafka(const std::string& message) {

@@ -16,6 +16,7 @@
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
+#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/connectors/Connector.h"
 #include "velox/connectors/kafka/KafkaDataSource.h"
 #include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
@@ -104,6 +105,41 @@ TEST_F(KafkaConnectorTest, testEmptySplitAssignsNoPartitionsForIdleTask) {
   ASSERT_TRUE(kafkaConsumer != nullptr);
   ASSERT_TRUE(kafkaConsumer->getSubscribedTopics().empty());
   ASSERT_TRUE(kafkaConsumer->getAssignedTopicPartitions().empty());
+}
+
+TEST_F(KafkaConnectorTest, testSelectPartitionsForTaskUsesFlinkOwnerLogic) {
+  const std::unique_ptr<DataSource> dataSource =
+      createDataSource(/*taskIndex=*/0, /*taskParallelism=*/4);
+  KafkaDataSource* kafkaDataSource =
+      reinterpret_cast<KafkaDataSource*>(dataSource.get());
+  ASSERT_TRUE(kafkaDataSource != nullptr);
+
+  cppkafka::TopicPartitionList topicPartitions;
+  topicPartitions.emplace_back(kafkaTopic, 0);
+  topicPartitions.emplace_back(kafkaTopic, 1);
+  topicPartitions.emplace_back(kafkaTopic, 2);
+  topicPartitions.emplace_back(kafkaTopic, 3);
+
+  const cppkafka::TopicPartitionList selected =
+      kafkaDataSource->selectPartitionsForTaskForTest(topicPartitions);
+
+  ASSERT_EQ(selected.size(), 1);
+  ASSERT_EQ(selected[0].get_topic(), kafkaTopic);
+  ASSERT_EQ(selected[0].get_partition(), 1);
+}
+
+TEST_F(KafkaConnectorTest, missingTaskPropertiesFailsFast) {
+  VELOX_ASSERT_THROW(
+      createDataSourceWithoutTaskProperties(),
+      "Kafka task index must not be negative.");
+}
+
+TEST_F(KafkaConnectorTest, missingTaskParallelismFailsFast) {
+  std::unordered_map<std::string, std::string> sessionConfig;
+  sessionConfig["task_index"] = "0";
+  VELOX_ASSERT_THROW(
+      createDataSourceWithSessionProperties(std::move(sessionConfig)),
+      "Kafka task parallelism must be positive.");
 }
 
 TEST_F(KafkaConnectorTest, testAssignPartitions) {

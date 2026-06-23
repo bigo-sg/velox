@@ -28,6 +28,23 @@ namespace facebook::velox::connector::kafka {
 namespace {
 constexpr const char* kTaskIndex = "task_index";
 constexpr const char* kTaskParallelism = "task_parallelism";
+
+uint32_t javaStringHashCode(const std::string& value) {
+  uint32_t hash = 0;
+  for (const unsigned char c : value) {
+    hash = 31 * hash + c;
+  }
+  return hash;
+}
+
+int32_t getSplitOwner(
+    const cppkafka::TopicPartition& topicPartition,
+    int32_t taskParallelism) {
+  const uint32_t startIndex =
+      ((javaStringHashCode(topicPartition.get_topic()) * 31) & 0x7fffffff) %
+      taskParallelism;
+  return (startIndex + topicPartition.get_partition()) % taskParallelism;
+}
 } // namespace
 
 KafkaDataSource::KafkaDataSource(
@@ -165,7 +182,7 @@ cppkafka::TopicPartitionList KafkaDataSource::selectPartitionsForTask(
 
   cppkafka::TopicPartitionList selected;
   for (const auto& topicPartition : topicPartitions) {
-    if (topicPartition.get_partition() % taskParallelism == taskIndex) {
+    if (getSplitOwner(topicPartition, taskParallelism) == taskIndex) {
       selected.emplace_back(topicPartition);
     }
   }
@@ -173,22 +190,29 @@ cppkafka::TopicPartitionList KafkaDataSource::selectPartitionsForTask(
 }
 
 int32_t KafkaDataSource::getTaskIndex() const {
-  return std::stoi(
-      queryCtx_->sessionProperties()->get<std::string>(kTaskIndex, "0"));
+  const int32_t taskIndex = std::stoi(
+      queryCtx_->sessionProperties()->get<std::string>(kTaskIndex, "-1"));
+  VELOX_CHECK_GE(taskIndex, 0, "Kafka task index must not be negative.");
+  return taskIndex;
 }
 
 int32_t KafkaDataSource::getTaskParallelism() const {
-  return std::stoi(
-      queryCtx_->sessionProperties()->get<std::string>(kTaskParallelism, "1"));
+  const int32_t taskParallelism = std::stoi(
+      queryCtx_->sessionProperties()->get<std::string>(kTaskParallelism, "-1"));
+  VELOX_CHECK_GT(
+      taskParallelism, 0, "Kafka task parallelism must be positive.");
+  return taskParallelism;
 }
 
 void KafkaDataSource::applyTaskScopedClientId() {
   if (!config_->exists(ConnectionConfig::kClientId)) {
     return;
   }
+  const int32_t taskIndex = getTaskIndex();
+  getTaskParallelism();
   config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(
       {{ConnectionConfig::kClientId,
-        fmt::format("{}-{}", config_->getClientId(), getTaskIndex())}});
+        fmt::format("{}-{}", config_->getClientId(), taskIndex)}});
 }
 
 std::optional<RowVectorPtr> KafkaDataSource::next(
