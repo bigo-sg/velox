@@ -12,18 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# velox_add_library(velox_kafka_config OBJECT KafkaConfig.cpp)
-# velox_link_libraries(velox_kafka_config velox_core velox_exception)
+add_executable(velox_print_sink_test PrintSinkTest.cpp)
+add_executable(velox_print_table_handle_test PrintTableHandleTest.cpp)
 
-velox_add_library(
+add_test(velox_print_sink_test velox_print_sink_test)
+add_test(velox_print_table_handle_test velox_print_table_handle_test)
+
+target_link_libraries(
+  velox_print_sink_test
   velox_print_connector
-  OBJECT
-  PrintSink.cpp
-  PrintTableHandle.cpp
-  PrintConnector.cpp)
+  GTest::gtest
+  GTest::gtest_main)
 
-velox_link_libraries(velox_print_connector velox_common_io velox_connector)
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+target_link_libraries(
+  velox_print_table_handle_test
+  velox_print_connector
+  velox_core
+  GTest::gtest
+  GTest::gtest_main)

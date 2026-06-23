@@ -21,8 +21,12 @@ namespace facebook::velox::connector::print {
 PrintTableHandle::PrintTableHandle(
     std::string tableName,
     const RowTypePtr& dataColumns,
-    const std::string& path)
-    : tableName_(tableName), dataColumns_(dataColumns), path_(path) {}
+    const std::string& printIdentifier,
+    bool isStdErr)
+    : tableName_(tableName),
+      dataColumns_(dataColumns),
+      printIdentifier_(printIdentifier),
+      isStdErr_(isStdErr) {}
 
 std::string PrintTableHandle::toString() const {
   std::stringstream out;
@@ -30,17 +34,20 @@ std::string PrintTableHandle::toString() const {
   if (dataColumns_) {
     out << ", data columns: " << dataColumns_->toString();
   }
-  out << ", path" << path_;
+  out << ", printIdentifier: " << printIdentifier_
+      << ", isStdErr: " << (isStdErr_ ? "true" : "false");
   return out.str();
 }
 
 folly::dynamic PrintTableHandle::serialize() const {
   folly::dynamic obj = folly::dynamic::object;
+  obj["name"] = "PrintTableHandle";
   obj["tableName"] = tableName_;
   if (dataColumns_) {
     obj["dataColumns"] = dataColumns_->serialize();
   }
-  obj["path"] = path_;
+  obj["printIdentifier"] = printIdentifier_;
+  obj["isStdErr"] = isStdErr_;
   return obj;
 }
 
@@ -52,8 +59,16 @@ ConnectorInsertTableHandlePtr PrintTableHandle::create(
   if (auto it = obj.find("dataColumns"); it != obj.items().end()) {
     dataColumns = ISerializable::deserialize<RowType>(it->second, context);
   }
-  const auto& path = obj["path"].asString();
-  return std::make_shared<const PrintTableHandle>(tableName, dataColumns, path);
+  std::string printIdentifier;
+  if (auto it = obj.find("printIdentifier"); it != obj.items().end()) {
+    printIdentifier = it->second.asString();
+  }
+  bool isStdErr = false;
+  if (auto it = obj.find("isStdErr"); it != obj.items().end()) {
+    isStdErr = it->second.asBool();
+  }
+  return std::make_shared<const PrintTableHandle>(
+      tableName, dataColumns, printIdentifier, isStdErr);
 }
 
 void PrintTableHandle::registerSerDe() {
