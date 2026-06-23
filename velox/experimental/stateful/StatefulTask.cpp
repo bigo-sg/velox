@@ -145,7 +145,6 @@ StreamElementPtr StatefulTask::next(ContinueFuture* future, int32_t& retCode) {
   if (pendings_.empty()) {
     if (operatorChain_->isFinished()) {
       operatorChain_->finish();
-      operatorChain_->notifyCheckpointComplete(0);
       finish();
       // finish may trigger window flush and generate output.
       if (pendings_.empty()) {

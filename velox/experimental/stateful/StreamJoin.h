@@ -55,6 +55,10 @@ class StreamJoin : public StatefulOperator {
     return 2;
   }
 
+  bool needsFinishDrain() const override {
+    return false;
+  }
+
  private:
   RowVectorPtr join(
       uint32_t key,

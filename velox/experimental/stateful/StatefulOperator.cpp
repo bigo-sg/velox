@@ -61,7 +61,7 @@ void StatefulOperator::close() {
 }
 
 void StatefulOperator::finish() {
-  if (!isSource()) {
+  if (needsFinishDrain()) {
     operator_->noMoreInput();
     do {
       sourceEmpty_ = true;

@@ -123,6 +123,10 @@ class StatefulOperator {
   void pushOutput(StreamElementPtr output);
   void emitWatermark(int64_t timestamp);
 
+  virtual bool needsFinishDrain() const {
+    return !isSource();
+  }
+
   virtual int numInputs() const {
     return 1;
   }
