@@ -16,15 +16,15 @@
 
 #pragma once
 
+#include <cppkafka/cppkafka.h>
+#include <fstream>
+#include "velox/connectors/kafka/KafkaConfig.h"
 #include "velox/connectors/kafka/KafkaConnector.h"
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaTableHandle.h"
-#include "velox/connectors/kafka/KafkaConfig.h"
-#include "velox/type/Type.h"
-#include "velox/type/Filter.h"
 #include "velox/exec/tests/utils/OperatorTestBase.h"
-#include <cppkafka/cppkafka.h>
-#include <fstream>
+#include "velox/type/Filter.h"
+#include "velox/type/Type.h"
 
 namespace facebook::velox::connector::kafka::test {
 
@@ -39,7 +39,10 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
   const std::string kafkaStartupMode = "latest-offsets";
   const std::string kKafkaConnectorId = "test-kafka";
   const std::shared_ptr<RowType> outputType = createOutputType();
-  const std::shared_ptr<memory::MemoryPool> memoryPool = memory::memoryManager()->addLeafPool();
+  const std::shared_ptr<memory::MemoryPool> memoryPool =
+      memory::memoryManager()->addLeafPool();
+  std::shared_ptr<connector::ConnectorQueryCtx> queryCtx_;
+  std::shared_ptr<const config::ConfigBase> sessionProperties_;
 
   void SetUp() override {
     OperatorTestBase::SetUp();
@@ -47,13 +50,17 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
     connector::registerConnectorFactory(
         std::make_shared<connector::kafka::KafkaConnectorFactory>());
     std::unordered_map<std::string, std::string> configMap;
-    configMap[connector::kafka::ConnectionConfig::kBootstrapServers] = kafkaInstance;
-    configMap[connector::kafka::ConnectionConfig::kGroupId] = kafkaConsumeGroupId;
+    configMap[connector::kafka::ConnectionConfig::kBootstrapServers] =
+        kafkaInstance;
+    configMap[connector::kafka::ConnectionConfig::kGroupId] =
+        kafkaConsumeGroupId;
     configMap[connector::kafka::ConnectionConfig::kFormat] = kafkaDataFormat;
     configMap[connector::kafka::ConnectionConfig::kClientId] = kafkaClientId;
     configMap[connector::kafka::ConnectionConfig::kTopic] = kafkaTopic;
-    configMap[connector::kafka::ConnectionConfig::kAutoResetOffset] = kafkaAutoOffsetReset;
-    configMap[connector::kafka::ConnectionConfig::kStartupMode] = kafkaStartupMode;
+    configMap[connector::kafka::ConnectionConfig::kAutoResetOffset] =
+        kafkaAutoOffsetReset;
+    configMap[connector::kafka::ConnectionConfig::kStartupMode] =
+        kafkaStartupMode;
     std::shared_ptr<const config::ConfigBase> config =
         std::make_shared<const config::ConfigBase>(std::move(configMap));
     auto kafkaConnector =
@@ -80,12 +87,14 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
     sprintf(kafkaConfPath, "%s%s%s", currentPath, "/", kafkaConfName.data());
     std::ifstream kafkaConfFile(kafkaConfPath);
     if (!kafkaConfFile.is_open()) {
-      VELOX_FAIL("Failed to open kafka config file: {}", std::string(kafkaConfPath, strlen(kafkaConfPath)));
+      VELOX_FAIL(
+          "Failed to open kafka config file: {}",
+          std::string(kafkaConfPath, strlen(kafkaConfPath)));
     }
     std::string kKafkaTestInstance = "kafka.test.instance";
     std::string kKafkaTestTopic = "kafka.test.topic";
     std::string confLine;
-    while(getline(kafkaConfFile, confLine)) {
+    while (getline(kafkaConfFile, confLine)) {
       if (confLine.empty()) {
         continue;
       }
@@ -99,77 +108,148 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
   }
 
   /// Row<event_type int, bid ROW<auction BIGINT, bidder BIGINT, price BIGINT,
-  ///  channel  VARCHAR, url  VARCHAR, `dateTime`  TIMESTAMP(3), extra  VARCHAR>>> 
+  ///  channel  VARCHAR, url  VARCHAR, `dateTime`  TIMESTAMP(3), extra
+  ///  VARCHAR>>>
   static const std::shared_ptr<RowType> createOutputType() {
-    std::vector<std::string> bidRowFieldNames = {"auction", "bidder", "price", "channel", "url", "dateTime", "extra"};
+    std::vector<std::string> bidRowFieldNames = {
+        "auction", "bidder", "price", "channel", "url", "dateTime", "extra"};
     std::vector<TypePtr> bidRowFieldTypes = {
-      std::make_shared<const BigintType>(),
-      std::make_shared<const BigintType>(),
-      std::make_shared<const BigintType>(),
-      std::make_shared<const VarcharType>(),
-      std::make_shared<const VarcharType>(),
-      std::make_shared<const TimestampType>(),
-      std::make_shared<const VarcharType>()
-    };
-    std::shared_ptr<RowType> bidRowType = std::make_shared<RowType>(std::move(bidRowFieldNames), std::move(bidRowFieldTypes));
+        std::make_shared<const BigintType>(),
+        std::make_shared<const BigintType>(),
+        std::make_shared<const BigintType>(),
+        std::make_shared<const VarcharType>(),
+        std::make_shared<const VarcharType>(),
+        std::make_shared<const TimestampType>(),
+        std::make_shared<const VarcharType>()};
+    std::shared_ptr<RowType> bidRowType = std::make_shared<RowType>(
+        std::move(bidRowFieldNames), std::move(bidRowFieldTypes));
     std::vector<std::string> outputFieldNames = {"event_type", "bid"};
     std::vector<TypePtr> outputFieldTypes = {
-      std::make_shared<const IntegerType>(),
-      bidRowType
-    };
-    return std::make_shared<RowType>(std::move(outputFieldNames), std::move(outputFieldTypes));
+        std::make_shared<const IntegerType>(), bidRowType};
+    return std::make_shared<RowType>(
+        std::move(outputFieldNames), std::move(outputFieldTypes));
   }
 
-  const std::shared_ptr<connector::kafka::KafkaConnectorSplit> createKafkaSplit() {
-    std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>> topicPartitions;
-    std::vector<std::pair<uint32_t, int64_t>> partitionOffsets { std::pair<uint32_t, int64_t>(0, 0) };
+  const std::shared_ptr<connector::kafka::KafkaConnectorSplit> createKafkaSplit(
+      int32_t partition = 0,
+      int64_t offset = -1) {
+    std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>>
+        topicPartitions;
+    std::vector<std::pair<uint32_t, int64_t>> partitionOffsets{
+        std::pair<uint32_t, int64_t>(partition, offset)};
     topicPartitions[kafkaTopic] = partitionOffsets;
     return std::make_shared<connector::kafka::KafkaConnectorSplit>(
-      kKafkaConnectorId,
-      kafkaInstance,
-      kafkaConsumeGroupId,
-      kafkaDataFormat,
-      false,
-      "earliest",
-      topicPartitions
-    );
+        kKafkaConnectorId,
+        kafkaInstance,
+        kafkaConsumeGroupId,
+        kafkaDataFormat,
+        false,
+        "earliest",
+        topicPartitions);
   }
 
-  const std::shared_ptr<connector::kafka::KafkaTableHandle> createKafkaTableHandle() {
+  const std::shared_ptr<connector::kafka::KafkaConnectorSplit>
+  createEmptyKafkaSplit() {
+    std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>>
+        topicPartitions;
+    return std::make_shared<connector::kafka::KafkaConnectorSplit>(
+        kKafkaConnectorId,
+        kafkaInstance,
+        kafkaConsumeGroupId,
+        kafkaDataFormat,
+        false,
+        "earliest",
+        topicPartitions);
+  }
+
+  const std::shared_ptr<connector::kafka::KafkaTableHandle>
+  createKafkaTableHandle() {
     return std::make_shared<connector::kafka::KafkaTableHandle>(
-      kKafkaConnectorId,
-      kafkaTopic,
-      outputType);
+        kKafkaConnectorId, kafkaTopic, outputType);
   }
 
-  const std::shared_ptr<connector::ConnectorQueryCtx> createQueryCtx() {
-    const auto kafkaConnector = getConnector(kKafkaConnectorId);
-    const auto connectorConfig = kafkaConnector->connectorConfig();
-    std::shared_ptr<connector::ConnectorQueryCtx> connectorQueryCtx =
-      std::make_shared<connector::ConnectorQueryCtx>(
-          memoryPool.get(),
-          nullptr,
-          connectorConfig.get(),
-          nullptr,
-          common::PrefixSortConfig(),
-          nullptr,
-          nullptr,
-          "query.Kafka",
-          "task.Kafka",
-          "planNodeId.Kafka",
-          0,
-          "");
-    return connectorQueryCtx;
+  const std::shared_ptr<connector::ConnectorQueryCtx>
+  createQueryCtxWithSessionProperties(
+      std::unordered_map<std::string, std::string> sessionConfig) {
+    sessionProperties_ =
+        std::make_shared<const config::ConfigBase>(std::move(sessionConfig));
+    queryCtx_ = std::make_shared<connector::ConnectorQueryCtx>(
+        memoryPool.get(),
+        nullptr,
+        sessionProperties_.get(),
+        nullptr,
+        common::PrefixSortConfig(),
+        nullptr,
+        nullptr,
+        "query.Kafka",
+        "task.Kafka",
+        "planNodeId.Kafka",
+        0,
+        "");
+    return queryCtx_;
   }
 
-  const std::unique_ptr<DataSource> createDataSource() {
-    std::shared_ptr<connector::Connector> kafkaConnector = getConnector(kKafkaConnectorId);
-    const std::shared_ptr<KafkaTableHandle> kafkaTableHandle = createKafkaTableHandle();
-    std::unordered_map<std::string, std::shared_ptr<ColumnHandle>> columnHandles;
-    return kafkaConnector->createDataSource(outputType, kafkaTableHandle, columnHandles, createQueryCtx().get());
+  const std::shared_ptr<connector::ConnectorQueryCtx> createQueryCtx(
+      int32_t taskIndex = 0,
+      int32_t taskParallelism = 1) {
+    std::unordered_map<std::string, std::string> sessionConfig;
+    sessionConfig["task_index"] = std::to_string(taskIndex);
+    sessionConfig["task_parallelism"] = std::to_string(taskParallelism);
+    return createQueryCtxWithSessionProperties(std::move(sessionConfig));
   }
 
-  const void sendMessageToKafka(const std::string & message) {
+  const std::shared_ptr<connector::ConnectorQueryCtx>
+  createQueryCtxWithoutTaskProperties() {
+    std::unordered_map<std::string, std::string> sessionConfig;
+    return createQueryCtxWithSessionProperties(std::move(sessionConfig));
+  }
+
+  const std::unique_ptr<DataSource> createDataSource(
+      int32_t taskIndex = 0,
+      int32_t taskParallelism = 1) {
+    std::shared_ptr<connector::Connector> kafkaConnector =
+        getConnector(kKafkaConnectorId);
+    const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
+        createKafkaTableHandle();
+    std::unordered_map<std::string, std::shared_ptr<ColumnHandle>>
+        columnHandles;
+    return kafkaConnector->createDataSource(
+        outputType,
+        kafkaTableHandle,
+        columnHandles,
+        createQueryCtx(taskIndex, taskParallelism).get());
+  }
+
+  const std::unique_ptr<DataSource> createDataSourceWithoutTaskProperties() {
+    std::shared_ptr<connector::Connector> kafkaConnector =
+        getConnector(kKafkaConnectorId);
+    const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
+        createKafkaTableHandle();
+    std::unordered_map<std::string, std::shared_ptr<ColumnHandle>>
+        columnHandles;
+    return kafkaConnector->createDataSource(
+        outputType,
+        kafkaTableHandle,
+        columnHandles,
+        createQueryCtxWithoutTaskProperties().get());
+  }
+
+  const std::unique_ptr<DataSource> createDataSourceWithSessionProperties(
+      std::unordered_map<std::string, std::string> sessionConfig) {
+    std::shared_ptr<connector::Connector> kafkaConnector =
+        getConnector(kKafkaConnectorId);
+    const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
+        createKafkaTableHandle();
+    std::unordered_map<std::string, std::shared_ptr<ColumnHandle>>
+        columnHandles;
+    return kafkaConnector->createDataSource(
+        outputType,
+        kafkaTableHandle,
+        columnHandles,
+        createQueryCtxWithSessionProperties(std::move(sessionConfig)).get());
+  }
+
+  const void sendMessageToKafka(const std::string& message) {
     cppkafka::Configuration config = {{"metadata.broker.list", kafkaInstance}};
     cppkafka::Producer producer(config);
     cppkafka::MessageBuilder builder(kafkaTopic);

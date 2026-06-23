@@ -17,6 +17,20 @@
 #include "velox/connectors/kafka/KafkaConfig.h"
 
 namespace facebook::velox::connector::kafka {
+namespace {
+
+void setOptionalCppKafkaConfig(
+    cppkafka::Configuration& conf,
+    const std::string& key,
+    const std::string& value) {
+  try {
+    conf.set(key, value);
+  } catch (const cppkafka::ConfigException&) {
+    // Older librdkafka versions don't support client.software.* metadata.
+  }
+}
+
+} // namespace
 
 template <typename T, bool throwException>
 const T KafkaConfig::checkAndGetConfigValue(
@@ -99,8 +113,10 @@ cppkafka::Configuration ConnectionConfig::getCppKafkaConfiguration() const {
   conf.set("metadata.broker.list", getBootstrapServers());
   conf.set("group.id", getGroupId());
   conf.set("client.id", getClientId());
-  conf.set("client.software.name", defaultClientSoftwareName);
-  conf.set("client.software.version", defaultClientSoftwareVersion);
+  setOptionalCppKafkaConfig(
+      conf, "client.software.name", defaultClientSoftwareName);
+  setOptionalCppKafkaConfig(
+      conf, "client.software.version", defaultClientSoftwareVersion);
   conf.set("auto.offset.reset", getAutoOffsetReset());
   conf.set("queued.min.messages", getQueuedMinMessages());
   conf.set("enable.auto.commit", getEnableAutoCommit());

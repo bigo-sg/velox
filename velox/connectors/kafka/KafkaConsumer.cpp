@@ -15,10 +15,10 @@
  */
 
 #include "velox/connectors/kafka/KafkaConsumer.h"
-#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include <cppkafka/buffer.h>
 #include <cppkafka/consumer.h>
 #include <sstream>
+#include "velox/connectors/kafka/KafkaConnectorSplit.h"
 
 namespace facebook::velox::connector::kafka {
 
@@ -68,8 +68,13 @@ const cppkafka::TopicPartitionList KafkaConsumer::getTopicPartitions(
   return tps;
 }
 
-const void KafkaConsumer::setTopicPartitionsOffset(cppkafka::TopicPartitionList& tps, const std::string& startupMode) {
-  for (cppkafka::TopicPartition & tp : tps) {
+const void KafkaConsumer::setTopicPartitionsOffset(
+    cppkafka::TopicPartitionList& tps,
+    const std::string& startupMode) {
+  for (cppkafka::TopicPartition& tp : tps) {
+    if (tp.get_offset() >= 0) {
+      continue;
+    }
     auto offsets = consumer_->query_offsets(tp);
     if (startupMode == "earliest-offsets") {
       tp.set_offset(std::get<0>(offsets));
