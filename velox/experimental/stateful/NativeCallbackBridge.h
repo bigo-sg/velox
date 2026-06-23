@@ -3,7 +3,7 @@
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * You may obtain a copy of the license at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -15,35 +15,13 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/TimerHeapInternalTimer.h"
-
-#include <memory>
-#include <mutex>
-
 namespace facebook::velox::stateful {
 
-// This class is relevant to Flink Triggerable.
-template <typename K, typename N>
-class Triggerable {
+class NativeCallbackBridge {
  public:
-  Triggerable() {
-    mtx_ = std::make_shared<std::mutex>();
-  }
+  virtual ~NativeCallbackBridge() = default;
 
-  virtual void onEventTime(
-      std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) = 0;
-
-  virtual void onProcessingTime(
-      std::shared_ptr<TimerHeapInternalTimer<K, N>> timer) {}
-
-  virtual void onProcessingTime(int64_t timestamp) {}
-
-  const std::shared_ptr<std::mutex> getMutex() const {
-    return mtx_;
-  }
-
- protected:
-  std::shared_ptr<std::mutex> mtx_;
+  virtual void onProcessingTime(int64_t timestamp) = 0;
 };
 
 } // namespace facebook::velox::stateful

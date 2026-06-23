@@ -16,6 +16,7 @@
 #include "velox/experimental/stateful/StatefulTask.h"
 #include <experimental/stateful/state/StateBackend.h>
 #include <cstdint>
+#include <glog/logging.h>
 #include "velox/exec/OperatorStats.h"
 #include "velox/exec/OperatorUtils.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
@@ -160,6 +161,26 @@ StreamElementPtr StatefulTask::next(ContinueFuture* future, int32_t& retCode) {
 
 void StatefulTask::addOutput(StreamElementPtr output) {
   pendings_.push_back(std::move(output));
+}
+
+void StatefulTask::setNativeCallbackBridge(
+    std::shared_ptr<NativeCallbackBridge> callbackBridge) {
+  const bool bound = callbackBridge != nullptr;
+  {
+    // Protects nativeCallbackBridge_ from concurrent bind/unbind and timer
+    // callbacks. The getter copies the shared_ptr under the same lock so the
+    // bridge stays alive while the callback is being invoked.
+    std::lock_guard<std::mutex> lock(nativeCallbackBridgeMutex_);
+    nativeCallbackBridge_ = std::move(callbackBridge);
+  }
+  LOG(INFO) << (bound ? "Bound" : "Unbound")
+            << " native callback bridge for stateful task: " << taskId();
+}
+
+std::shared_ptr<NativeCallbackBridge> StatefulTask::nativeCallbackBridge()
+    const {
+  std::lock_guard<std::mutex> lock(nativeCallbackBridgeMutex_);
+  return nativeCallbackBridge_;
 }
 
 void StatefulTask::notifyWatermark(int64_t watermark, int index) {

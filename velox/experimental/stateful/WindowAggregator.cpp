@@ -281,11 +281,12 @@ void WindowAggregator::onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<i
   onTimer(timer);
 }
 
-void WindowAggregator::processProcessingTimeByJni(int64_t) {
-  auto& jniCaller = StatefulOperator::jniCaller();
-  VELOX_CHECK(jniCaller, "Jni caller not set");
-  jniCaller->call("org/apache/gluten/streaming/api/operators/GlutenOperator",
-    "processElementByJni", "WindowAggOperator");
+void WindowAggregator::onProcessingTime(int64_t timestamp) {
+  auto callbackBridge = nativeCallbackBridge();
+  VELOX_CHECK_NOT_NULL(
+      callbackBridge,
+      "Native callback bridge is not bound for processing-time callback");
+  callbackBridge->onProcessingTime(timestamp);
 }
 
 void WindowAggregator::close() {
