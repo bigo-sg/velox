@@ -80,8 +80,7 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
     creditCardVector->set(i, StringView(person.creditCard));
     cityVector->set(i, StringView(person.city));
     stateVector->set(i, StringView(person.state));
-    dateTimeVector->set(
-        i, Timestamp(person.dateTime / 1000, (person.dateTime % 1000) * 1000));
+    dateTimeVector->set(i, Timestamp::fromMillis(person.dateTime));
     extraVector->set(i, StringView(person.extra));
   }
 

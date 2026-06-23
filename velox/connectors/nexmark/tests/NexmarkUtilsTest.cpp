@@ -22,6 +22,14 @@
 
 namespace facebook::velox::connector::nexmark::test {
 
+TEST(NexmarkUtilsTest, FormatDateTimeZeroPadding) {
+  // Base: 1749513600000 ms = 2025-06-10T00:00:00.000Z
+  EXPECT_EQ(formatDateTime(1749513600007), "2025-06-10T00:00:00.007Z");
+  EXPECT_EQ(formatDateTime(1749513600077), "2025-06-10T00:00:00.077Z");
+  EXPECT_EQ(formatDateTime(1749513600526), "2025-06-10T00:00:00.526Z");
+  EXPECT_EQ(formatDateTime(1749513600000), "2025-06-10T00:00:00.000Z");
+}
+
 TEST(NexmarkUtilsTest, ComputeNexmarkSeedIsDeterministic) {
   EXPECT_EQ(
       computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),

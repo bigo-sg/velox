@@ -35,9 +35,10 @@ inline std::string formatDateTime(int64_t dateTime) {
   char buffer[30];
   std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%S", &tm);
 
-  // Append milliseconds and 'Z' for UTC
-  return std::string(buffer) + "." + std::to_string(milliseconds).substr(0, 3) +
-      "Z";
+  // Append milliseconds (zero-padded to 3 digits) and 'Z' for UTC
+  char ms_buf[4];
+  snprintf(ms_buf, sizeof(ms_buf), "%03d", milliseconds);
+  return std::string(buffer) + "." + ms_buf + "Z";
 }
 
 /// return a random integer in [0, bound)
