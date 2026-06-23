@@ -23,3 +23,7 @@ velox_add_library(
   PrintConnector.cpp)
 
 velox_link_libraries(velox_print_connector velox_common_io velox_connector)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()

@@ -18,6 +18,7 @@
 
 #include "velox/connectors/nexmark/pcg_random.hpp"
 
+#include <cstdint>
 #include <string>
 
 namespace facebook::velox::connector::nexmark {
@@ -55,6 +56,35 @@ inline int getNextInt(pcg32_fast& random, int bound) {
     }
   }
   return r;
+}
+
+/// Compute a deterministic RNG seed from the deterministic fields of a
+/// NexmarkGeneratorConfig. The seed is intentionally derived only from
+/// fields that are fixed at planning time (firstEventId, maxEvents,
+/// firstEventNumber) so that:
+///   - Re-running the same query with the same config yields identical
+///     data, making results reproducible across runs.
+///   - Distinct subtasks of a multi-parallel source have different
+///     firstEventId / maxEvents and therefore different seeds, so the
+///     per-subtask random fields (names, prices, ...) do not collide.
+/// Fields that vary per invocation (baseTime, wallclockBaseTime) are
+/// deliberately excluded. Uses FNV-1a 64-bit for a stable, cross-platform
+/// hash (std::hash is not portable).
+inline uint64_t computeNexmarkSeed(
+    int64_t firstEventId,
+    int64_t maxEvents,
+    int64_t firstEventNumber) {
+  constexpr uint64_t kFnvOffsetBasis = 1469598103934665603ULL;
+  constexpr uint64_t kFnvPrime = 1099511628211ULL;
+  uint64_t h = kFnvOffsetBasis;
+  auto mix = [&](uint64_t v) {
+    h ^= v;
+    h *= kFnvPrime;
+  };
+  mix(static_cast<uint64_t>(firstEventId));
+  mix(static_cast<uint64_t>(maxEvents));
+  mix(static_cast<uint64_t>(firstEventNumber));
+  return h;
 }
 
 } // namespace facebook::velox::connector::nexmark

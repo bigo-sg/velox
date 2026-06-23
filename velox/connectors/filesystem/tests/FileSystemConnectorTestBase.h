@@ -29,6 +29,11 @@
 namespace facebook::velox::connector::filesystem::test {
 
 class FileSystemConnectorTestBase : public exec::test::OperatorTestBase {
+ protected:
+  static constexpr const char* kFileNamePrefixKey = "file-name-prefix";
+  static constexpr const char* kFileNameSuffixKey = "file-name-suffix";
+  static constexpr const char* kTaskIdKey = "task-id";
+
  public:
   const std::string format = "csv";
   const std::string fileNamePrefix = "abcdefg";
@@ -64,11 +69,9 @@ class FileSystemConnectorTestBase : public exec::test::OperatorTestBase {
     std::unordered_map<std::string, std::string> configMap;
     configMap[connector::filesystem::FileSystemWriteConfig::kFormat] = format;
     configMap[connector::filesystem::FileSystemWriteConfig::kPath] = dataPath;
-    configMap[connector::filesystem::FileSystemWriteConfig::kFileNamePrefix] =
-        fileNamePrefix;
-    configMap[connector::filesystem::FileSystemWriteConfig::kFileNameSuffix] =
-        fileNameSuffix;
-    configMap[connector::filesystem::FileSystemWriteConfig::kTaskId] = taskId;
+    configMap[kFileNamePrefixKey] = fileNamePrefix;
+    configMap[kFileNameSuffixKey] = fileNameSuffix;
+    configMap[kTaskIdKey] = taskId;
 
     std::shared_ptr<const config::ConfigBase> config =
         std::make_shared<const config::ConfigBase>(std::move(configMap));

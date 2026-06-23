@@ -20,25 +20,14 @@
 namespace facebook::velox::connector::nexmark {
 
 folly::dynamic NexmarkTableHandle::serialize() const {
-  folly::dynamic obj = ConnectorTableHandle::serializeBase("NexmarkTableHandle");
-  obj["config"] = config_.serialize();
-  return obj;
+  return ConnectorTableHandle::serializeBase("NexmarkTableHandle");
 }
 
 ConnectorTableHandlePtr NexmarkTableHandle::create(
     const folly::dynamic& obj,
     void* context) {
   auto connectorId = obj["connectorId"].asString();
-  // TODO: get config from obj
-  auto config = GeneratorConfig(
-      NexmarkConfiguration(),
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
-          .count(),
-      1, 0, 1); // GeneratorConfig::deserialize(obj["config"]);
-
-  return std::make_shared<const NexmarkTableHandle>(
-      connectorId, std::move(config));
+  return std::make_shared<const NexmarkTableHandle>(connectorId);
 }
 
 void NexmarkTableHandle::registerSerDe() {
@@ -56,9 +45,6 @@ NexmarkDataSource::NexmarkDataSource(
   VELOX_CHECK_NOT_NULL(
       nexmarkTableHandle,
       "TableHandle must be an instance of NexmarkTableHandle");
-
-  nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
-      nexmarkTableHandle->config_, 0, -1, pool_);
 }
 
 void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
@@ -70,7 +56,9 @@ void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
   VELOX_CHECK(currentSplit_, "Wrong type of split for NexmarkDataSource.");
 
   splitOffset_ = 0;
-  splitEnd_ = currentSplit_->numRows;
+  splitEnd_ = currentSplit_->config.maxEvents;
+  nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
+      currentSplit_->config, 0, -1, pool_);
 }
 
 std::optional<RowVectorPtr> NexmarkDataSource::next(

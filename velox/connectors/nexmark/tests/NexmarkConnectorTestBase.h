@@ -46,9 +46,18 @@ class NexmarkConnectorTestBase : public exec::test::OperatorTestBase {
     OperatorTestBase::TearDown();
   }
 
+  static NexmarkGeneratorConfig makeNexmarkGeneratorConfig(int64_t maxEvents) {
+    NexmarkConfiguration configuration;
+    configuration.bidProportion = 46;
+    auto baseTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+    return NexmarkGeneratorConfig{std::move(configuration), baseTime, 1, maxEvents, 1};
+  }
+
   exec::Split makeNexmarkSplit(size_t numRows) const {
-    return exec::Split(
-        std::make_shared<NexmarkConnectorSplit>(kNexmarkConnectorId, numRows));
+    return exec::Split(std::make_shared<NexmarkConnectorSplit>(
+        kNexmarkConnectorId, makeNexmarkGeneratorConfig(numRows)));
   }
 
   std::vector<exec::Split> makeNexmarkSplits(
@@ -65,27 +74,12 @@ class NexmarkConnectorTestBase : public exec::test::OperatorTestBase {
 
   std::unique_ptr<NexmarkGenerator> makeNexmarkGenerator(
       int64_t maxEvents) const {
-    NexmarkConfiguration nexmarkConfiguration;
-    nexmarkConfiguration.bidProportion = 46;
-    GeneratorConfig generatorConfig(
-        std::move(nexmarkConfiguration),
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch())
-            .count(),
-        1,
-        maxEvents,
-        1);
-
-    return std::make_unique<NexmarkGenerator>(generatorConfig, 0, -1, pool());
+    return std::make_unique<NexmarkGenerator>(
+        makeNexmarkGeneratorConfig(maxEvents), 0, -1, pool());
   }
 
-  std::shared_ptr<NexmarkTableHandle> makeNexmarkTableHandle(int64_t maxEvents) const {
-    NexmarkConfiguration configuration;
-    configuration.bidProportion = 46;
-    auto baseTime = std::chrono::system_clock::now().time_since_epoch() /
-        std::chrono::milliseconds(1);
-    GeneratorConfig config{std::move(configuration), baseTime, 1, maxEvents, 1};
-    return std::make_shared<NexmarkTableHandle>(kNexmarkConnectorId, std::move(config));
+  std::shared_ptr<NexmarkTableHandle> makeNexmarkTableHandle() const {
+    return std::make_shared<NexmarkTableHandle>(kNexmarkConnectorId);
   }
 };
 

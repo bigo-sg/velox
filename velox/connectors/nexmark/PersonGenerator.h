@@ -16,7 +16,7 @@
 
 #pragma once
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/connectors/nexmark/StringsGenerator.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
@@ -28,7 +28,7 @@
 
 namespace facebook::velox::connector::nexmark {
 
-class GeneratorConfig;
+class NexmarkGeneratorConfig;
 
 
 /** Generates people. */
@@ -41,9 +41,9 @@ public:
       int64_t nextEventId,
       pcg32_fast& random,
       int64_t timestamp,
-      const GeneratorConfig& config) {
+      const NexmarkGeneratorConfig& config) {
     int64_t id = lastBase0PersonId(config, nextEventId) +
-        GeneratorConfig::FIRST_PERSON_ID;
+        NexmarkGeneratorConfig::FIRST_PERSON_ID;
     std::string name = nextPersonName(random);
     std::string email = nextEmail(random);
     std::string creditCard = nextCreditCard(random);
@@ -71,7 +71,7 @@ public:
       const FlatVector<int64_t>& eventIdVector,
       pcg32_fast& random,
       const FlatVector<int64_t>& timestampVector,
-      const GeneratorConfig& config,
+      const NexmarkGeneratorConfig& config,
       memory::MemoryPool* pool);
 
   /**
@@ -81,7 +81,7 @@ public:
   FOLLY_ALWAYS_INLINE static int64_t nextBase0PersonId(
       int64_t eventId,
       pcg32_fast& random,
-      const GeneratorConfig& config) {
+      const NexmarkGeneratorConfig& config) {
     // Choose a random person from any of the 'active' people, plus a few
     // 'leads'. By limiting to 'active' we ensure the density of bids or
     // auctions per person does not decrease over time for int64_t running jobs.
@@ -94,7 +94,7 @@ public:
     return numPeople - activePeople + n;
   }
 
-    FOLLY_ALWAYS_INLINE static int64_t lastBase0PersonId(const GeneratorConfig& config, int64_t eventId) {
+    FOLLY_ALWAYS_INLINE static int64_t lastBase0PersonId(const NexmarkGeneratorConfig& config, int64_t eventId) {
       int64_t epoch = eventId / config.totalProportion;
       int64_t offset = eventId % config.totalProportion;
       if (offset >= config.personProportion) {

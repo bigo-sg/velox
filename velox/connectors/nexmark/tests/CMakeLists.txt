@@ -31,6 +31,7 @@ add_test(velox_nexmark_generator_test velox_nexmark_generator_test)
 target_link_libraries(
   velox_nexmark_generator_test
   velox_nexmark_connector
+  velox_vector_test_lib
   GTest::gtest
   GTest::gtest_main)
 

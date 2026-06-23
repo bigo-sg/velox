@@ -17,7 +17,7 @@
 #pragma once
 
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/LongGenerator.h"
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
@@ -32,7 +32,7 @@
 
 namespace facebook::velox::connector::nexmark {
 
-class GeneratorConfig;
+class NexmarkGeneratorConfig;
 
 /** AuctionGenerator */
 class AuctionGenerator {
@@ -58,9 +58,9 @@ class AuctionGenerator {
       int64_t eventId,
       pcg32_fast& random,
       int64_t timestamp,
-      const GeneratorConfig& config) {
+      const NexmarkGeneratorConfig& config) {
     int64_t id =
-        lastBase0AuctionId(config, eventId) + GeneratorConfig::FIRST_AUCTION_ID;
+        lastBase0AuctionId(config, eventId) + NexmarkGeneratorConfig::FIRST_AUCTION_ID;
 
     int64_t seller;
     // Here P(auction will be for a hot seller) = 1 - 1/hotSellersRatio.
@@ -72,10 +72,10 @@ class AuctionGenerator {
     } else {
       seller = PersonGenerator::nextBase0PersonId(eventId, random, config);
     }
-    seller += GeneratorConfig::FIRST_PERSON_ID;
+    seller += NexmarkGeneratorConfig::FIRST_PERSON_ID;
 
     int64_t category =
-        GeneratorConfig::FIRST_CATEGORY_ID + getNextInt(random, NUM_CATEGORIES);
+        NexmarkGeneratorConfig::FIRST_CATEGORY_ID + getNextInt(random, NUM_CATEGORIES);
     int64_t initialBid = PriceGenerator::nextPrice(random);
     int64_t expires = timestamp +
         nextAuctionLengthMs(eventsCountSoFar, random, timestamp, config);
@@ -106,7 +106,7 @@ class AuctionGenerator {
       const FlatVector<int64_t>& eventIdVector,
       pcg32_fast& random,
       const FlatVector<int64_t>& timestampVector,
-      const GeneratorConfig& config,
+      const NexmarkGeneratorConfig& config,
       memory::MemoryPool* pool);
 
   /**
@@ -114,7 +114,7 @@ class AuctionGenerator {
    * Will be the current auction id if due to generate an auction.
    */
   FOLLY_ALWAYS_INLINE static int64_t lastBase0AuctionId(
-      const GeneratorConfig& config,
+      const NexmarkGeneratorConfig& config,
       int64_t eventId) {
     int64_t epoch = eventId / config.totalProportion;
     int64_t offset = eventId % config.totalProportion;
@@ -138,7 +138,7 @@ class AuctionGenerator {
   FOLLY_ALWAYS_INLINE static int64_t nextBase0AuctionId(
       int64_t nextEventId,
       pcg32_fast& random,
-      const GeneratorConfig& config) {
+      const NexmarkGeneratorConfig& config) {
     // Choose a random auction for any of those which are likely to still be in
     // flight, plus a few 'leads'. Note that ideally we'd track non-expired
     // auctions exactly, but that state is difficult to split.
@@ -157,7 +157,7 @@ class AuctionGenerator {
       int64_t eventsCountSoFar,
       pcg32_fast& random,
       int64_t timestamp,
-      const GeneratorConfig& config);
+      const NexmarkGeneratorConfig& config);
 };
 
 } // namespace facebook::velox::connector::nexmark

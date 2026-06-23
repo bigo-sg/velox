@@ -18,7 +18,7 @@
 
 #include "velox/connectors/nexmark/AuctionGenerator.h"
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 #include "velox/connectors/nexmark/PriceGenerator.h"
@@ -34,7 +34,7 @@
 namespace facebook::velox::connector::nexmark {
 
 
-class GeneratorConfig;
+class NexmarkGeneratorConfig;
 
 class BidGenerator {
  public:
@@ -44,14 +44,14 @@ class BidGenerator {
       const FlatVector<int64_t>& eventIdVector,
       pcg32_fast& random,
       const FlatVector<int64_t>& timestampVector,
-      const GeneratorConfig& config,
+      const NexmarkGeneratorConfig& config,
       memory::MemoryPool* pool);
 
   FOLLY_ALWAYS_INLINE static Bid nextBid(
       int64_t eventId,
       pcg32_fast& random,
       int64_t timestamp,
-      const GeneratorConfig& config) {
+      const NexmarkGeneratorConfig& config) {
     int64_t auction;
     if (random() % config.getHotAuctionRatio() > 0) {
       auction = (AuctionGenerator::lastBase0AuctionId(config, eventId) /
@@ -60,7 +60,7 @@ class BidGenerator {
     } else {
       auction = AuctionGenerator::nextBase0AuctionId(eventId, random, config);
     }
-    auction += GeneratorConfig::FIRST_AUCTION_ID;
+    auction += NexmarkGeneratorConfig::FIRST_AUCTION_ID;
 
     int64_t bidder;
     if (random() % config.getHotBiddersRatio() > 0) {
@@ -71,7 +71,7 @@ class BidGenerator {
     } else {
       bidder = PersonGenerator::nextBase0PersonId(eventId, random, config);
     }
-    bidder += GeneratorConfig::FIRST_PERSON_ID;
+    bidder += NexmarkGeneratorConfig::FIRST_PERSON_ID;
 
     int64_t price = PriceGenerator::nextPrice(random);
 
@@ -87,7 +87,7 @@ class BidGenerator {
       url = channelAndUrl.second;
     }
 
-    bidder += GeneratorConfig::FIRST_PERSON_ID;
+    bidder += NexmarkGeneratorConfig::FIRST_PERSON_ID;
 
     std::string_view extra =
         StringsGenerator::nextExtra(random, 32, config.getAvgBidByteSize());

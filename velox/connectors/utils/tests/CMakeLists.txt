@@ -17,6 +17,7 @@ add_test(velox_connector_util_test velox_connector_util_test)
 
 target_link_libraries(
   velox_connector_util_test
+  velox_connector_util
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec

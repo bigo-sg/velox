@@ -15,7 +15,6 @@
  */
 #include <velox/exec/HashPartitionFunction.h>
 #include <velox/exec/RoundRobinPartitionFunction.h>
-#include <velox/experimental/stateful/window/WindowPartitionFunction.h>
 #include "velox/core/PlanNode.h"
 
 namespace facebook::velox::exec {
@@ -28,8 +27,6 @@ void registerPartitionFunctionSerDe() {
   registry.Register(
       "RoundRobinPartitionFunctionSpec",
       RoundRobinPartitionFunctionSpec::deserialize);
-  registry.Register(
-      "StreamWindowPartitionFunctionSpec", stateful::StreamWindowPartitionFunctionSpec::deserialize);
 }
 
 } // namespace facebook::velox::exec

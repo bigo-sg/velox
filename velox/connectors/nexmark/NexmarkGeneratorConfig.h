@@ -80,7 +80,7 @@ struct NexmarkConfiguration {
   int64_t outOfOrderGroupSize = 1;
 
   folly::dynamic serialize() const {
-    folly::dynamic obj;
+    folly::dynamic obj = folly::dynamic::object;
     obj["numEvents"] = numEvents;
     obj["numEventGenerators"] = numEventGenerators;
     obj["rateShape"] = rateShape == RateShape::SQUARE ? "SQUARE" : "SINE";
@@ -208,7 +208,7 @@ struct NexmarkConfiguration {
   }
 };
 
-class GeneratorConfig {
+class NexmarkGeneratorConfig {
  public:
   static constexpr int64_t FIRST_AUCTION_ID = 1000L;
   static constexpr int64_t FIRST_PERSON_ID = 1000L;
@@ -233,7 +233,7 @@ class GeneratorConfig {
   int64_t firstEventNumber;
   int64_t epochPeriodMs;
 
-  GeneratorConfig(
+  NexmarkGeneratorConfig(
       NexmarkConfiguration configuration_,
       int64_t baseTime_,
       int64_t firstEventId_,
@@ -241,24 +241,24 @@ class GeneratorConfig {
       int64_t firstEventNumber_);
 
   folly::dynamic serialize() const {
-    folly::dynamic obj;
+    folly::dynamic obj = folly::dynamic::object;
     obj["configuration"] = configuration.serialize();
     obj["baseTime"] = baseTime;
     obj["firstEventId"] = firstEventId;
-    obj["maxEventsOrZero"] = maxEventsOrZero;
+    obj["maxEvents"] = maxEventsOrZero;
     obj["firstEventNumber"] = firstEventNumber;
     return obj;
   }
 
-  static GeneratorConfig deserialize(const folly::dynamic& obj) {
+  static NexmarkGeneratorConfig deserialize(const folly::dynamic& obj) {
     NexmarkConfiguration configuration =
         NexmarkConfiguration::deserialize(obj["configuration"]);
     int64_t baseTime = obj["baseTime"].asInt();
     int64_t firstEventId = obj["firstEventId"].asInt();
-    int64_t maxEventsOrZero = obj["maxEventsOrZero"].asInt();
+    int64_t maxEventsOrZero = obj["maxEvents"].asInt();
     int64_t firstEventNumber = obj["firstEventNumber"].asInt();
 
-    return GeneratorConfig(
+    return NexmarkGeneratorConfig(
         std::move(configuration),
         baseTime,
         firstEventId,

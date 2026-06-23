@@ -87,4 +87,6 @@ class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
   WindowType windowType_;
 };
 
+void registerPartitionFunctionSerDe();
+
 } // namespace facebook::velox::stateful

@@ -25,8 +25,16 @@ if(${VELOX_ENABLE_HIVE_CONNECTOR})
   add_subdirectory(hive)
 endif()
 
+if(${VELOX_ENABLE_PULSAR_CONNECTOR} AND NOT ${VELOX_ENABLE_KAFKA_CONNECTOR})
+  add_subdirectory(kafka/format)
+endif()
+
 if(${VELOX_ENABLE_KAFKA_CONNECTOR})
   add_subdirectory(kafka)
+endif()
+
+if(${VELOX_ENABLE_PULSAR_CONNECTOR})
+  add_subdirectory(pulsar)
 endif()
 
 if(${VELOX_ENABLE_FILESYSTEM_CONNECTOR})
