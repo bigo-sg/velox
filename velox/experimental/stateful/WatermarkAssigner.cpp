@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/WatermarkAssigner.h"
-#include <cstdint>
 
-#include "velox/common/base/BitUtil.h"
-#include "velox/common/base/Nulls.h"
+#include "velox/experimental/stateful/WatermarkGenerator.h"
 
 namespace facebook::velox::stateful {
 
@@ -42,54 +40,30 @@ void WatermarkAssigner::advance() {
   if (!input_) {
     return;
   }
-
-  // Check for nulls using countNulls
-  auto* rowtimeVector = input_->childAt(rowtimeFieldIndex_).get();
-  const uint64_t* rawNulls = rowtimeVector->rawNulls();
-  if (rawNulls != nullptr) {
-    const vector_size_t size = rowtimeVector->size();
-    const uint64_t nullCount = bits::countNulls(rawNulls, 0, size);
-    if (nullCount > 0) {
-      VELOX_FAIL(
-          "RowTime field should not have nulls, but found {} nulls", nullCount);
-    }
-  }
-
-  RowVectorPtr timestampVector = op()->getOutput();
-
-  VELOX_CHECK(
-      timestampVector->size() == input_->size(),
-      "Timestamps are not equal to input.");
+  watermark::validateRowtimeNoNulls(input_, rowtimeFieldIndex_);
+  RowVectorPtr timestampVector =
+      watermark::getTimestampVector(op().get(), input_);
 
   const int64_t* timestamps =
       timestampVector->childAt(0)->asFlatVector<int64_t>()->rawValues();
   const vector_size_t timestampSize = timestampVector->size();
   vector_size_t lastIndex = 0;
 
-  // Pre-compute threshold to avoid repeated subtraction in hot loop
-  int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval_;
-
-  for (vector_size_t i = 0; i < timestampSize; ++i) {
-    const int64_t timestamp = timestamps[i];
-
-    // Only update currentWatermark if timestamp is greater (avoid unnecessary
-    // max call)
-    if (timestamp > currentWatermark) {
-      currentWatermark = timestamp;
-
-      // Check if watermark threshold is crossed
-      if (currentWatermark > nextWatermarkThreshold) {
+  currentWatermark = watermark::extractWatermark(
+      timestamps,
+      timestampSize,
+      currentWatermark,
+      lastWatermark,
+      watermarkInterval_,
+      [&](int64_t watermark, vector_size_t i) {
         auto output = std::dynamic_pointer_cast<RowVector>(
             input_->slice(lastIndex, i - lastIndex + 1));
         lastIndex = i + 1;
         pushOutput(
             std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
-        advanceWatermark();
-        // Update threshold after watermark advance
-        nextWatermarkThreshold = lastWatermark + watermarkInterval_;
-      }
-    }
-  }
+        lastWatermark = watermark;
+        emitWatermark(watermark);
+      });
 
   // Handle remaining data
   if (lastIndex == 0) {
@@ -104,12 +78,9 @@ void WatermarkAssigner::advance() {
   input_.reset();
 }
 
-void WatermarkAssigner::advanceWatermark() {
-  if (currentWatermark > lastWatermark) {
-    lastWatermark = currentWatermark;
-    // emit watermark
-    emitWatermark(currentWatermark);
-  }
+void WatermarkAssigner::close() {
+  StatefulOperator::close();
+  input_.reset();
 }
 
 } // namespace facebook::velox::stateful

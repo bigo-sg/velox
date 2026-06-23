@@ -49,6 +49,8 @@
 #include "velox/experimental/stateful/StreamKeyedOperator.h"
 #include "velox/experimental/stateful/StreamPartition.h"
 #include "velox/experimental/stateful/WatermarkAssigner.h"
+#include "velox/experimental/stateful/WatermarkGenerator.h"
+#include "velox/experimental/stateful/WatermarkSource.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include "velox/experimental/stateful/WindowJoin.h"
 #include "velox/experimental/stateful/agg/AggsHandleFunction.h"
@@ -368,6 +370,26 @@ StatefulOperatorPtr StatefulPlanner::transformGenericOperator(
     const StatefulPlanNode& planNode) {
   std::vector<StatefulOperatorPtr> targets =
       transformStatefulOperators(planNode.targets());
+  if (auto tableScanNodeWithWatermark =
+          std::dynamic_pointer_cast<const TableScanNodeWithWatermark>(
+              planNode.node())) {
+    auto watermarkPushDownSpec =
+        tableScanNodeWithWatermark->watermarkPushDownSpec();
+    VELOX_CHECK_NOT_NULL(
+        watermarkPushDownSpec,
+        "TableScanNodeWithWatermark requires watermarkPushDownSpec");
+    std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
+    auto watermarkProjectOp = std::make_unique<exec::FilterProject>(
+        nextOperatorId(), ctx_, nullptr, watermarkPushDownSpec->project());
+    std::unique_ptr<WatermarkGenerator> watermarkGenerator =
+        std::make_unique<WatermarkGenerator>(
+            std::move(watermarkProjectOp),
+            watermarkPushDownSpec->idleTimeout(),
+            watermarkPushDownSpec->rowtimeFieldIndex(),
+            watermarkPushDownSpec->watermarkInterval());
+    return std::make_unique<WatermarkSource>(
+        std::move(op), std::move(targets), std::move(watermarkGenerator));
+  }
   std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
   return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
 }

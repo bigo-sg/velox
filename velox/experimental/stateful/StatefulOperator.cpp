@@ -60,12 +60,19 @@ bool StatefulOperator::sourceEmpty() {
 }
 
 void StatefulOperator::close() {
-  operator_->close();
   for (auto& target : targets_) {
     target->close();
   }
-  operator_.reset();
   targets_.clear();
+
+  if (operator_) {
+    operator_->close();
+    operator_.reset();
+  }
+
+  // Release state-owned references even if close failed.
+  stateHandler_.reset();
+  combinedWatermarkStatus_.reset();
 }
 
 void StatefulOperator::advanceWithFuture(ContinueFuture* future) {

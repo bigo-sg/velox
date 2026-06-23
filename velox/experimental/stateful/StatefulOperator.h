@@ -15,6 +15,9 @@
  */
 #pragma once
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/Operator.h"
@@ -28,7 +31,7 @@ namespace facebook::velox::stateful {
 
 class JniCaller {
  public:
-    virtual void call(
+  virtual void call(
       const std::string& clazzName,
       const std::string& methodName,
       const std::string& arg) = 0;
@@ -122,6 +125,9 @@ class StatefulOperator {
 
   void pushOutput(StreamElementPtr output);
   void emitWatermark(int64_t timestamp);
+  void setSourceEmpty(bool sourceEmpty) {
+    sourceEmpty_ = sourceEmpty;
+  }
 
   virtual int numInputs() const {
     return 1;
