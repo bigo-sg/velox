@@ -25,13 +25,13 @@ namespace facebook::velox::connector::nexmark {
 /// `NexmarkConnector` is a connector that generates data on-the-fly for
 /// Flink nexmark benchmark.
 ///
-/// NexmarkConnectorSplit lets clients specify how many rows are expected to be
-/// generated.
+/// NexmarkConnectorSplit carries the NexmarkGeneratorConfig used to drive
+/// event generation. NexmarkTableHandle itself carries no generation
+/// parameters — splits are the single source of truth for config.
 class NexmarkTableHandle : public ConnectorTableHandle {
  public:
-  explicit NexmarkTableHandle(std::string connectorId, GeneratorConfig config)
-      : ConnectorTableHandle(std::move(connectorId)),
-        config_(std::move(config)) {}
+  explicit NexmarkTableHandle(std::string connectorId)
+      : ConnectorTableHandle(std::move(connectorId)) {}
 
   ~NexmarkTableHandle() override = default;
 
@@ -46,8 +46,6 @@ class NexmarkTableHandle : public ConnectorTableHandle {
       void* context);
 
   static void registerSerDe();
-
-  const GeneratorConfig config_;
 };
 
 class NexmarkDataSource : public DataSource {

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-#include "velox/connectors/nexmark/GeneratorConfig.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 
 #include <cstdint>
 #include <limits>
 
 namespace facebook::velox::connector::nexmark {
 
-GeneratorConfig::GeneratorConfig(
+NexmarkGeneratorConfig::NexmarkGeneratorConfig(
     NexmarkConfiguration configuration_,
     int64_t baseTime_,
     int64_t firstEventId_,

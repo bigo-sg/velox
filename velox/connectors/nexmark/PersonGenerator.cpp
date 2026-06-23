@@ -49,7 +49,7 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
     const FlatVector<int64_t>& eventIdVector,
     pcg32_fast& random,
     const FlatVector<int64_t>& timestampVector,
-    const GeneratorConfig& config,
+    const NexmarkGeneratorConfig& config,
     memory::MemoryPool* pool) {
   auto personVector = Person::createVector(rows, pool);
 

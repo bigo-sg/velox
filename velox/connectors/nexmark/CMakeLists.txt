@@ -20,7 +20,7 @@ velox_add_library(
   BidGenerator.cpp
   AuctionGenerator.cpp
   NexmarkGenerator.cpp
-  GeneratorConfig.cpp
+  NexmarkGeneratorConfig.cpp
   NexmarkConnector.cpp)
 
 velox_link_libraries(

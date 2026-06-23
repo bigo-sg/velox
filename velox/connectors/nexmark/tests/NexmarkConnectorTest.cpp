@@ -30,13 +30,14 @@ using facebook::velox::exec::test::PlanBuilder;
 DEFINE_int64(numRows, 100, "Number of rows to process in the test");
 
 TEST_F(NexmarkConnectorTest, testRows) {
-  const int64_t numRows = FLAGS_numRows; // Use the value from the command line flag
+  const int64_t numRows =
+      FLAGS_numRows; // Use the value from the command line flag
   auto type = Event::createType();
 
   auto plan = PlanBuilder()
                   .startTableScan()
                   .outputType(std::dynamic_pointer_cast<const RowType>(type))
-                  .tableHandle(makeNexmarkTableHandle(numRows))
+                  .tableHandle(makeNexmarkTableHandle())
                   .endTableScan()
                   .planNode();
 
@@ -46,13 +47,14 @@ TEST_F(NexmarkConnectorTest, testRows) {
 }
 
 TEST_F(NexmarkConnectorTest, testProportions) {
-  const int64_t numRows = FLAGS_numRows; // Use the value from the command line flag
+  const int64_t numRows =
+      FLAGS_numRows; // Use the value from the command line flag
   auto type = Event::createType();
 
   auto plan = PlanBuilder()
                   .startTableScan()
                   .outputType(std::dynamic_pointer_cast<const RowType>(type))
-                  .tableHandle(makeNexmarkTableHandle(numRows))
+                  .tableHandle(makeNexmarkTableHandle())
                   .endTableScan()
                   .partialAggregation(
                       {"event_type"}, // Group by "event_type"
@@ -68,7 +70,8 @@ TEST_F(NexmarkConnectorTest, testProportions) {
   ASSERT_EQ(result->size(), 3);
 
   // Assert that the counts for each "event_type" are proportional
-  std::vector<Event::Type> expectedTypes = {Event::Type::PERSON, Event::Type::AUCTION, Event::Type::BID};
+  std::vector<Event::Type> expectedTypes = {
+      Event::Type::PERSON, Event::Type::AUCTION, Event::Type::BID};
   std::vector<int64_t> expectedCounts = {
       numRows / 50, numRows * 3 / 50, numRows * 46 / 50};
 
@@ -76,7 +79,9 @@ TEST_F(NexmarkConnectorTest, testProportions) {
     ASSERT_EQ(
         result->childAt(0)->asFlatVector<int32_t>()->valueAt(i),
         static_cast<int32_t>(expectedTypes[i]));
-    ASSERT_EQ(result->childAt(1)->asFlatVector<int64_t>()->valueAt(i), expectedCounts[i]);
+    ASSERT_EQ(
+        result->childAt(1)->asFlatVector<int64_t>()->valueAt(i),
+        expectedCounts[i]);
   }
 }
 
@@ -89,7 +94,7 @@ TEST_F(NexmarkConnectorTest, testNext) {
 
   while (generator->hasNext()) {
     auto nextEvent = generator->next();
-    const auto & event = nextEvent.getEvent();
+    const auto& event = nextEvent.getEvent();
 
     count++;
     switch (event.getType()) {
@@ -152,7 +157,7 @@ TEST_F(NexmarkConnectorTest, testNextBatch) {
   ASSERT_EQ(bidCount, expectedCounts[2]);
 }
 
-}
+} // namespace facebook::velox::connector::nexmark::test
 
 int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);

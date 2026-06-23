@@ -25,7 +25,7 @@ RowVectorPtr AuctionGenerator::nextAuctionBatch(
     const FlatVector<int64_t>& eventIdVector,
     pcg32_fast& random,
     const FlatVector<int64_t>& timestampVector,
-    const GeneratorConfig& config,
+    const NexmarkGeneratorConfig& config,
     memory::MemoryPool* pool) {
 
   auto auctionVector = Auction::createVector(rows, pool);
@@ -74,7 +74,7 @@ int64_t AuctionGenerator::nextAuctionLengthMs(
     int64_t eventsCountSoFar,
     pcg32_fast& random,
     int64_t timestamp,
-    const GeneratorConfig& config) {
+    const NexmarkGeneratorConfig& config) {
 
   // What's our current event number?
   int64_t currentEventNumber = config.nextAdjustedEventNumber(eventsCountSoFar);
