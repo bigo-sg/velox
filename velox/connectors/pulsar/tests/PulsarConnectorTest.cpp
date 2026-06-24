@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-#include "velox/connectors/pulsar/PulsarConfig.h"
-#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
-#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
-#include "velox/connectors/pulsar/PulsarTableHandle.h"
-#include "velox/common/base/tests/GTestUtils.h"
-#include "velox/type/Type.h"
-#include <cstdio>
-#include <fstream>
 #include <fmt/format.h>
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 #include <unistd.h>
+#include <cstdio>
+#include <fstream>
+#include "velox/common/base/tests/GTestUtils.h"
+#include "velox/connectors/pulsar/PulsarConfig.h"
+#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
+#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
+#include "velox/connectors/pulsar/PulsarTableHandle.h"
+#include "velox/type/Type.h"
 
 namespace facebook::velox::connector::pulsar::test {
 
@@ -64,6 +64,7 @@ TEST(PulsarConnectorTest, connectionConfigRequiredValues) {
   EXPECT_EQ(config.getDataBatchSize(), 500);
   EXPECT_EQ(config.getReceiveTimeoutMills(), 100);
   EXPECT_TRUE(config.getAcknowledgeMessages());
+  EXPECT_FALSE(config.getCheckpointEnabled());
 }
 
 TEST(PulsarConnectorTest, connectionConfigOverrides) {
@@ -79,6 +80,7 @@ TEST(PulsarConnectorTest, connectionConfigOverrides) {
       {ConnectionConfig::kDataBatchSize, "20"},
       {ConnectionConfig::kReceiveTimeoutMills, "30"},
       {ConnectionConfig::kAcknowledgeMessages, "false"},
+      {ConnectionConfig::kCheckpointEnabled, "true"},
       {ConnectionConfig::kAckMode, "cumulative"},
       {ConnectionConfig::kPartitionIndex, "2"},
       {ConnectionConfig::kStartMessageId, "1:2:3:4"},
@@ -95,6 +97,7 @@ TEST(PulsarConnectorTest, connectionConfigOverrides) {
   EXPECT_EQ(config.getDataBatchSize(), 20);
   EXPECT_EQ(config.getReceiveTimeoutMills(), 30);
   EXPECT_FALSE(config.getAcknowledgeMessages());
+  EXPECT_TRUE(config.getCheckpointEnabled());
   EXPECT_EQ(config.getAckMode(), "cumulative");
   EXPECT_EQ(config.getPartitionIndex(), 2);
   EXPECT_EQ(config.getStartMessageId(), "1:2:3:4");
@@ -138,6 +141,18 @@ TEST(PulsarConnectorTest, invalidBooleanConfigFails) {
   VELOX_ASSERT_THROW(
       startInclusiveConfig.getStartMessageIdInclusive(),
       "Invalid Pulsar start message id inclusive config");
+
+  ConnectionConfig checkpointConfig(makeConfig({
+      {ConnectionConfig::kServiceUrl, "pulsar://localhost:6650"},
+      {ConnectionConfig::kTopic, "topic"},
+      {ConnectionConfig::kSubscriptionName, "sub"},
+      {ConnectionConfig::kFormat, "raw"},
+      {ConnectionConfig::kCheckpointEnabled, "maybe"},
+  }));
+
+  VELOX_ASSERT_THROW(
+      checkpointConfig.getCheckpointEnabled(),
+      "Invalid Pulsar checkpoint enabled config");
 }
 
 TEST(PulsarConnectorTest, consumerConfigurationOverrides) {
@@ -252,7 +267,8 @@ TEST(PulsarConnectorTest, missingTokenFileFails) {
   }));
 
   VELOX_ASSERT_THROW(
-      config.getPulsarClientConfiguration(), "Failed to read Pulsar token file");
+      config.getPulsarClientConfiguration(),
+      "Failed to read Pulsar token file");
 }
 
 TEST(PulsarConnectorTest, splitSerialization) {
@@ -264,7 +280,8 @@ TEST(PulsarConnectorTest, splitSerialization) {
       "json",
       3,
       "1:2",
-      "3:4");
+      "3:4",
+      false);
 
   const auto serialized = split.serialize();
   const auto copy = PulsarConnectorSplit::create(serialized);
@@ -277,9 +294,41 @@ TEST(PulsarConnectorTest, splitSerialization) {
   EXPECT_EQ(copy->partitionIndex_, 3);
   EXPECT_EQ(copy->startMessageId_, "1:2");
   EXPECT_EQ(copy->endMessageId_, "3:4");
+  EXPECT_FALSE(copy->startMessageIdInclusive_);
   EXPECT_NE(
       copy->toString().find("persistent://public/default/topic"),
       std::string::npos);
+}
+
+TEST(PulsarConnectorTest, checkpointStateSplitSerialization) {
+  PulsarConnectorSplit split(
+      "pulsar",
+      "pulsar://localhost:6650",
+      "persistent://public/default/topic",
+      "sub",
+      "raw",
+      2,
+      "10:20:0",
+      "30:40:0",
+      false);
+
+  const auto serialized = split.serialize();
+
+  EXPECT_EQ(serialized["name"].asString(), "PulsarConnectorSplit");
+  EXPECT_EQ(serialized["connectorId"].asString(), "pulsar");
+  EXPECT_EQ(serialized["serviceUrl"].asString(), "pulsar://localhost:6650");
+  EXPECT_EQ(
+      serialized["topic"].asString(), "persistent://public/default/topic");
+  EXPECT_EQ(serialized["subscriptionName"].asString(), "sub");
+  EXPECT_EQ(serialized["format"].asString(), "raw");
+  EXPECT_EQ(serialized["partitionIndex"].asInt(), 2);
+  EXPECT_EQ(serialized["startMessageId"].asString(), "10:20:0");
+  EXPECT_EQ(serialized["endMessageId"].asString(), "30:40:0");
+  EXPECT_FALSE(serialized["startMessageIdInclusive"].asBool());
+
+  const auto copy = PulsarConnectorSplit::create(serialized);
+  EXPECT_EQ(copy->startMessageId_, "10:20:0");
+  EXPECT_FALSE(copy->startMessageIdInclusive_);
 }
 
 TEST(PulsarConnectorTest, serdeRoundTripThroughRegistry) {
@@ -320,6 +369,7 @@ TEST(PulsarConnectorTest, splitSerializationDefaults) {
   EXPECT_EQ(copy->partitionIndex_, -1);
   EXPECT_EQ(copy->startMessageId_, "");
   EXPECT_EQ(copy->endMessageId_, "");
+  EXPECT_TRUE(copy->startMessageIdInclusive_);
 }
 
 TEST(PulsarConnectorTest, partitionedTopicName) {

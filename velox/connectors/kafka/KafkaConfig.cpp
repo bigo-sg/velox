@@ -83,10 +83,10 @@ const uint32_t ConnectionConfig::getQueuedMinMessages() const {
 }
 
 const bool ConnectionConfig::getEnableAutoCommit() const {
-  return checkAndGetConfigValue<std::string, false>(kEnableAutoCommit, "true") ==
-                 "true"
-             ? true
-             : false;
+  return checkAndGetConfigValue<std::string, false>(
+             kEnableAutoCommit, "true") == "true"
+      ? true
+      : false;
 }
 
 const bool ConnectionConfig::getEnablePartitionEof() const {

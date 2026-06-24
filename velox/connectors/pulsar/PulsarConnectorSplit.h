@@ -15,8 +15,8 @@
  */
 #pragma once
 
-#include "velox/connectors/Connector.h"
 #include <folly/dynamic.h>
+#include "velox/connectors/Connector.h"
 
 namespace facebook::velox::connector::pulsar {
 
@@ -28,6 +28,7 @@ struct PulsarConnectorSplit : public ConnectorSplit {
   int32_t partitionIndex_;
   std::string startMessageId_;
   std::string endMessageId_;
+  bool startMessageIdInclusive_;
 
   explicit PulsarConnectorSplit(
       const std::string& connectorId,
@@ -37,7 +38,8 @@ struct PulsarConnectorSplit : public ConnectorSplit {
       std::string format,
       int32_t partitionIndex = -1,
       std::string startMessageId = "",
-      std::string endMessageId = "")
+      std::string endMessageId = "",
+      bool startMessageIdInclusive = true)
       : ConnectorSplit(connectorId),
         serviceUrl_(std::move(serviceUrl)),
         topic_(std::move(topic)),
@@ -45,7 +47,8 @@ struct PulsarConnectorSplit : public ConnectorSplit {
         format_(std::move(format)),
         partitionIndex_(partitionIndex),
         startMessageId_(std::move(startMessageId)),
-        endMessageId_(std::move(endMessageId)) {}
+        endMessageId_(std::move(endMessageId)),
+        startMessageIdInclusive_(startMessageIdInclusive) {}
 
   std::string toString() const override;
 

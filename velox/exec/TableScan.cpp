@@ -439,6 +439,15 @@ void TableScan::addDynamicFilter(
   stats_.wlock()->dynamicFilterStats.producerNodeIds.emplace(producer);
 }
 
+std::vector<std::string> TableScan::checkpointState() const {
+  return dataSource_ ? dataSource_->checkpointState()
+                     : std::vector<std::string>{};
+}
+
+std::vector<std::string> TableScan::commit(int64_t id) {
+  return dataSource_ ? dataSource_->commit(id) : std::vector<std::string>{};
+}
+
 void TableScan::close() {
   Operator::close();
 

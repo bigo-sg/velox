@@ -15,6 +15,7 @@
  */
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include <cstdint>
+#include "velox/exec/TableScan.h"
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
@@ -200,6 +201,19 @@ void StatefulOperator::snapshotState() {
   for (auto& target : targets_) {
     target->snapshotState();
   }
+}
+
+std::vector<std::string> StatefulOperator::snapshotSourceState() {
+  std::vector<std::string> states;
+  auto tableScan = dynamic_cast<exec::TableScan*>(op().get());
+  if (tableScan) {
+    states = tableScan->checkpointState();
+  }
+  for (auto& target : targets_) {
+    auto targetStates = target->snapshotSourceState();
+    states.insert(states.end(), targetStates.begin(), targetStates.end());
+  }
+  return states;
 }
 
 std::vector<std::string> StatefulOperator::notifyCheckpointComplete(

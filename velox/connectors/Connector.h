@@ -226,7 +226,9 @@ class DataSink {
   /// Returns the stats of this data sink.
   virtual Stats stats() const = 0;
 
-  virtual std::vector<std::string> commit(int64_t id) { return {}; }
+  virtual std::vector<std::string> commit(int64_t id) {
+    return {};
+  }
 };
 
 class DataSource {
@@ -305,6 +307,14 @@ class DataSource {
   /// connector implementation decides how to support the cancellation if
   /// needed.
   virtual void cancel() {}
+
+  virtual std::vector<std::string> checkpointState() {
+    return {};
+  }
+
+  virtual std::vector<std::string> commit(int64_t /*id*/) {
+    return {};
+  }
 };
 
 class IndexSource {

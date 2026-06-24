@@ -15,11 +15,28 @@
  */
 
 #include "velox/connectors/pulsar/PulsarConfig.h"
-#include "velox/common/base/Exceptions.h"
 #include <algorithm>
 #include <cctype>
+#include "velox/common/base/Exceptions.h"
 
 namespace facebook::velox::connector::pulsar {
+
+namespace {
+
+bool parseBooleanConfig(const std::string& key, const std::string& value) {
+  std::string lowerValue;
+  lowerValue.resize(value.size());
+  std::transform(value.begin(), value.end(), lowerValue.begin(), ::tolower);
+  if (lowerValue == "true" || lowerValue == "1") {
+    return true;
+  }
+  if (lowerValue == "false" || lowerValue == "0") {
+    return false;
+  }
+  VELOX_FAIL("Invalid Pulsar {} config: {}", key, value);
+}
+
+} // namespace
 
 template <typename T, bool throwException>
 T PulsarConfig::checkAndGetConfigValue(
@@ -111,31 +128,19 @@ uint32_t ConnectionConfig::getReceiveTimeoutMills() const {
 bool ConnectionConfig::getAcknowledgeMessages() const {
   const auto value =
       checkAndGetConfigValue<std::string, false>(kAcknowledgeMessages, "true");
-  std::string lowerValue;
-  lowerValue.resize(value.size());
-  std::transform(value.begin(), value.end(), lowerValue.begin(), ::tolower);
-  if (lowerValue == "true" || lowerValue == "1") {
-    return true;
-  }
-  if (lowerValue == "false" || lowerValue == "0") {
-    return false;
-  }
-  VELOX_FAIL("Invalid Pulsar acknowledge messages config: {}", value);
+  return parseBooleanConfig("acknowledge messages", value);
+}
+
+bool ConnectionConfig::getCheckpointEnabled() const {
+  const auto value =
+      checkAndGetConfigValue<std::string, false>(kCheckpointEnabled, "false");
+  return parseBooleanConfig("checkpoint enabled", value);
 }
 
 bool ConnectionConfig::getStartMessageIdInclusive() const {
   const auto value = checkAndGetConfigValue<std::string, false>(
       kStartMessageIdInclusive, "true");
-  std::string lowerValue;
-  lowerValue.resize(value.size());
-  std::transform(value.begin(), value.end(), lowerValue.begin(), ::tolower);
-  if (lowerValue == "true" || lowerValue == "1") {
-    return true;
-  }
-  if (lowerValue == "false" || lowerValue == "0") {
-    return false;
-  }
-  VELOX_FAIL("Invalid Pulsar start message id inclusive config: {}", value);
+  return parseBooleanConfig("start message id inclusive", value);
 }
 
 } // namespace facebook::velox::connector::pulsar
