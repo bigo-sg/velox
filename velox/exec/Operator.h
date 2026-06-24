@@ -230,7 +230,18 @@ class Operator : public BaseRuntimeStatWriter {
   /// @param input Non-empty input vector.
   virtual void addInput(RowVectorPtr input) = 0;
 
-  virtual std::vector<std::string> commit(int64_t id) { return {}; }
+  virtual std::vector<std::string> commit(int64_t id) {
+    return {};
+  }
+
+  virtual std::vector<std::string> snapshotState(int64_t /*checkpointId*/) {
+    return {};
+  }
+
+  virtual void restoreState(
+      const std::vector<std::string>& /*checkpointRecords*/) {}
+
+  virtual void abortCheckpoint(int64_t /*checkpointId*/) {}
 
   /// Informs 'this' that addInput will no longer be called. This means
   /// that any partial state kept by 'this' should be returned by

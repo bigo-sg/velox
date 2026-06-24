@@ -61,6 +61,8 @@ class KafkaConsumer {
   void assign(const cppkafka::TopicPartitionList& tps);
   /// Consume a batch of messages.
   const void consumeBatch(std::vector<KafkaMessage>& msgs, size_t& msgBytes);
+  /// Commit offsets for the given topic partitions.
+  void commit(const cppkafka::TopicPartitionList& tps);
   /// For test, Get the kafka topics that already subscribed.
   const std::vector<std::string> getSubscribedTopics();
   /// For test, Get the kafka assigned topic and partitions.

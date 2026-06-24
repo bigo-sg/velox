@@ -68,11 +68,10 @@ class StatefulTask : public exec::Task {
   void notifyWatermark(int64_t watermark);
 
   void initializeState(
-      const std::shared_ptr<const KeyedStateBackendParameters> params);
+      const std::shared_ptr<const KeyedStateBackendParameters> params,
+      const std::vector<std::string>& checkpointRecords = {});
 
-  void snapshotState();
-
-  std::vector<std::string> snapshotSourceState();
+  std::vector<std::string> snapshotState(int64_t checkpointId);
 
   std::vector<std::string> notifyCheckpointComplete(int64_t checkpointId);
 

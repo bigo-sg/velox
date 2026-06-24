@@ -74,9 +74,9 @@ class StatefulOperator {
 
   void initializeStateBackend(StateBackend* stateBackend);
 
-  void snapshotState();
+  std::vector<std::string> snapshotState(int64_t checkpointId);
 
-  std::vector<std::string> snapshotSourceState();
+  void restoreState(const std::vector<std::string>& checkpointRecords);
 
   std::vector<std::string> notifyCheckpointComplete(int64_t checkpointId);
 

@@ -16,6 +16,7 @@
 
 #include "velox/connectors/kafka/KafkaDataSource.h"
 #include <folly/json.h>
+#include <limits>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/connectors/kafka/KafkaConnectorSplit.h"
 #include "velox/connectors/kafka/KafkaTableHandle.h"
@@ -61,7 +62,6 @@ KafkaDataSource::KafkaDataSource(
   const std::shared_ptr<KafkaTableHandle> kafkaTableHandle =
       std::dynamic_pointer_cast<KafkaTableHandle>(tableHandle);
   if (kafkaTableHandle) {
-    connectorId_ = kafkaTableHandle->connectorId();
     const std::unordered_map<std::string, std::string>& tableParams =
         kafkaTableHandle->tableParameters();
     config_ = config_->updateAndGetAllConfigs<ConnectionConfig>(tableParams);
@@ -99,13 +99,12 @@ void KafkaDataSource::createConsumer(cppkafka::Configuration& config) {
       cppKafkaConsumer, config_->getPollTimeoutMills(), batchSize_);
 }
 
-void KafkaDataSource::updateCheckpointOffsets(
+void KafkaDataSource::updateNextOffsets(
     const cppkafka::TopicPartitionList& topicPartitions) {
-  checkpointOffsets_.clear();
   for (const auto& topicPartition : topicPartitions) {
     if (topicPartition.get_offset() >= 0) {
-      checkpointOffsets_[topicPartition.get_topic()][static_cast<uint32_t>(
-          topicPartition.get_partition())] = topicPartition.get_offset();
+      nextOffsets_[{topicPartition.get_topic(), topicPartition.get_partition()}] =
+          topicPartition.get_offset();
     }
   }
 }
@@ -159,9 +158,9 @@ void KafkaDataSource::addSplit(ConnectorSplitPtr split) {
       "Failed to add split, because split format is different from kafka config.");
   cppkafka::TopicPartitionList topicPartitions =
       getSplitTopicPartitions(*kafkaConnectorSplit);
-  consumer_->setTopicPartitionsOffset(
-      topicPartitions, config_->getStartupMode());
-  updateCheckpointOffsets(topicPartitions);
+  consumer_->setTopicPartitionsOffset(topicPartitions, config_->getStartupMode());
+  applyRestoredOffsets(topicPartitions);
+  updateNextOffsets(topicPartitions);
   consumer_->assign(topicPartitions);
 }
 
@@ -258,9 +257,7 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
     deserializer_->deserialize(message.payload, pos, outRow_);
     completedBytes_ += message.payload.size();
     completedRows_ += 1;
-    checkpointOffsets_[message.topic]
-                      [static_cast<uint32_t>(message.partition)] =
-                          message.offset + 1;
+    nextOffsets_[{message.topic, message.partition}] = message.offset + 1;
   }
   res.emplace(std::dynamic_pointer_cast<RowVector>(outRow_));
   consumePos_ += processDataSize;
@@ -271,27 +268,178 @@ std::optional<RowVectorPtr> KafkaDataSource::next(
   return res;
 }
 
-std::vector<std::string> KafkaDataSource::checkpointState() {
-  if (checkpointOffsets_.empty()) {
+std::vector<std::string> KafkaDataSource::snapshotState(int64_t checkpointId) {
+  if (nextOffsets_.empty()) {
     return {};
   }
-  std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>>
-      topicPartitions;
-  for (const auto& topicOffset : checkpointOffsets_) {
-    auto& partitions = topicPartitions[topicOffset.first];
-    for (const auto& partitionOffset : topicOffset.second) {
-      partitions.push_back({partitionOffset.first, partitionOffset.second});
+  pendingCheckpointOffsets_[checkpointId] = nextOffsets_;
+  return {snapshotToJson(checkpointId, nextOffsets_)};
+}
+
+void KafkaDataSource::restoreState(
+    const std::vector<std::string>& checkpointRecords) {
+  restoredCheckpointRecords_ = checkpointRecords;
+}
+
+std::vector<std::string> KafkaDataSource::commit(int64_t checkpointId) {
+  auto candidate = pendingCheckpointOffsets_.end();
+  for (auto it = pendingCheckpointOffsets_.begin();
+       it != pendingCheckpointOffsets_.end() && it->first <= checkpointId;
+       ++it) {
+    candidate = it;
+  }
+  if (candidate == pendingCheckpointOffsets_.end()) {
+    return {};
+  }
+  if (!hasOffsetsToCommit(candidate->second)) {
+    pendingCheckpointOffsets_.erase(
+        pendingCheckpointOffsets_.begin(), std::next(candidate));
+    return {};
+  }
+
+  cppkafka::TopicPartitionList topicPartitions;
+  for (const auto& [topicPartition, offset] : candidate->second) {
+    cppkafka::TopicPartition tp(topicPartition.first, topicPartition.second);
+    tp.set_offset(offset);
+    topicPartitions.emplace_back(tp);
+  }
+  consumer_->commit(topicPartitions);
+  updateCommittedOffsets(candidate->second);
+
+  std::vector<std::string> committed{
+      snapshotToJson(candidate->first, candidate->second)};
+  pendingCheckpointOffsets_.erase(
+      pendingCheckpointOffsets_.begin(), std::next(candidate));
+  return committed;
+}
+
+void KafkaDataSource::abortCheckpoint(int64_t checkpointId) {
+  pendingCheckpointOffsets_.erase(checkpointId);
+}
+
+void KafkaDataSource::applyRestoredOffsets(
+    cppkafka::TopicPartitionList& topicPartitions) {
+  const auto restoredOffsets =
+      offsetsFromCheckpointRecords(restoredCheckpointRecords_);
+  if (restoredOffsets.empty()) {
+    return;
+  }
+  TopicPartitionOffsets appliedOffsets;
+  for (auto& topicPartition : topicPartitions) {
+    auto it = restoredOffsets.find(
+        {topicPartition.get_topic(), topicPartition.get_partition()});
+    if (it != restoredOffsets.end()) {
+      topicPartition.set_offset(it->second);
+      appliedOffsets[{
+          topicPartition.get_topic(), topicPartition.get_partition()}] =
+          it->second;
     }
   }
-  KafkaConnectorSplit split(
-      connectorId_,
-      config_->getBootstrapServers(),
-      config_->getGroupId(),
-      config_->getFormat(),
-      config_->getEnableAutoCommit(),
-      config_->getStartupMode(),
-      topicPartitions);
-  return {folly::toJson(split.serialize())};
+  if (!appliedOffsets.empty()) {
+    nextOffsets_ = appliedOffsets;
+    updateCommittedOffsets(appliedOffsets);
+  }
+}
+
+bool KafkaDataSource::hasOffsetsToCommit(
+    const TopicPartitionOffsets& offsets) const {
+  for (const auto& [topicPartition, offset] : offsets) {
+    auto it = committedOffsets_.find(topicPartition);
+    if (it == committedOffsets_.end() || offset > it->second) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void KafkaDataSource::updateCommittedOffsets(
+    const TopicPartitionOffsets& offsets) {
+  for (const auto& [topicPartition, offset] : offsets) {
+    auto it = committedOffsets_.find(topicPartition);
+    if (it == committedOffsets_.end() || offset > it->second) {
+      committedOffsets_[topicPartition] = offset;
+    }
+  }
+}
+
+std::string KafkaDataSource::snapshotToJson(
+    int64_t checkpointId,
+    const TopicPartitionOffsets& offsets) const {
+  folly::dynamic topicPartitions = folly::dynamic::array;
+  for (const auto& [topicPartition, offset] : offsets) {
+    folly::dynamic partition = folly::dynamic::object;
+    partition["topic"] = topicPartition.first;
+    partition["partition"] = topicPartition.second;
+    partition["offset"] = offset;
+    topicPartitions.push_back(partition);
+  }
+
+  folly::dynamic obj = folly::dynamic::object;
+  obj["connector"] = "kafka";
+  obj["planNodeId"] = queryCtx_->planNodeId();
+  obj["checkpointId"] = checkpointId;
+  obj["groupId"] = config_->getGroupId();
+  obj["topicPartitions"] = topicPartitions;
+  return folly::toJson(obj);
+}
+
+KafkaDataSource::TopicPartitionOffsets
+KafkaDataSource::offsetsFromCheckpointRecords(
+    const std::vector<std::string>& checkpointRecords) const {
+  int64_t selectedCheckpointId = std::numeric_limits<int64_t>::min();
+  TopicPartitionOffsets selectedOffsets;
+  for (const auto& checkpointRecord : checkpointRecords) {
+    folly::dynamic obj;
+    try {
+      obj = folly::parseJson(checkpointRecord);
+    } catch (const std::exception&) {
+      continue;
+    }
+    if (!obj.isObject() || !obj.count("connector") ||
+        !obj["connector"].isString() ||
+        obj["connector"].asString() != "kafka") {
+      continue;
+    }
+    if (obj.count("planNodeId") &&
+        (!obj["planNodeId"].isString() ||
+         obj["planNodeId"].asString() != queryCtx_->planNodeId())) {
+      continue;
+    }
+    if (obj.count("groupId") &&
+        (!obj["groupId"].isString() ||
+         obj["groupId"].asString() != config_->getGroupId())) {
+      continue;
+    }
+    if (!obj.count("checkpointId") || !obj.count("topicPartitions") ||
+        !obj["checkpointId"].isInt() || !obj["topicPartitions"].isArray()) {
+      continue;
+    }
+    const int64_t checkpointId = obj["checkpointId"].asInt();
+    if (checkpointId < selectedCheckpointId) {
+      continue;
+    }
+    TopicPartitionOffsets offsets;
+    for (const auto& topicPartition : obj["topicPartitions"]) {
+      if (!topicPartition.isObject() || !topicPartition.count("topic") ||
+          !topicPartition.count("partition") ||
+          !topicPartition.count("offset") ||
+          !topicPartition["topic"].isString() ||
+          !topicPartition["partition"].isInt() ||
+          !topicPartition["offset"].isInt()) {
+        continue;
+      }
+      offsets[{
+          topicPartition["topic"].asString(),
+          static_cast<int32_t>(topicPartition["partition"].asInt())}] =
+          topicPartition["offset"].asInt();
+    }
+    if (offsets.empty()) {
+      continue;
+    }
+    selectedCheckpointId = checkpointId;
+    selectedOffsets = std::move(offsets);
+  }
+  return selectedOffsets;
 }
 
 std::unordered_map<std::string, RuntimeCounter>

@@ -36,9 +36,9 @@ class StreamOperatorStateHandler {
 
   State getOrCreateKeyedState() const;
 
-  void snapshotState() {
+  void snapshotState(int64_t checkpointId) {
     keyedStateBackend_->snapshot(
-        operatorId_, 0, CheckpointOptions::defaultOptions());
+        operatorId_, checkpointId, CheckpointOptions::defaultOptions());
   }
 
   void notifyCheckpointComplete(int64_t checkpointId) {
@@ -49,7 +49,8 @@ class StreamOperatorStateHandler {
     keyedStateBackend_->notifyCheckpointAborted(checkpointId);
   }
 
-  // The type of state has to be specified as C++ does not support templates well.
+  // The type of state has to be specified as C++ does not support templates
+  // well.
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>> getMapState(
       StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);
@@ -86,8 +87,9 @@ class StreamOperatorStateHandler {
   }
 
   // TODO: should make it using template
-  std::shared_ptr<InternalTimerService<int64_t, TimeWindow>> createGroupWindowAggTimerService(
-    Triggerable<int64_t, TimeWindow>* triggerable) {
+  std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
+  createGroupWindowAggTimerService(
+      Triggerable<int64_t, TimeWindow>* triggerable) {
     return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
   }
 

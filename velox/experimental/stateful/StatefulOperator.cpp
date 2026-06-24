@@ -188,32 +188,32 @@ void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
   }
 }
 
-void StatefulOperator::snapshotState() {
+std::vector<std::string> StatefulOperator::snapshotState(int64_t checkpointId) {
+  std::vector<std::string> snapshots = operator_->snapshotState(checkpointId);
   if (!stateHandler_) {
-    return;
+    return snapshots;
   }
-  stateHandler_->snapshotState();
+  stateHandler_->snapshotState(checkpointId);
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
     // If the operator is checkpointable, we need to snapshot it.
-    snapshotable->snapshot(0, 0, CheckpointOptions::defaultOptions());
+    snapshotable->snapshot(
+        checkpointId, 0, CheckpointOptions::defaultOptions());
   }
   for (auto& target : targets_) {
-    target->snapshotState();
+    auto targetSnapshots = target->snapshotState(checkpointId);
+    snapshots.insert(
+        snapshots.end(), targetSnapshots.begin(), targetSnapshots.end());
   }
+  return snapshots;
 }
 
-std::vector<std::string> StatefulOperator::snapshotSourceState() {
-  std::vector<std::string> states;
-  auto tableScan = dynamic_cast<exec::TableScan*>(op().get());
-  if (tableScan) {
-    states = tableScan->checkpointState();
-  }
+void StatefulOperator::restoreState(
+    const std::vector<std::string>& checkpointRecords) {
+  operator_->restoreState(checkpointRecords);
   for (auto& target : targets_) {
-    auto targetStates = target->snapshotSourceState();
-    states.insert(states.end(), targetStates.begin(), targetStates.end());
+    target->restoreState(checkpointRecords);
   }
-  return states;
 }
 
 std::vector<std::string> StatefulOperator::notifyCheckpointComplete(
@@ -248,6 +248,7 @@ void StatefulOperator::notifyCheckpointAborted(int64_t checkpointId) {
     // If the operator is checkpointable, we need to snapshot it.
     checkpointListener->notifyCheckpointAborted(checkpointId);
   }
+  operator_->abortCheckpoint(checkpointId);
   for (auto& target : targets_) {
     target->notifyCheckpointAborted(checkpointId);
   }

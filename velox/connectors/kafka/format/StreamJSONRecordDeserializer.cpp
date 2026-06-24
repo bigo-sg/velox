@@ -57,11 +57,7 @@ const void KafkaStreamJSONRecordDeserializer::deserialize(
         message.size() + simdjson::SIMDJSON_PADDING);
     simdjson::ondemand::document doc = parser_->iterate(json_padded);
     JSONValue value = doc.get_value();
-    if (value.is_null()) {
-      vec->setNull(index, true);
-    } else {
-      deserializer_->deserialize(value, index, vec);
-    }
+    deserializer_->deserialize(value, index, vec);
   } catch (const std::exception& e) {
     LOG(WARNING) << "Failed to deserialize record: " << message
                  << " , error: " << e.what();
