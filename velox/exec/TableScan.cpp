@@ -444,6 +444,10 @@ std::vector<std::string> TableScan::checkpointState() const {
                      : std::vector<std::string>{};
 }
 
+std::vector<std::string> TableScan::commit(int64_t id) {
+  return dataSource_ ? dataSource_->commit(id) : std::vector<std::string>{};
+}
+
 void TableScan::close() {
   Operator::close();
 

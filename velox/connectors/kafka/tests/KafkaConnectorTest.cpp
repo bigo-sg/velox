@@ -267,6 +267,49 @@ TEST_F(KafkaConnectorTest, testKafkaSourceNext) {
   }
 }
 
+TEST_F(KafkaConnectorTest, testCheckpointStateRecordsSplitOffset) {
+  const std::unique_ptr<DataSource> dataSource = createDataSource();
+  KafkaDataSource* kafkaDataSource =
+      reinterpret_cast<KafkaDataSource*>(dataSource.get());
+  ASSERT_TRUE(kafkaDataSource != nullptr);
+  kafkaDataSource->addSplit(createKafkaSplit());
+
+  const auto checkpointState = kafkaDataSource->checkpointState();
+  ASSERT_EQ(checkpointState.size(), 1);
+  const auto obj = folly::parseJson(checkpointState[0]);
+  ASSERT_EQ(obj["connectorId"].asString(), kKafkaConnectorId);
+  ASSERT_EQ(obj["bootstrapServers"].asString(), kafkaInstance);
+  ASSERT_EQ(obj["groupId"].asString(), kafkaConsumeGroupId);
+  ASSERT_EQ(obj["format"].asString(), kafkaDataFormat);
+  ASSERT_EQ(obj["topicPartitions"].size(), 1);
+  ASSERT_EQ(obj["topicPartitions"][0]["topic"].asString(), kafkaTopic);
+  ASSERT_EQ(obj["topicPartitions"][0]["partition"].asInt(), 0);
+  ASSERT_EQ(obj["topicPartitions"][0]["offset"].asInt(), 0);
+}
+
+TEST_F(KafkaConnectorTest, testCheckpointStateRecordsNextOffset) {
+  const std::unique_ptr<DataSource> dataSource = createDataSource();
+  KafkaDataSource* kafkaDataSource =
+      reinterpret_cast<KafkaDataSource*>(dataSource.get());
+  ASSERT_TRUE(kafkaDataSource != nullptr);
+  kafkaDataSource->addSplit(createKafkaSplit());
+  std::string msg =
+      "{\"event_type\":4, \"bid\": {\"auction\":4, \"bidder\":226, \"price\":1116, \"channel\":\"OTS-3\", \"url\":\"http://testkafka/a/b/c\", \"dateTime\":\"2025-06-18 11:22:33\", \"extra\":\"xxxx\"}}";
+  sendMessageToKafka(msg);
+  auto future = facebook::velox::ContinueFuture{folly::Unit{}};
+  std::optional<RowVectorPtr> res = kafkaDataSource->next(0, future);
+  ASSERT_TRUE(res.has_value());
+  ASSERT_TRUE(res.value() != nullptr);
+
+  const auto checkpointState = kafkaDataSource->checkpointState();
+  ASSERT_EQ(checkpointState.size(), 1);
+  const auto obj = folly::parseJson(checkpointState[0]);
+  ASSERT_EQ(obj["topicPartitions"].size(), 1);
+  ASSERT_EQ(obj["topicPartitions"][0]["topic"].asString(), kafkaTopic);
+  ASSERT_EQ(obj["topicPartitions"][0]["partition"].asInt(), 0);
+  ASSERT_GT(obj["topicPartitions"][0]["offset"].asInt(), 0);
+}
+
 } // namespace facebook::velox::connector::kafka::test
 
 int main(int argc, char* argv[]) {

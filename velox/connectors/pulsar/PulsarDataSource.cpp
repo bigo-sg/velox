@@ -95,6 +95,9 @@ void PulsarDataSource::resetSplitState() {
   queue_.clear();
   consumePos_ = 0;
   checkpointStartMessageId_.clear();
+  checkpointStateToCommit_.clear();
+  pendingAckMessages_.clear();
+  checkpointAckMessages_.clear();
   canceled_ = false;
   completeBlockingFuture();
 }
@@ -259,7 +262,9 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
   size_t processDataSize = batchSize_ > 1 ? queue_.size() : batchSize_;
   outRow_->resize(processDataSize);
   const bool acknowledgeMessages = config_->getAcknowledgeMessages();
-  const bool useCumulativeAck = acknowledgeMessages && cumulativeAck();
+  const bool checkpointEnabled = config_->getCheckpointEnabled();
+  const bool immediateAck = acknowledgeMessages && !checkpointEnabled;
+  const bool useCumulativeAck = immediateAck && cumulativeAck();
   for (size_t pos = 0; pos < processDataSize; ++pos) {
     const auto& message = queue_[pos + consumePos_];
     try {
@@ -272,8 +277,10 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
       }
       throw;
     }
-    if (acknowledgeMessages && !useCumulativeAck) {
+    if (immediateAck && !useCumulativeAck) {
       consumer_->acknowledge(message.message, false);
+    } else if (acknowledgeMessages && checkpointEnabled) {
+      pendingAckMessages_.push_back(message.message);
     }
     checkpointStartMessageId_ = messageIdString(message.message.getMessageId());
     completedBytes_ += message.payload.size();
@@ -307,7 +314,39 @@ std::vector<std::string> PulsarDataSource::checkpointState() {
       checkpointStartMessageId_,
       config_->getEndMessageId(),
       false);
-  return {folly::toJson(split.serialize())};
+  checkpointStateToCommit_ = folly::toJson(split.serialize());
+  checkpointAckMessages_ = pendingAckMessages_;
+  return {checkpointStateToCommit_};
+}
+
+std::vector<std::string> PulsarDataSource::commit(int64_t) {
+  if (checkpointStateToCommit_.empty()) {
+    return {};
+  }
+
+  const bool useCumulativeAck =
+      config_->getAcknowledgeMessages() && cumulativeAck();
+  if (useCumulativeAck && !checkpointAckMessages_.empty()) {
+    consumer_->acknowledge(checkpointAckMessages_.back(), true);
+  } else {
+    for (const auto& message : checkpointAckMessages_) {
+      consumer_->acknowledge(message, false);
+    }
+  }
+  const auto ackedMessages = checkpointAckMessages_.size();
+  if (ackedMessages >= pendingAckMessages_.size()) {
+    pendingAckMessages_.clear();
+  } else {
+    pendingAckMessages_.erase(
+        pendingAckMessages_.begin(),
+        pendingAckMessages_.begin() + ackedMessages);
+  }
+  refreshConsumerStats();
+
+  std::vector<std::string> committed{checkpointStateToCommit_};
+  checkpointStateToCommit_.clear();
+  checkpointAckMessages_.clear();
+  return committed;
 }
 
 std::unordered_map<std::string, RuntimeCounter>

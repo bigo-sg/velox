@@ -48,6 +48,8 @@ class TableScan : public SourceOperator {
 
   std::vector<std::string> checkpointState() const;
 
+  std::vector<std::string> commit(int64_t id) override;
+
   bool canAddDynamicFilter() const override {
     return connector_->canAddDynamicFilter();
   }

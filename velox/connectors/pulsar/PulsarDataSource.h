@@ -62,6 +62,8 @@ class PulsarDataSource : public DataSource {
 
   std::vector<std::string> checkpointState() override;
 
+  std::vector<std::string> commit(int64_t id) override;
+
   std::unordered_map<std::string, RuntimeCounter> runtimeStats() override;
 
   const PulsarConsumerPtr& getConsumer() const {
@@ -98,6 +100,9 @@ class PulsarDataSource : public DataSource {
   uint64_t deserializeFailures_ = 0;
   uint64_t skippedMessagesAfterEnd_ = 0;
   std::string checkpointStartMessageId_;
+  std::string checkpointStateToCommit_;
+  std::vector<::pulsar::Message> pendingAckMessages_;
+  std::vector<::pulsar::Message> checkpointAckMessages_;
 
   bool consumerCanbeCreated() const;
   void createConsumer();

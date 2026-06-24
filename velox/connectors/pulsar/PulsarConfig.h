@@ -15,9 +15,9 @@
  */
 #pragma once
 
-#include "velox/common/config/Config.h"
 #include <pulsar/ClientConfiguration.h>
 #include <pulsar/ConsumerConfiguration.h>
+#include "velox/common/config/Config.h"
 
 namespace facebook::velox::connector::pulsar {
 
@@ -38,9 +38,9 @@ class PulsarConfig {
   template <typename T>
   std::shared_ptr<T> updateAndGetAllConfigs(
       const std::unordered_map<std::string, std::string>& configs) const {
-    std::unordered_map<std::string, std::string> rawConfigs =
-        config_ ? config_->rawConfigsCopy()
-                : std::unordered_map<std::string, std::string>();
+    std::unordered_map<std::string, std::string> rawConfigs = config_
+        ? config_->rawConfigsCopy()
+        : std::unordered_map<std::string, std::string>();
     rawConfigs.insert(configs.begin(), configs.end());
     ConfigPtr newConfig =
         std::make_shared<const config::ConfigBase>(std::move(rawConfigs));
@@ -51,9 +51,8 @@ class PulsarConfig {
   ConfigPtr config_;
 
   template <typename T, bool throwException>
-  T checkAndGetConfigValue(
-      const std::string& configKey,
-      const T& defaultValue) const;
+  T checkAndGetConfigValue(const std::string& configKey, const T& defaultValue)
+      const;
 };
 
 class ConnectionConfig : public PulsarConfig {
@@ -71,6 +70,7 @@ class ConnectionConfig : public PulsarConfig {
   static constexpr const char* kDataBatchSize = "data.batch.size";
   static constexpr const char* kReceiveTimeoutMills = "receive.timeout.mills";
   static constexpr const char* kAcknowledgeMessages = "acknowledge.messages";
+  static constexpr const char* kCheckpointEnabled = "checkpoint.enabled";
   static constexpr const char* kAckMode = "ack.mode";
   static constexpr const char* kPartitionIndex = "partition.index";
   static constexpr const char* kStartMessageId = "start.message.id";
@@ -107,6 +107,7 @@ class ConnectionConfig : public PulsarConfig {
   uint32_t getDataBatchSize() const;
   uint32_t getReceiveTimeoutMills() const;
   bool getAcknowledgeMessages() const;
+  bool getCheckpointEnabled() const;
   bool getStartMessageIdInclusive() const;
 
   ::pulsar::ClientConfiguration getPulsarClientConfiguration() const;

@@ -311,6 +311,10 @@ class DataSource {
   virtual std::vector<std::string> checkpointState() {
     return {};
   }
+
+  virtual std::vector<std::string> commit(int64_t /*id*/) {
+    return {};
+  }
 };
 
 class IndexSource {
