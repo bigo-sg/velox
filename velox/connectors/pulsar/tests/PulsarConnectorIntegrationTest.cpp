@@ -242,7 +242,7 @@ TEST(PulsarConnectorIntegrationTest, checkpointStateRecordsLastMessageId) {
   auto connectorConfig = makeRawConfig(serviceUrl, topic, subscription);
   auto source = createRawDataSource(
       pool, connectorConfig, connectorId, serviceUrl, topic, subscription);
-  ASSERT_TRUE(source->checkpointState().empty());
+  ASSERT_TRUE(source->snapshotState(1).empty());
 
   std::vector<::pulsar::MessageId> messageIds;
   produceRawMessages(serviceUrl, topic, messageIds);
@@ -253,7 +253,7 @@ TEST(PulsarConnectorIntegrationTest, checkpointStateRecordsLastMessageId) {
   ASSERT_NE(resultVector.value(), nullptr);
   ASSERT_EQ(resultVector.value()->size(), 2);
 
-  const auto checkpointState = source->checkpointState();
+  const auto checkpointState = source->snapshotState(1);
   ASSERT_EQ(checkpointState.size(), 1);
   const auto checkpointSplit =
       PulsarConnectorSplit::create(folly::parseJson(checkpointState[0]));
@@ -308,7 +308,7 @@ TEST(PulsarConnectorIntegrationTest, checkpointModeAcksOnCommit) {
   auto stats = source->runtimeStats();
   ASSERT_EQ(stats.at("pulsarAcknowledgedMessages").value, 0);
 
-  const auto checkpointState = source->checkpointState();
+  const auto checkpointState = source->snapshotState(1);
   ASSERT_EQ(checkpointState.size(), 1);
   const auto committed = source->commit(1);
   ASSERT_EQ(committed, checkpointState);

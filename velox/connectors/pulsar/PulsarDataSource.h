@@ -60,7 +60,7 @@ class PulsarDataSource : public DataSource {
     return completedRows_;
   }
 
-  std::vector<std::string> checkpointState() override;
+  std::vector<std::string> snapshotState(int64_t checkpointId) override;
 
   std::vector<std::string> commit(int64_t id) override;
 

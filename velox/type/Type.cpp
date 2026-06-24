@@ -174,6 +174,12 @@ TypePtr Type::create(const folly::dynamic& obj) {
   if (isDecimalName(typeName)) {
     return DECIMAL(obj["precision"].asInt(), obj["scale"].asInt());
   }
+  if (typeName == "FLINK_TIMESTAMP") {
+    return FLINK_TIMESTAMP(obj["precision"].asInt());
+  }
+  if (typeName == "FLINK_TIMESTAMP_LTZ") {
+    return FLINK_TIMESTAMP_LTZ(obj["precision"].asInt());
+  }
   // Checks if 'typeName' specifies a custom type.
   if (customTypeExists(typeName)) {
     std::vector<TypeParameter> params;
@@ -921,6 +927,40 @@ VELOX_DEFINE_SCALAR_ACCESSOR(VARBINARY);
 
 #undef VELOX_DEFINE_SCALAR_ACCESSOR
 
+FlinkTimestampType::FlinkTimestampType(int precision, bool localZoned)
+    : TimestampType(),
+      localZoned_(localZoned),
+      parameters_{TypeParameter(precision)} {
+  VELOX_CHECK_GE(precision, 0, "Timestamp precision must be at least 0");
+  VELOX_CHECK_LE(precision, 9, "Timestamp precision must not exceed 9");
+}
+
+bool FlinkTimestampType::equivalent(const Type& other) const {
+  if (!Type::hasSameTypeId(other)) {
+    return false;
+  }
+  const auto& otherTimestamp = static_cast<const FlinkTimestampType&>(other);
+  return precision() == otherTimestamp.precision() &&
+      localZoned_ == otherTimestamp.localZoned_;
+}
+
+folly::dynamic FlinkTimestampType::serialize() const {
+  auto obj = TimestampType::serialize();
+  obj["type"] = name();
+  obj["precision"] = precision();
+  return obj;
+}
+
+std::shared_ptr<const FlinkTimestampType> FLINK_TIMESTAMP(int precision) {
+  return std::make_shared<const FlinkTimestampType>(
+      precision, false /* localZoned */);
+}
+
+std::shared_ptr<const FlinkTimestampType> FLINK_TIMESTAMP_LTZ(int precision) {
+  return std::make_shared<const FlinkTimestampType>(
+      precision, true /* localZoned */);
+}
+
 TypePtr UNKNOWN() {
   return TypeFactory<TypeKind::UNKNOWN>::create();
 }
@@ -1333,6 +1373,28 @@ class FunctionParametricType {
   }
 };
 
+class FlinkTimestampParametricType {
+ public:
+  static TypePtr create(const std::vector<TypeParameter>& parameters) {
+    VELOX_USER_CHECK_EQ(1, parameters.size());
+    VELOX_USER_CHECK(parameters[0].kind == TypeParameterKind::kLongLiteral);
+    VELOX_USER_CHECK(parameters[0].longLiteral.has_value());
+
+    return FLINK_TIMESTAMP(parameters[0].longLiteral.value());
+  }
+};
+
+class FlinkTimestampLtzParametricType {
+ public:
+  static TypePtr create(const std::vector<TypeParameter>& parameters) {
+    VELOX_USER_CHECK_EQ(1, parameters.size());
+    VELOX_USER_CHECK(parameters[0].kind == TypeParameterKind::kLongLiteral);
+    VELOX_USER_CHECK(parameters[0].longLiteral.has_value());
+
+    return FLINK_TIMESTAMP_LTZ(parameters[0].longLiteral.value());
+  }
+};
+
 using ParametricTypeMap = std::unordered_map<
     std::string,
     std::function<TypePtr(const std::vector<TypeParameter>& parameters)>>;
@@ -1344,6 +1406,8 @@ const ParametricTypeMap& parametricBuiltinTypes() {
       {"MAP", MapParametricType::create},
       {"ROW", RowParametricType::create},
       {"FUNCTION", FunctionParametricType::create},
+      {"FLINK_TIMESTAMP", FlinkTimestampParametricType::create},
+      {"FLINK_TIMESTAMP_LTZ", FlinkTimestampLtzParametricType::create},
   };
   return kTypes;
 }
