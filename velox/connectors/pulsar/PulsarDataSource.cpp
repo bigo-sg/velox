@@ -300,7 +300,7 @@ std::optional<RowVectorPtr> PulsarDataSource::next(
   return res;
 }
 
-std::vector<std::string> PulsarDataSource::checkpointState() {
+std::vector<std::string> PulsarDataSource::snapshotState(int64_t) {
   if (checkpointStartMessageId_.empty()) {
     return {};
   }
