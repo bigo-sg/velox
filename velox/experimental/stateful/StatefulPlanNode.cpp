@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/StatefulPlanNode.h"
-#include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 #include <cstdint>
+#include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 
 namespace facebook::velox::stateful {
 
@@ -68,9 +68,9 @@ void StatefulPlanNode::registerSerDe() {
 
   registry.Register("WatermarkAssignerNode", WatermarkAssignerNode::create);
   registry.Register(
-    "WatermarkPushDownSpec", WatermarkPushDownSpec::deserialize);
+      "WatermarkPushDownSpec", WatermarkPushDownSpec::deserialize);
   registry.Register(
-    "TableScanWithWatermarkNode", TableScanNodeWithWatermark::create);
+      "TableScanWithWatermarkNode", TableScanNodeWithWatermark::create);
   registry.Register("StatefulPlanNode", StatefulPlanNode::create);
   registry.Register("EmptyNode", EmptyNode::create);
   registry.Register("StreamJoinNode", StreamJoinNode::create);
@@ -596,8 +596,8 @@ folly::dynamic WatermarkPushDownSpec::serialize() const {
 
 // static
 std::shared_ptr<WatermarkPushDownSpec> WatermarkPushDownSpec::deserialize(
-  const folly::dynamic& obj,
-  void* context) {
+    const folly::dynamic& obj,
+    void* context) {
   auto project =
       ISerializable::deserialize<core::ProjectNode>(obj["project"], context);
   auto idleTimeout = obj["idleTimeout"].asInt();
@@ -605,10 +605,7 @@ std::shared_ptr<WatermarkPushDownSpec> WatermarkPushDownSpec::deserialize(
       static_cast<int32_t>(obj["rowtimeFieldIndex"].asInt());
   int64_t watermarkInterval = obj["watermarkInterval"].asInt();
   return std::make_shared<WatermarkPushDownSpec>(
-      std::move(project),
-      idleTimeout,
-      watermarkInterval,
-      rowtimeFieldIndex);
+      std::move(project), idleTimeout, watermarkInterval, rowtimeFieldIndex);
 }
 
 folly::dynamic TableScanNodeWithWatermark::serialize() const {
@@ -631,8 +628,8 @@ folly::dynamic TableScanNodeWithWatermark::serialize() const {
 
 // static
 core::PlanNodePtr TableScanNodeWithWatermark::create(
-  const folly::dynamic& obj,
-  void* context) {
+    const folly::dynamic& obj,
+    void* context) {
   auto planNodeId = obj["id"].asString();
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   auto tableHandle = std::const_pointer_cast<connector::ConnectorTableHandle>(
@@ -658,11 +655,7 @@ core::PlanNodePtr TableScanNodeWithWatermark::create(
   }
 
   return std::make_shared<const TableScanNodeWithWatermark>(
-      planNodeId,
-      outputType,
-      tableHandle,
-      assignments,
-      watermarkPushDownSpec);
+      planNodeId, outputType, tableHandle, assignments, watermarkPushDownSpec);
 }
 
 } // namespace facebook::velox::stateful

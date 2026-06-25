@@ -40,7 +40,8 @@ const T FileSystemWriteConfig::checkAndGetConfigValue(
 }
 
 const dwio::common::FileFormat FileSystemWriteConfig::getFormat() {
-  const std::string format = checkAndGetConfigValue<std::string, false>(kFormat, "");
+  const std::string format =
+      checkAndGetConfigValue<std::string, false>(kFormat, "");
   if (supportedFileFormats.find(format) != supportedFileFormats.end()) {
     return supportedFileFormats.at(format);
   } else {
@@ -91,8 +92,9 @@ const int32_t FileSystemWriteConfig::getFileRollingSize() {
   } else {
     const std::string byteUnit =
         configVal.substr(configVal.size() - 1, configVal.size());
-    if (byteUnit == "B" && ((sizeUnit.at(0) >= '0' && sizeUnit.at(0) <= '9') ||
-                            sizeUnit.at(0) == ' ')) {
+    if (byteUnit == "B" &&
+        ((sizeUnit.at(0) >= '0' && sizeUnit.at(0) <= '9') ||
+         sizeUnit.at(0) == ' ')) {
       intVal = configVal.substr(0, configVal.size() - 1);
       return std::stoi(intVal);
     } else {

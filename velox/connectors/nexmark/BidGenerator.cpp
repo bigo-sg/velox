@@ -57,7 +57,6 @@ RowVectorPtr BidGenerator::nextBidBatch(
   return bidVector;
 }
 
-
 std::vector<std::pair<std::string, std::string>>
 BidGenerator::createChannelUrlCache() {
   pcg32_fast random;

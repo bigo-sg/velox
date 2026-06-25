@@ -53,7 +53,8 @@ struct NexmarkConnectorSplit : public connector::ConnectorSplit {
 } // namespace facebook::velox::connector::nexmark
 
 template <>
-struct fmt::formatter<facebook::velox::connector::nexmark::NexmarkConnectorSplit>
+struct fmt::formatter<
+    facebook::velox::connector::nexmark::NexmarkConnectorSplit>
     : formatter<std::string> {
   auto format(
       facebook::velox::connector::nexmark::NexmarkConnectorSplit s,
@@ -67,8 +68,8 @@ struct fmt::formatter<
     std::shared_ptr<facebook::velox::connector::nexmark::NexmarkConnectorSplit>>
     : formatter<std::string> {
   auto format(
-      std::shared_ptr<facebook::velox::connector::nexmark::NexmarkConnectorSplit>
-          s,
+      std::shared_ptr<
+          facebook::velox::connector::nexmark::NexmarkConnectorSplit> s,
       format_context& ctx) const {
     return formatter<std::string>::format(s->toString(), ctx);
   }

@@ -16,10 +16,10 @@
 
 #pragma once
 
-#include "velox/connectors/Connector.h"
 #include <cppkafka/topic_partition.h>
 #include <cppkafka/topic_partition_list.h>
 #include <folly/dynamic.h>
+#include "velox/connectors/Connector.h"
 
 namespace facebook::velox::connector::kafka {
 
@@ -41,8 +41,9 @@ struct KafkaConnectorSplit : public ConnectorSplit {
       const std::string& format,
       const bool enableAutoCommit,
       const std::string& autoResetOffset,
-      std::unordered_map<std::string, std::vector<std::pair<uint32_t, int64_t>>>&
-          tps)
+      std::unordered_map<
+          std::string,
+          std::vector<std::pair<uint32_t, int64_t>>>& tps)
       : ConnectorSplit(connectorId),
         bootstrapServers_(bootstrapServers),
         groupId_(groupId),
@@ -68,7 +69,8 @@ struct KafkaConnectorSplit : public ConnectorSplit {
     return topicPartitions;
   }
 
-  static std::string topicPartitonsToString(const cppkafka::TopicPartitionList& tps);
+  static std::string topicPartitonsToString(
+      const cppkafka::TopicPartitionList& tps);
 
   std::string toString() const override;
 

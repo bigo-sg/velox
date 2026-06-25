@@ -16,19 +16,14 @@
 #pragma once
 #include <cstdint>
 
-#include "velox/common/base/BitUtil.h"
-#include "velox/common/base/Exceptions.h"
 #include <algorithm>
 #include <string>
+#include "velox/common/base/BitUtil.h"
+#include "velox/common/base/Exceptions.h"
 
 namespace facebook::velox::stateful {
 
-enum class WindowType : int {
-  HOP = 0,
-  TUMBLE,
-  SESSION,
-  CUMULATIVE
-};
+enum class WindowType : int { HOP = 0, TUMBLE, SESSION, CUMULATIVE };
 
 // This class is relevant to Flink WindowBuffer.
 class Window {
@@ -43,7 +38,8 @@ class Window {
     if (t >= 0 && t <= 3) {
       return static_cast<WindowType>(t);
     } else {
-      VELOX_FAIL("Window type value {} is illegal, it is not between 0 and 3", t);
+      VELOX_FAIL(
+          "Window type value {} is illegal, it is not between 0 and 3", t);
     }
   }
 };
@@ -100,10 +96,10 @@ class TimeWindow : public Window {
     return bits::hashMix(end_, start_);
   }
 
-  private:
+ private:
   int64_t start_;
   int64_t end_;
-}; 
+};
 
 } // namespace facebook::velox::stateful
 

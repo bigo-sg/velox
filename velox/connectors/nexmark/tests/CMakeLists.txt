@@ -40,7 +40,5 @@ add_executable(velox_nexmark_utils_test NexmarkUtilsTest.cpp)
 add_test(velox_nexmark_utils_test velox_nexmark_utils_test)
 
 target_link_libraries(
-  velox_nexmark_utils_test
-  velox_nexmark_connector
-  GTest::gtest
+  velox_nexmark_utils_test velox_nexmark_connector GTest::gtest
   GTest::gtest_main)

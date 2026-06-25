@@ -16,9 +16,9 @@
 #pragma once
 
 #include <unordered_map>
+#include "velox/common/compression/Compression.h"
 #include "velox/common/config/Config.h"
 #include "velox/dwio/common/Options.h"
-#include "velox/common/compression/Compression.h"
 
 namespace facebook::velox::connector::filesystem {
 
@@ -46,11 +46,11 @@ class FileSystemWriteConfig {
   /// The default value of max partitions per writer.
   static constexpr const int32_t defaultMaxPartitionsPerWriter = 65535;
   /// The supported file format to write
-  const std::unordered_map<std::string, dwio::common::FileFormat> supportedFileFormats = {
-    {"csv", dwio::common::FileFormat::TEXT},
-    {"parquet", dwio::common::FileFormat::PARQUET},
-    {"orc", dwio::common::FileFormat::ORC}
-  };
+  const std::unordered_map<std::string, dwio::common::FileFormat>
+      supportedFileFormats = {
+          {"csv", dwio::common::FileFormat::TEXT},
+          {"parquet", dwio::common::FileFormat::PARQUET},
+          {"orc", dwio::common::FileFormat::ORC}};
 
   const std::string getPath();
   const dwio::common::FileFormat getFormat();
@@ -97,7 +97,8 @@ class FileSystemWriteConfig {
   ConfigPtr config_;
 
   template <typename T, bool throwException>
-  const T checkAndGetConfigValue(const std::string& configKey, const T& defaultValue)
-      const;
+  const T checkAndGetConfigValue(
+      const std::string& configKey,
+      const T& defaultValue) const;
 };
 } // namespace facebook::velox::connector::filesystem

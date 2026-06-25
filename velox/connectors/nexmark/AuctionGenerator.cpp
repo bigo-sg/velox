@@ -27,11 +27,11 @@ RowVectorPtr AuctionGenerator::nextAuctionBatch(
     const FlatVector<int64_t>& timestampVector,
     const NexmarkGeneratorConfig& config,
     memory::MemoryPool* pool) {
-
   auto auctionVector = Auction::createVector(rows, pool);
   auto idVector = auctionVector->childAt(0)->asFlatVector<int64_t>();
   auto itemNameVector = auctionVector->childAt(1)->asFlatVector<StringView>();
-  auto descriptionVector = auctionVector->childAt(2)->asFlatVector<StringView>();
+  auto descriptionVector =
+      auctionVector->childAt(2)->asFlatVector<StringView>();
   auto initialBidVector = auctionVector->childAt(3)->asFlatVector<int64_t>();
   auto reserveVector = auctionVector->childAt(4)->asFlatVector<int64_t>();
   auto dateTimeVector = auctionVector->childAt(5)->asFlatVector<Timestamp>();
@@ -72,18 +72,19 @@ int64_t AuctionGenerator::nextAuctionLengthMs(
     pcg32_fast& random,
     int64_t timestamp,
     const NexmarkGeneratorConfig& config) {
-
   // What's our current event number?
   int64_t currentEventNumber = config.nextAdjustedEventNumber(eventsCountSoFar);
   // How many events till we've generated numInFlightAuctions?
   int64_t numEventsForAuctions =
-      ((int64_t)config.getNumInFlightAuctions() * config.totalProportion)
-          / config.auctionProportion;
+      ((int64_t)config.getNumInFlightAuctions() * config.totalProportion) /
+      config.auctionProportion;
   // When will the auction numInFlightAuctions beyond now be generated?
-  int64_t futureAuction = config.timestampForEvent(currentEventNumber + numEventsForAuctions);
+  int64_t futureAuction =
+      config.timestampForEvent(currentEventNumber + numEventsForAuctions);
   // Choose a length with average horizonMs.
   int64_t horizonMs = futureAuction - timestamp;
-  return 1L + LongGenerator::nextLong(random, std::max<int64_t>(horizonMs * 2, 1L));
+  return 1L +
+      LongGenerator::nextLong(random, std::max<int64_t>(horizonMs * 2, 1L));
 }
 
 } // namespace facebook::velox::connector::nexmark

@@ -43,7 +43,8 @@ inline std::string formatDateTime(int64_t dateTime) {
 
 /// return a random integer in [0, bound)
 /// This is a replacement for the Java's Random.nextInt(int bound) method.
-/// It is used instead of std::uniform_int_distribution<int> for performance gain.
+/// It is used instead of std::uniform_int_distribution<int> for performance
+/// gain.
 inline int getNextInt(pcg32_fast& random, int bound) {
   int m = bound - 1;
   int r = static_cast<int>(random());

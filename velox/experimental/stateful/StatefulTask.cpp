@@ -15,8 +15,8 @@
  */
 #include "velox/experimental/stateful/StatefulTask.h"
 #include <experimental/stateful/state/StateBackend.h>
-#include <cstdint>
 #include <glog/logging.h>
+#include <cstdint>
 #include "velox/exec/OperatorStats.h"
 #include "velox/exec/OperatorUtils.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"

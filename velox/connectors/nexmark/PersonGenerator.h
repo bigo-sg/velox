@@ -16,8 +16,8 @@
 
 #pragma once
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/LongGenerator.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/StringsGenerator.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"
 #include "velox/vector/ComplexVector.h"
@@ -30,10 +30,9 @@ namespace facebook::velox::connector::nexmark {
 
 class NexmarkGeneratorConfig;
 
-
 /** Generates people. */
 class PersonGenerator {
-public:
+ public:
   /** Number of yet-to-be-created people and auction ids allowed. */
   static constexpr int PERSON_ID_LEAD = 10;
 
@@ -94,58 +93,60 @@ public:
     return numPeople - activePeople + n;
   }
 
-    FOLLY_ALWAYS_INLINE static int64_t lastBase0PersonId(const NexmarkGeneratorConfig& config, int64_t eventId) {
-      int64_t epoch = eventId / config.totalProportion;
-      int64_t offset = eventId % config.totalProportion;
-      if (offset >= config.personProportion) {
-        // About to generate an auction or bid.
-        // Go back to the last person generated in this epoch.
-        offset = config.personProportion - 1;
-      }
-      // About to generate a person.
-      return epoch * config.personProportion + offset;
+  FOLLY_ALWAYS_INLINE static int64_t lastBase0PersonId(
+      const NexmarkGeneratorConfig& config,
+      int64_t eventId) {
+    int64_t epoch = eventId / config.totalProportion;
+    int64_t offset = eventId % config.totalProportion;
+    if (offset >= config.personProportion) {
+      // About to generate an auction or bid.
+      // Go back to the last person generated in this epoch.
+      offset = config.personProportion - 1;
     }
+    // About to generate a person.
+    return epoch * config.personProportion + offset;
+  }
 
-private:
- FOLLY_ALWAYS_INLINE static std::string nextUSState(pcg32_fast& random) {
-   return US_STATES[random() % US_STATES.size()];
- }
+ private:
+  FOLLY_ALWAYS_INLINE static std::string nextUSState(pcg32_fast& random) {
+    return US_STATES[random() % US_STATES.size()];
+  }
 
- FOLLY_ALWAYS_INLINE static std::string nextUSCity(pcg32_fast& random) {
-   return US_CITIES[random() % US_CITIES.size()];
- }
+  FOLLY_ALWAYS_INLINE static std::string nextUSCity(pcg32_fast& random) {
+    return US_CITIES[random() % US_CITIES.size()];
+  }
 
- FOLLY_ALWAYS_INLINE static std::string nextPersonName(pcg32_fast& random) {
-   return FIRST_NAMES[random() % FIRST_NAMES.size()] + " " +
-       LAST_NAMES[random() % LAST_NAMES.size()];
- }
+  FOLLY_ALWAYS_INLINE static std::string nextPersonName(pcg32_fast& random) {
+    return FIRST_NAMES[random() % FIRST_NAMES.size()] + " " +
+        LAST_NAMES[random() % LAST_NAMES.size()];
+  }
 
- FOLLY_ALWAYS_INLINE static std::string nextEmail(pcg32_fast& random) {
-   return StringsGenerator::nextString(random, 7) + "@" +
-       StringsGenerator::nextString(random, 5) + ".com";
- }
+  FOLLY_ALWAYS_INLINE static std::string nextEmail(pcg32_fast& random) {
+    return StringsGenerator::nextString(random, 7) + "@" +
+        StringsGenerator::nextString(random, 5) + ".com";
+  }
 
- FOLLY_ALWAYS_INLINE static std::string nextCreditCard(pcg32_fast& random) {
-   std::string result;
-   result.reserve(19); // 16 digits + 3 spaces
-   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
-   result += " ";
-   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
-   result += " ";
-   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
-   result += " ";
-   result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
-   return result;
- }
+  FOLLY_ALWAYS_INLINE static std::string nextCreditCard(pcg32_fast& random) {
+    std::string result;
+    result.reserve(19); // 16 digits + 3 spaces
+    result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+    result += " ";
+    result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+    result += " ";
+    result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+    result += " ";
+    result += CREDIT_CARD_STRINGS[random() % CREDIT_CARD_STRINGS.size()];
+    return result;
+  }
 
- /** Create an array of credit card strings. */
- static std::vector<std::string> createCreditCardStrings();
+  /** Create an array of credit card strings. */
+  static std::vector<std::string> createCreditCardStrings();
 
- static const std::vector<std::string> US_STATES;
- static const std::vector<std::string> US_CITIES;
- static const std::vector<std::string> FIRST_NAMES;
- static const std::vector<std::string> LAST_NAMES;
- static const std::vector<std::string> CREDIT_CARD_STRINGS;
+  static const std::vector<std::string> US_STATES;
+  static const std::vector<std::string> US_CITIES;
+  static const std::vector<std::string> FIRST_NAMES;
+  static const std::vector<std::string> LAST_NAMES;
+  static const std::vector<std::string> CREDIT_CARD_STRINGS;
 };
 
 } // namespace facebook::velox::connector::nexmark

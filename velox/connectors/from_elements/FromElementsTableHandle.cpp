@@ -25,7 +25,7 @@ std::string FromElementsTableHandle::toString() const {
   if (dataColumns_) {
     out << ", data columns: " << dataColumns_->toString();
   }
-  out << ", data:" ;
+  out << ", data:";
   for (size_t i = 0; i < data_.size(); ++i) {
     out << data_[i];
     if (i != data_.size() - 1) {
@@ -36,7 +36,8 @@ std::string FromElementsTableHandle::toString() const {
 }
 
 folly::dynamic FromElementsTableHandle::serialize() const {
-  folly::dynamic obj = ConnectorTableHandle::serializeBase("FromElementsTableHandle");
+  folly::dynamic obj =
+      ConnectorTableHandle::serializeBase("FromElementsTableHandle");
   obj["tableName"] = tableName_;
   if (dataColumns_) {
     obj["dataColumns"] = dataColumns_->serialize();

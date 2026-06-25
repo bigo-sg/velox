@@ -1,3 +1,18 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 #include "velox/connectors/nexmark/NexmarkGenerator.h"
 
 #include <chrono>
@@ -31,7 +46,8 @@ std::pair<RowVectorPtr, int64_t> NexmarkGenerator::nextBatch(size_t rows) {
     maxWallclockTimestamp = std::max(maxWallclockTimestamp, wallclockTimestamp);
   }
 
-  auto concreteEventTypeVector = eventVector->childAt(0)->asFlatVector<int32_t>();
+  auto concreteEventTypeVector =
+      eventVector->childAt(0)->asFlatVector<int32_t>();
   auto eventIdVector = BaseVector::create(BIGINT(), rows, pool_);
   auto concreteEventIdVector = eventIdVector->asFlatVector<int64_t>();
   for (size_t i = 0; i < rows; ++i) {
@@ -55,9 +71,8 @@ std::pair<RowVectorPtr, int64_t> NexmarkGenerator::nextBatch(size_t rows) {
   auto concreteAdjustedEventTimestampVector =
       adjustedEventTimestampVector->asFlatVector<int64_t>();
   for (size_t i = 0; i < rows; ++i) {
-    int64_t adjustedEventTimestamp =
-        config_.timestampForEvent(config_.nextAdjustedEventNumber(
-            eventsCountSoFar_ + i));
+    int64_t adjustedEventTimestamp = config_.timestampForEvent(
+        config_.nextAdjustedEventNumber(eventsCountSoFar_ + i));
     concreteAdjustedEventTimestampVector->set(i, adjustedEventTimestamp);
   }
 
@@ -77,7 +92,8 @@ std::pair<RowVectorPtr, int64_t> NexmarkGenerator::nextBatch(size_t rows) {
       *concreteEventIdVector,
       random_,
       *concreteAdjustedEventTimestampVector,
-      config_, pool_);
+      config_,
+      pool_);
 
   eventVector->childAt(3) = BidGenerator::nextBidBatch(
       rows,

@@ -21,24 +21,44 @@
 
 namespace facebook::velox::connector::nexmark {
 
-const std::vector<std::string> PersonGenerator::US_STATES = {
-    "AZ", "CA", "ID", "OR", "WA", "WY"
-};
+const std::vector<std::string> PersonGenerator::US_STATES =
+    {"AZ", "CA", "ID", "OR", "WA", "WY"};
 
 const std::vector<std::string> PersonGenerator::US_CITIES = {
-    "Phoenix", "Los Angeles", "San Francisco", "Boise",
-    "Portland", "Bend", "Redmond", "Seattle", "Kent", "Cheyenne"
-};
+    "Phoenix",
+    "Los Angeles",
+    "San Francisco",
+    "Boise",
+    "Portland",
+    "Bend",
+    "Redmond",
+    "Seattle",
+    "Kent",
+    "Cheyenne"};
 
 const std::vector<std::string> PersonGenerator::FIRST_NAMES = {
-    "Peter", "Paul", "Luke", "John", "Saul",
-    "Vicky", "Kate", "Julie", "Sarah", "Deiter", "Walter"
-};
+    "Peter",
+    "Paul",
+    "Luke",
+    "John",
+    "Saul",
+    "Vicky",
+    "Kate",
+    "Julie",
+    "Sarah",
+    "Deiter",
+    "Walter"};
 
 const std::vector<std::string> PersonGenerator::LAST_NAMES = {
-    "Shultz", "Abrams", "Spencer", "White",
-    "Bartels", "Walton", "Smith", "Jones", "Noris"
-};
+    "Shultz",
+    "Abrams",
+    "Spencer",
+    "White",
+    "Bartels",
+    "Walton",
+    "Smith",
+    "Jones",
+    "Noris"};
 
 const std::vector<std::string> PersonGenerator::CREDIT_CARD_STRINGS =
     PersonGenerator::createCreditCardStrings();
@@ -55,7 +75,8 @@ RowVectorPtr PersonGenerator::nextPersonBatch(
 
   auto idVector = personVector->childAt(0)->asFlatVector<int64_t>();
   auto nameVector = personVector->childAt(1)->asFlatVector<StringView>();
-  auto emailAddressVector = personVector->childAt(2)->asFlatVector<StringView>();
+  auto emailAddressVector =
+      personVector->childAt(2)->asFlatVector<StringView>();
   auto creditCardVector = personVector->childAt(3)->asFlatVector<StringView>();
   auto cityVector = personVector->childAt(4)->asFlatVector<StringView>();
   auto stateVector = personVector->childAt(5)->asFlatVector<StringView>();
@@ -96,7 +117,5 @@ std::vector<std::string> PersonGenerator::createCreditCardStrings() {
   }
   return creditCardStrings;
 }
-
-
 
 } // namespace facebook::velox::connector::nexmark

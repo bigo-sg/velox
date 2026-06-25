@@ -43,12 +43,13 @@ class KafkaRawRecordDeserializer : public KafkaRecordDeserializer {
       VectorPtr& vec) override {
     RowVectorPtr rowVector = std::dynamic_pointer_cast<RowVector>(vec);
     VELOX_CHECK_EQ(
-      rowVector->childrenSize(),
-      1,
-      "The raw record vector children size {} is not 1",
-      rowVector->childrenSize());
+        rowVector->childrenSize(),
+        1,
+        "The raw record vector children size {} is not 1",
+        rowVector->childrenSize());
     VectorPtr& childVector = rowVector->children()[0];
-    auto flat = std::dynamic_pointer_cast<FlatVector<velox::StringView>>(childVector);
+    auto flat =
+        std::dynamic_pointer_cast<FlatVector<velox::StringView>>(childVector);
     flat->set(index, StringView(message.data(), message.size()));
   }
 };

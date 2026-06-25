@@ -41,7 +41,7 @@ class KafkaRecordDeserializer {
 
   /// Deserialize a single message.
   virtual const void deserialize(
-      const std::string & message,
+      const std::string& message,
       const size_t index,
       VectorPtr& vec) = 0;
 

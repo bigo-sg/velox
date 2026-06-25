@@ -116,7 +116,7 @@ class WatermarkAssignerNode : public core::PlanNode {
 };
 
 class WatermarkPushDownSpec : public ISerializable {
-public:
+ public:
   WatermarkPushDownSpec(
       std::shared_ptr<const core::ProjectNode> project,
       int64_t idleTimeout,
@@ -149,17 +149,16 @@ public:
       const folly::dynamic& obj,
       void* context);
 
-private:
+ private:
   const std::shared_ptr<const core::ProjectNode> project_;
   const int64_t idleTimeout_;
   const int64_t watermarkInterval_;
   const int32_t rowtimeFieldIndex_;
 };
-  
 
 class TableScanNodeWithWatermark : public core::TableScanNode {
-  public:
-    TableScanNodeWithWatermark(
+ public:
+  TableScanNodeWithWatermark(
       const core::PlanNodeId& id,
       RowTypePtr outputType,
       const std::shared_ptr<connector::ConnectorTableHandle>& tableHandle,
@@ -167,24 +166,23 @@ class TableScanNodeWithWatermark : public core::TableScanNode {
           std::string,
           std::shared_ptr<connector::ColumnHandle>>& assignments,
       const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec)
-         : core::TableScanNode(id, outputType, tableHandle, assignments),
-         watermarkPushDownSpec_(watermarkPushDownSpec) {}
-  
-    const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec() const {
-      return watermarkPushDownSpec_;
-    }
-  
-    std::string_view name() const override {
-      return "TableScanWithWatermark";
-    }
-  
-    folly::dynamic serialize() const override;
-  
-    static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
-  
-  private:
-    const std::shared_ptr<WatermarkPushDownSpec> watermarkPushDownSpec_;
-    
+      : core::TableScanNode(id, outputType, tableHandle, assignments),
+        watermarkPushDownSpec_(watermarkPushDownSpec) {}
+
+  const std::shared_ptr<WatermarkPushDownSpec>& watermarkPushDownSpec() const {
+    return watermarkPushDownSpec_;
+  }
+
+  std::string_view name() const override {
+    return "TableScanWithWatermark";
+  }
+
+  folly::dynamic serialize() const override;
+
+  static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
+
+ private:
+  const std::shared_ptr<WatermarkPushDownSpec> watermarkPushDownSpec_;
 };
 
 class StreamJoinNode : public core::PlanNode {
@@ -417,8 +415,8 @@ class StreamWindowAggregationNode : public core::PlanNode {
       bool isEventTime,
       int rowtimeIndex,
       int windowStartIndex,
-      int windowEndIndex) :
-        PlanNode(id),
+      int windowEndIndex)
+      : PlanNode(id),
         aggregation_(std::move(aggregationNode)),
         localAgg_(std::move(localAgg)),
         keySelectorSpec_(std::move(keySelectorSpec)),

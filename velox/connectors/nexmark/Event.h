@@ -18,11 +18,11 @@
 #include <memory>
 
 #include "velox/connectors/nexmark/NexmarkUtils.h"
-#include "velox/type/Type.h"
 #include "velox/type/StringView.h"
+#include "velox/type/Type.h"
 #include "velox/vector/BaseVector.h"
-#include "velox/vector/FlatVector.h"
 #include "velox/vector/ComplexVector.h"
+#include "velox/vector/FlatVector.h"
 
 namespace facebook::velox::connector::nexmark {
 

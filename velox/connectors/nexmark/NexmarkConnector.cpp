@@ -49,16 +49,14 @@ NexmarkDataSource::NexmarkDataSource(
 
 void NexmarkDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
   VELOX_CHECK_EQ(
-      currentSplit_,
-      nullptr,
-      "NexmarkDataSource only accept one split.");
+      currentSplit_, nullptr, "NexmarkDataSource only accept one split.");
   currentSplit_ = std::dynamic_pointer_cast<NexmarkConnectorSplit>(split);
   VELOX_CHECK(currentSplit_, "Wrong type of split for NexmarkDataSource.");
 
   splitOffset_ = 0;
   splitEnd_ = currentSplit_->config.maxEvents;
-  nexmarkGenerator_ = std::make_unique<NexmarkGenerator>(
-      currentSplit_->config, 0, -1, pool_);
+  nexmarkGenerator_ =
+      std::make_unique<NexmarkGenerator>(currentSplit_->config, 0, -1, pool_);
 }
 
 std::optional<RowVectorPtr> NexmarkDataSource::next(
@@ -81,8 +79,8 @@ std::optional<RowVectorPtr> NexmarkDataSource::next(
 
   // Wait until reach the max wallclock timestamp.
   auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::system_clock::now().time_since_epoch())
-      .count();
+                   std::chrono::system_clock::now().time_since_epoch())
+                   .count();
   if (maxWallclockTimestamp > nowMs) {
     std::this_thread::sleep_for(
         std::chrono::milliseconds(maxWallclockTimestamp - nowMs));

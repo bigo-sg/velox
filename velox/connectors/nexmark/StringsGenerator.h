@@ -15,10 +15,10 @@
  */
 #pragma once
 
-#include <string>
+#include <boost/algorithm/string/trim.hpp>
 #include <fmt/format.h>
 #include <folly/CPortability.h>
-#include <boost/algorithm/string/trim.hpp>
+#include <string>
 
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/pcg_random.hpp"

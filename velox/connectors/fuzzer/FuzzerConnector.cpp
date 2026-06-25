@@ -34,9 +34,7 @@ ConnectorTableHandlePtr FuzzerTableHandle::create(
 
   VectorFuzzer::Options options;
   return std::make_shared<const FuzzerTableHandle>(
-      connectorId,
-      options,
-      (size_t) fuzzerSeed);
+      connectorId, options, (size_t)fuzzerSeed);
 }
 
 void FuzzerTableHandle::registerSerDe() {

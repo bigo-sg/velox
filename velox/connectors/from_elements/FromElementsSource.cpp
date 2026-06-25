@@ -21,20 +21,22 @@
 namespace facebook::velox::connector::from_elements {
 
 FromElementsSource::FromElementsSource(
-  const RowTypePtr& outputType,
-  const ConnectorQueryCtx* queryCtx,
-  const std::vector<std::string>& s)
+    const RowTypePtr& outputType,
+    const ConnectorQueryCtx* queryCtx,
+    const std::vector<std::string>& s)
     : outputType_(outputType),
-    queryCtx_(queryCtx),
-    formatter_(createFormatter(outputType, tz::locateZone(queryCtx->sessionTimezone()))) {
-      VELOX_CHECK(formatter_ != nullptr);
-      auto row = RowVector::createEmpty(outputType_, queryCtx->memoryPool());
-      row->resize(s.size());
-      VectorPtr vec = std::dynamic_pointer_cast<BaseVector>(row);
-      for (int i = 0; i < s.size(); ++i) {
-        formatter_->fromString(s[i], outputType_, i, vec);
-      }
-      data_ = row;
+      queryCtx_(queryCtx),
+      formatter_(createFormatter(
+          outputType,
+          tz::locateZone(queryCtx->sessionTimezone()))) {
+  VELOX_CHECK(formatter_ != nullptr);
+  auto row = RowVector::createEmpty(outputType_, queryCtx->memoryPool());
+  row->resize(s.size());
+  VectorPtr vec = std::dynamic_pointer_cast<BaseVector>(row);
+  for (int i = 0; i < s.size(); ++i) {
+    formatter_->fromString(s[i], outputType_, i, vec);
+  }
+  data_ = row;
 }
 
 std::optional<RowVectorPtr> FromElementsSource::next(

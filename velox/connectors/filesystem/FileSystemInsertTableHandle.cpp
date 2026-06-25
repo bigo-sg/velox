@@ -29,8 +29,10 @@ FileSystemInsertTableHandle::FileSystemInsertTableHandle(
       partitionIndexes_(partitionIndexes),
       partitionKeys_(partitionKeys),
       tableParameters_(tableParameters) {
-    VELOX_CHECK(partitionKeys_.size() == partitionIndexes_.size(), "Partition keys' size must euqals to Partition indexes' size");
-  }
+  VELOX_CHECK(
+      partitionKeys_.size() == partitionIndexes_.size(),
+      "Partition keys' size must euqals to Partition indexes' size");
+}
 
 std::string FileSystemInsertTableHandle::toString() const {
   std::stringstream out;

@@ -900,7 +900,7 @@ VectorPtr BaseVector::createConstant(
   VELOX_CHECK_EQ(type->kind(), value.kind());
   if (type->isPrimitiveType()) {
     return VELOX_DYNAMIC_SCALAR_TYPE_DISPATCH_ALL(
-      newConstant, value.kind(), type, value, size, pool);
+        newConstant, value.kind(), type, value, size, pool);
   }
 
   if (value.isNull()) {

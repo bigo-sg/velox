@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
+#include <cstdint>
+#include <numeric>
+#include <unordered_map>
+#include <vector>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
 #include "velox/type/Timestamp.h"
@@ -21,10 +25,6 @@
 #include "velox/vector/ConstantVector.h"
 #include "velox/vector/DictionaryVector.h"
 #include "velox/vector/FlatVector.h"
-#include <cstdint>
-#include <numeric>
-#include <unordered_map>
-#include <vector>
 
 namespace facebook::velox::stateful {
 
@@ -84,12 +84,15 @@ SliceAssigner::SliceAssigner(
   sliceSize_ = std::gcd(size, step);
 }
 
-std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
+std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
+    const RowVectorPtr& input) {
   if (rowtimeIndex_ < 0) {
     int64_t timestampMs = TimeWindowUtil::getCurrentProcessingTime();
     if (windowType_ == WindowType::TUMBLE) {
-      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-      int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
+      int64_t utcTimestamp =
+          TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+      int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(
+          utcTimestamp, offset_, size_);
       return {{windowStart + size_, input}};
     } else {
       return {{timestampMs, input}};
@@ -99,7 +102,8 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr
     prepareChildrenLoaded(input);
     const auto* tsSimple = rowtimeVector->as<SimpleVector<Timestamp>>();
     const auto* tsSimpleInt = rowtimeVector->as<SimpleVector<int64_t>>();
-    VELOX_CHECK(tsSimple != nullptr || tsSimpleInt != nullptr,
+    VELOX_CHECK(
+        tsSimple != nullptr || tsSimpleInt != nullptr,
         "rowtime column must be TIMESTAMP/Int64 simple vector");
 
     const vector_size_t numRows = rowtimeVector->size();
@@ -107,7 +111,8 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr
       return tsSimple ? tsSimple->isNullAt(row) : tsSimpleInt->isNullAt(row);
     };
     auto timestampMillisAt = [&](vector_size_t row) {
-      return tsSimple ? tsSimple->valueAt(row).toMillis() : tsSimpleInt->valueAt(row);
+      return tsSimple ? tsSimple->valueAt(row).toMillis()
+                      : tsSimpleInt->valueAt(row);
     };
 
     velox::memory::MemoryPool* pool = input->pool();
@@ -120,9 +125,11 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr
           continue;
         }
         int64_t timestampMs = timestampMillisAt(i);
-        int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+        int64_t utcTimestamp =
+            TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
         int64_t windowStart =
-            stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
+            stateful::TimeWindowUtil::getWindowStartWithOffset(
+                utcTimestamp, offset_, size_);
         const int64_t sliceEnd = windowStart + size_;
         groups[sliceEnd].push_back(i);
       }

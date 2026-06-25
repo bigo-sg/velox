@@ -32,9 +32,9 @@ FetchContent_Declare(
   gRPC
   URL ${VELOX_GRPC_SOURCE_URL}
   URL_HASH ${VELOX_GRPC_BUILD_SHA256_CHECKSUM}
-  PATCH_COMMAND git apply
-                ${CMAKE_CURRENT_LIST_DIR}/grpc/grpc-tools-target.patch
-  OVERRIDE_FIND_PACKAGE EXCLUDE_FROM_ALL)
+  PATCH_COMMAND
+    git apply ${CMAKE_CURRENT_LIST_DIR}/grpc/grpc-tools-target.patch
+    OVERRIDE_FIND_PACKAGE EXCLUDE_FROM_ALL)
 
 # We need to specify CACHE explicitly even when we have
 # set(CMAKE_POLICY_DEFAULT_CMP0077 NEW). Because gRPC doesn't use option(). gRPC

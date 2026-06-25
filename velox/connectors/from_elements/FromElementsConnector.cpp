@@ -29,7 +29,9 @@ std::unique_ptr<DataSource> FromElementsConnector::createDataSource(
   const std::shared_ptr<FromElementsTableHandle> fromElementsTableHandle =
       std::dynamic_pointer_cast<FromElementsTableHandle>(tableHandle);
   return std::make_unique<FromElementsSource>(
-      fromElementsTableHandle->dataColumns(), connectorQueryCtx, fromElementsTableHandle->data());
+      fromElementsTableHandle->dataColumns(),
+      connectorQueryCtx,
+      fromElementsTableHandle->data());
 }
 
 } // namespace facebook::velox::connector::from_elements

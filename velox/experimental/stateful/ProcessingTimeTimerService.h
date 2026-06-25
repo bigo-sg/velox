@@ -75,7 +75,8 @@ class ProcessingTimeTimerService {
     }
 
     auto registered = scheduler_->registerTimer(
-        scheduleAt, ProcessingTimerTask(scheduleAt, [this](int64_t processingTime) {
+        scheduleAt,
+        ProcessingTimerTask(scheduleAt, [this](int64_t processingTime) {
           onProcessingTime(processingTime);
         }));
     if (!registered.has_value()) {
@@ -151,7 +152,7 @@ class ProcessingTimeTimerService {
       triggerable_->onProcessingTime(
           std::make_shared<TimerHeapInternalTimer<K, N>>(std::move(popped)));
     }
-  
+
     triggerable_->onProcessingTime(time);
     if (!taskName.empty()) {
       scheduler_->unregister(taskName);
@@ -164,7 +165,7 @@ class ProcessingTimeTimerService {
     if (!scheduleTs.has_value()) {
       return;
     }
-  
+
     auto registered = scheduler_->registerTimer(
         scheduleTs.value(),
         ProcessingTimerTask(scheduleTs.value(), [this](int64_t processingTime) {

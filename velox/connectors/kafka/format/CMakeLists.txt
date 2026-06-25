@@ -14,8 +14,5 @@
 velox_add_library(velox_kafka_connector_format OBJECT
                   JSONRecordDeserializer.cpp StreamJSONRecordDeserializer.cpp)
 
-velox_link_libraries(
-  velox_kafka_connector_format
-  velox_common_io
-  velox_connector
-  simdjson::simdjson)
+velox_link_libraries(velox_kafka_connector_format velox_common_io
+                     velox_connector simdjson::simdjson)

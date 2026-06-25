@@ -27,7 +27,9 @@ const std::string StringsGenerator::REUSABLE_EXTRA_STRING =
         staticRandomGenerator,
         1024 * 1024);
 
-std::string StringsGenerator::getReusableExtraString(pcg32_fast& random, int length) {
+std::string StringsGenerator::getReusableExtraString(
+    pcg32_fast& random,
+    int length) {
   std::string result(length, 0);
   int rnd = 0;
   int n = 0; // number of random characters left in rnd

@@ -40,8 +40,8 @@ NexmarkGeneratorConfig::NexmarkGeneratorConfig(
   interEventDelayUs.resize(1);
   interEventDelayUs[0] = 1'000'000.0 / configuration.firstEventRate *
       configuration.numEventGenerators;
-  stepLengthSec = calcStepLengthSec(
-      configuration.rateShape, configuration.ratePeriodSec);
+  stepLengthSec =
+      calcStepLengthSec(configuration.rateShape, configuration.ratePeriodSec);
 
   if (maxEventsOrZero_ == 0) {
     maxEvents = std::numeric_limits<int64_t>::max() /

@@ -14,18 +14,18 @@
  * limitations under the License.
  */
 
-#include "velox/connectors/pulsar/PulsarConfig.h"
-#include "velox/common/base/Exceptions.h"
 #include <folly/FileUtil.h>
 #include <folly/String.h>
 #include <pulsar/Authentication.h>
 #include <pulsar/ConsumerType.h>
 #include <pulsar/InitialPosition.h>
+#include "velox/common/base/Exceptions.h"
+#include "velox/connectors/pulsar/PulsarConfig.h"
 
 namespace facebook::velox::connector::pulsar {
 
-::pulsar::ClientConfiguration
-ConnectionConfig::getPulsarClientConfiguration() const {
+::pulsar::ClientConfiguration ConnectionConfig::getPulsarClientConfiguration()
+    const {
   ::pulsar::ClientConfiguration conf;
   auto token = getAuthToken();
   if (token.empty() && !getAuthTokenFile().empty()) {
@@ -51,8 +51,8 @@ ConnectionConfig::getPulsarConsumerConfiguration() const {
     conf.setConsumerType(::pulsar::ConsumerShared);
   } else if (subscriptionType == "failover") {
     conf.setConsumerType(::pulsar::ConsumerFailover);
-  } else if (subscriptionType == "key_shared" ||
-             subscriptionType == "key-shared") {
+  } else if (
+      subscriptionType == "key_shared" || subscriptionType == "key-shared") {
     conf.setConsumerType(::pulsar::ConsumerKeyShared);
   } else {
     VELOX_FAIL("Unsupported Pulsar subscription type: {}", subscriptionType);

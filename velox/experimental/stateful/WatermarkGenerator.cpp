@@ -25,7 +25,9 @@ void validateRowtimeNoNulls(const RowVectorPtr& input, int rowtimeFieldIndex) {
   if (rowtimeFieldIndex < 0) {
     return;
   }
-  VELOX_CHECK(rowtimeFieldIndex < input->childrenSize(), "Rowtime field index out of bounds");
+  VELOX_CHECK(
+      rowtimeFieldIndex < input->childrenSize(),
+      "Rowtime field index out of bounds");
   auto* rowtimeVector = input->childAt(rowtimeFieldIndex).get();
   const uint64_t* rawNulls = rowtimeVector->rawNulls();
   if (rawNulls != nullptr) {
@@ -33,8 +35,7 @@ void validateRowtimeNoNulls(const RowVectorPtr& input, int rowtimeFieldIndex) {
     const uint64_t nullCount = bits::countNulls(rawNulls, 0, size);
     if (nullCount > 0) {
       VELOX_FAIL(
-          "RowTime field should not have nulls, but found {} nulls",
-          nullCount);
+          "RowTime field should not have nulls, but found {} nulls", nullCount);
     }
   }
 }
@@ -47,7 +48,7 @@ RowVectorPtr getTimestampVector(exec::Operator* op, const RowVectorPtr& input) {
   return timestampVector;
 }
 
-template<bool HasEmitFn>
+template <bool HasEmitFn>
 int64_t extractWatermarkImpl(
     const int64_t* timestamps,
     vector_size_t timestampSize,
@@ -55,21 +56,20 @@ int64_t extractWatermarkImpl(
     int64_t lastWatermark,
     int64_t watermarkInterval,
     const std::function<void(int64_t watermark, vector_size_t index)>& emitFn) {
+  int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval;
 
-    int64_t nextWatermarkThreshold = lastWatermark + watermarkInterval;
-
-    for (vector_size_t i = 0; i < timestampSize; ++i) {
-        if (timestamps[i] > currentWatermark) {
-            currentWatermark = timestamps[i];
-            if (currentWatermark > nextWatermarkThreshold) {
-                if constexpr (HasEmitFn) {
-                  emitFn(currentWatermark, i);
-                }
-                nextWatermarkThreshold = currentWatermark + watermarkInterval;
-            }
+  for (vector_size_t i = 0; i < timestampSize; ++i) {
+    if (timestamps[i] > currentWatermark) {
+      currentWatermark = timestamps[i];
+      if (currentWatermark > nextWatermarkThreshold) {
+        if constexpr (HasEmitFn) {
+          emitFn(currentWatermark, i);
         }
+        nextWatermarkThreshold = currentWatermark + watermarkInterval;
+      }
     }
-    return currentWatermark;
+  }
+  return currentWatermark;
 }
 
 int64_t extractWatermark(
@@ -79,13 +79,23 @@ int64_t extractWatermark(
     int64_t lastWatermark,
     int64_t watermarkInterval,
     const std::function<void(int64_t watermark, vector_size_t index)>& emitFn) {
-    if (emitFn) {
-        return extractWatermarkImpl<true>(timestamps, timestampSize, currentWatermark,
-                                          lastWatermark, watermarkInterval, emitFn);
-    } else {
-        return extractWatermarkImpl<false>(timestamps, timestampSize, currentWatermark,
-                                           lastWatermark, watermarkInterval, emitFn);
-    }
+  if (emitFn) {
+    return extractWatermarkImpl<true>(
+        timestamps,
+        timestampSize,
+        currentWatermark,
+        lastWatermark,
+        watermarkInterval,
+        emitFn);
+  } else {
+    return extractWatermarkImpl<false>(
+        timestamps,
+        timestampSize,
+        currentWatermark,
+        lastWatermark,
+        watermarkInterval,
+        emitFn);
+  }
 }
 
 } // namespace watermark

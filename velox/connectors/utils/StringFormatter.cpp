@@ -20,7 +20,9 @@
 #include <stack>
 
 namespace facebook::velox::connector {
-const FormatterPtr createFormatter(const TypePtr& type, const tz::TimeZone* timeZone) {
+const FormatterPtr createFormatter(
+    const TypePtr& type,
+    const tz::TimeZone* timeZone) {
   TypeKind typeKind = type->kind();
   switch (typeKind) {
     case TypeKind::INTEGER:
@@ -66,8 +68,7 @@ const FormatterPtr createFormatter(const TypePtr& type, const tz::TimeZone* time
       const TypePtr& valueType = mapType->valueType();
       auto keyFormatter = createFormatter(keyType, timeZone);
       auto valueFormatter = createFormatter(valueType, timeZone);
-      return std::make_shared<MapFormatter>(
-          keyFormatter, valueFormatter);
+      return std::make_shared<MapFormatter>(keyFormatter, valueFormatter);
     }
     default:
       VELOX_FAIL("Unsupported type: {}", type->name());
@@ -172,4 +173,4 @@ const void StringFormatter::normalize(std::string& input, const TypeKind kind) {
       return;
   }
 }
-} // namespace facebook::velox::stateful
+} // namespace facebook::velox::connector

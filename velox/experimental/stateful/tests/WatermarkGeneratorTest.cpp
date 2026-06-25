@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-#include "velox/experimental/stateful/WatermarkAssigner.h"
 #include "velox/experimental/stateful/WatermarkGenerator.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
+#include "velox/experimental/stateful/WatermarkAssigner.h"
 #include "velox/experimental/stateful/WatermarkSource.h"
 
 #include <folly/init/Init.h>
@@ -148,9 +148,7 @@ class NoOutputOperator : public exec::Operator {
 class SpyStatefulOperator : public StatefulOperator {
  public:
   explicit SpyStatefulOperator(exec::DriverCtx* driverCtx)
-      : StatefulOperator(
-            std::make_unique<NoOutputOperator>(driverCtx),
-            {}) {}
+      : StatefulOperator(std::make_unique<NoOutputOperator>(driverCtx), {}) {}
 
   void addInput(StreamElementPtr input) override {
     if (input->isRecord()) {
@@ -297,7 +295,8 @@ TEST_F(WatermarkGeneratorTest, plannerRejectsTableScanWithNullWatermarkSpec) {
   auto tableHandle =
       std::make_shared<connector::ConnectorTableHandle>("test_connector");
   std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>
-      assignments = {{"timestamp", std::make_shared<connector::ColumnHandle>()}};
+      assignments = {
+          {"timestamp", std::make_shared<connector::ColumnHandle>()}};
   std::shared_ptr<WatermarkPushDownSpec> nullWatermarkSpec;
   auto tableScan = std::make_shared<TableScanNodeWithWatermark>(
       "scan",
@@ -307,8 +306,8 @@ TEST_F(WatermarkGeneratorTest, plannerRejectsTableScanWithNullWatermarkSpec) {
       nullWatermarkSpec);
 
   core::PlanFragment planFragment;
-  planFragment.planNode =
-      std::make_shared<StatefulPlanNode>(tableScan, std::vector<core::PlanNodePtr>{});
+  planFragment.planNode = std::make_shared<StatefulPlanNode>(
+      tableScan, std::vector<core::PlanNodePtr>{});
 
   VELOX_ASSERT_THROW(
       StatefulPlanner::plan(planFragment, driverCtx_.get(), nullptr),
@@ -327,10 +326,7 @@ TEST_F(WatermarkGeneratorTest, watermarkSourceEmitsOnlyGeneratedWatermarks) {
       std::make_unique<QueuedOutputOperator>(
           driverCtx_.get(),
           std::vector<RowVectorPtr>{
-              batch({100, 200}),
-              batch({1001}),
-              batch({1200}),
-              batch({2501})}),
+              batch({100, 200}), batch({1001}), batch({1200}), batch({2501})}),
       std::move(targets),
       std::make_unique<WatermarkGenerator>(
           std::make_unique<TimestampProjectionOperator>(driverCtx_.get()),
@@ -375,8 +371,7 @@ TEST_F(
   watermarkAssigner.advance();
 
   EXPECT_EQ(
-      (std::vector<std::string>{
-          "record", "watermark", "record", "watermark"}),
+      (std::vector<std::string>{"record", "watermark", "record", "watermark"}),
       spyPtr->events());
   EXPECT_EQ((std::vector<vector_size_t>{2, 2}), spyPtr->recordSizes());
   EXPECT_EQ((std::vector<int64_t>{1001, 2501}), spyPtr->watermarks());

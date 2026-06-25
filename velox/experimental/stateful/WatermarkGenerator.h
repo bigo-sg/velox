@@ -83,8 +83,8 @@ class WatermarkGenerator {
 
  private:
   std::unique_ptr<exec::Operator> op_;
-  // TODO: Use idleTimeout_ to detect idle inputs and emit idle/active watermark status,
-  // matching Flink WatermarkAssignerOperator semantics.
+  // TODO: Use idleTimeout_ to detect idle inputs and emit idle/active watermark
+  // status, matching Flink WatermarkAssignerOperator semantics.
   const int64_t idleTimeout_;
   const int rowtimeFieldIndex_;
   const int64_t watermarkInterval_;

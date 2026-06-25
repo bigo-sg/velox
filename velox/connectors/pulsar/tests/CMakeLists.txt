@@ -22,8 +22,8 @@ add_executable(
 
 add_test(velox_pulsar_connector_test velox_pulsar_connector_test)
 
-target_include_directories(
-  velox_pulsar_connector_test PRIVATE ${PulsarClient_INCLUDE_DIR})
+target_include_directories(velox_pulsar_connector_test
+                           PRIVATE ${PulsarClient_INCLUDE_DIR})
 
 target_link_libraries(
   velox_pulsar_connector_test
@@ -35,15 +35,12 @@ target_link_libraries(
   GTest::gtest
   GTest::gtest_main)
 
-option(
-  VELOX_ENABLE_PULSAR_INTEGRATION_TESTS
-  "Enable Pulsar connector standalone integration tests."
-  OFF)
+option(VELOX_ENABLE_PULSAR_INTEGRATION_TESTS
+       "Enable Pulsar connector standalone integration tests." OFF)
 
 if(${VELOX_ENABLE_PULSAR_INTEGRATION_TESTS})
-  add_executable(
-    velox_pulsar_connector_integration_test
-    PulsarConnectorIntegrationTest.cpp)
+  add_executable(velox_pulsar_connector_integration_test
+                 PulsarConnectorIntegrationTest.cpp)
 
   target_link_libraries(
     velox_pulsar_connector_integration_test

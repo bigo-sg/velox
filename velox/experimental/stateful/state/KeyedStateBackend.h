@@ -16,6 +16,7 @@
 #pragma once
 #include <cstdint>
 
+#include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/state/CheckpointListener.h"
 #include "velox/experimental/stateful/state/Snapshotable.h"
@@ -23,7 +24,6 @@
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/window/Window.h"
 #include "velox/vector/ComplexVector.h"
-#include "velox/common/memory/MemoryPool.h"
 
 namespace facebook::velox::stateful {
 
@@ -54,7 +54,8 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   createTimerService(Triggerable<int64_t, int64_t>* triggerable) = 0;
 
   virtual std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
-      createGroupWindowAggTimerService(Triggerable<int64_t, TimeWindow>* triggerable) = 0;
+  createGroupWindowAggTimerService(
+      Triggerable<int64_t, TimeWindow>* triggerable) = 0;
 
   void setCurrentKey(const uint32_t key) {
     currentKey_ = key;

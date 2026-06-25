@@ -777,14 +777,14 @@ class Task : public std::enable_shared_from_this<Task> {
  protected:
   // TODO: make it extandable.
   Task(
-    const std::string& taskId,
-    core::PlanFragment planFragment,
-    int destination,
-    std::shared_ptr<core::QueryCtx> queryCtx,
-    ExecutionMode mode,
-    ConsumerSupplier consumerSupplier,
-    int32_t memoryArbitrationPriority = 0,
-    std::function<void(std::exception_ptr)> onError = nullptr);
+      const std::string& taskId,
+      core::PlanFragment planFragment,
+      int destination,
+      std::shared_ptr<core::QueryCtx> queryCtx,
+      ExecutionMode mode,
+      ConsumerSupplier consumerSupplier,
+      int32_t memoryArbitrationPriority = 0,
+      std::function<void(std::exception_ptr)> onError = nullptr);
 
   // Invoked to initialize the memory pool for this task on creation.
   void initTaskPool();

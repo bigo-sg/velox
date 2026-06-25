@@ -15,13 +15,13 @@
  */
 #pragma once
 
-#include "velox/connectors/pulsar/PulsarConfig.h"
 #include <pulsar/Client.h>
 #include <pulsar/Consumer.h>
 #include <pulsar/Message.h>
 #include <pulsar/MessageId.h>
 #include <atomic>
 #include <optional>
+#include "velox/connectors/pulsar/PulsarConfig.h"
 
 namespace facebook::velox::connector::pulsar {
 
@@ -50,9 +50,7 @@ class PulsarConsumer {
 
   void close();
 
-  void consumeBatch(
-      std::vector<PulsarMessage>& messages,
-      size_t& messageBytes);
+  void consumeBatch(std::vector<PulsarMessage>& messages, size_t& messageBytes);
 
   void acknowledge(const ::pulsar::Message& message, bool cumulative);
 
