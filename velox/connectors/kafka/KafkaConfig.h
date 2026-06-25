@@ -15,8 +15,8 @@
  */
 #pragma once
 
-#include "velox/common/config/Config.h"
 #include <cppkafka/cppkafka.h>
+#include "velox/common/config/Config.h"
 
 namespace facebook::velox::connector::kafka {
 
@@ -46,7 +46,8 @@ class KafkaConfig {
   template <typename T>
   const std::shared_ptr<T> updateAndGetAllConfigs(
       const std::unordered_map<std::string, std::string>& configs) const {
-    std::unordered_map<std::string, std::string> rawConfigs = config_->rawConfigsCopy();
+    std::unordered_map<std::string, std::string> rawConfigs =
+        config_->rawConfigsCopy();
     rawConfigs.insert(configs.begin(), configs.end());
     ConfigPtr newConfig =
         std::make_shared<const config::ConfigBase>(std::move(rawConfigs));
@@ -56,7 +57,9 @@ class KafkaConfig {
  protected:
   ConfigPtr config_;
   template <typename T, bool throwException>
-  const T checkAndGetConfigValue(const std::string& configKey, const T& defaultValue) const;
+  const T checkAndGetConfigValue(
+      const std::string& configKey,
+      const T& defaultValue) const;
 };
 
 /// Kafka connector config.

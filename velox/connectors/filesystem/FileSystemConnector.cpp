@@ -15,8 +15,8 @@
  */
 
 #include "velox/connectors/filesystem/FileSystemConnector.h"
-#include "velox/connectors/filesystem/FileSystemInsertTableHandle.h"
 #include "velox/connectors/filesystem/FileSystemDataSink.h"
+#include "velox/connectors/filesystem/FileSystemInsertTableHandle.h"
 
 namespace facebook::velox::connector::filesystem {
 

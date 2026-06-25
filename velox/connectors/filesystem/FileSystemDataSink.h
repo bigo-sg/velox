@@ -16,14 +16,14 @@
 #pragma once
 
 #include <optional>
+#include "boost/algorithm/string.hpp"
+#include "folly/container/F14Map.h"
 #include "velox/common/file/FileSystems.h"
 #include "velox/connectors/Connector.h"
 #include "velox/connectors/filesystem/FileSystemConfig.h"
 #include "velox/connectors/filesystem/FileSystemInsertTableHandle.h"
 #include "velox/connectors/hive/HiveDataSink.h"
 #include "velox/connectors/hive/PartitionIdGenerator.h"
-#include "boost/algorithm/string.hpp"
-#include "folly/container/F14Map.h"
 
 namespace facebook::velox::connector::filesystem {
 

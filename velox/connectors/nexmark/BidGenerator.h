@@ -33,7 +33,6 @@
 
 namespace facebook::velox::connector::nexmark {
 
-
 class NexmarkGeneratorConfig;
 
 class BidGenerator {

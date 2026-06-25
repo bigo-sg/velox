@@ -22,13 +22,12 @@ namespace facebook::velox::connector::kafka {
 std::unique_ptr<DataSource> KafkaConnector::createDataSource(
     const RowTypePtr& outputType,
     const ConnectorHandlePtr& tableHandle,
-    const std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>& /* columnHandles **/,
+    const std::unordered_map<
+        std::string,
+        std::shared_ptr<connector::ColumnHandle>>& /* columnHandles **/,
     ConnectorQueryCtx* connectorQueryCtx) {
   return std::make_unique<KafkaDataSource>(
-      outputType,
-      tableHandle,
-      connectorQueryCtx,
-      config_);
+      outputType, tableHandle, connectorQueryCtx, config_);
 }
 
 std::unique_ptr<DataSink> KafkaConnector::createDataSink(

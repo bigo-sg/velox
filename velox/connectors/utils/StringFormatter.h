@@ -15,14 +15,6 @@
  */
 #pragma once
 
-#include "velox/expression/CastExpr.h"
-#include "velox/type/StringView.h"
-#include "velox/type/Timestamp.h"
-#include "velox/type/TimestampConversion.h"
-#include "velox/type/tz/TimeZoneMap.h"
-#include "velox/type/Type.h"
-#include "velox/vector/ComplexVector.h"
-#include "velox/vector/DictionaryVector.h"
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/erase.hpp>
 #include <boost/algorithm/string/replace.hpp>
@@ -32,6 +24,14 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include "velox/expression/CastExpr.h"
+#include "velox/type/StringView.h"
+#include "velox/type/Timestamp.h"
+#include "velox/type/TimestampConversion.h"
+#include "velox/type/Type.h"
+#include "velox/type/tz/TimeZoneMap.h"
+#include "velox/vector/ComplexVector.h"
+#include "velox/vector/DictionaryVector.h"
 
 namespace facebook::velox::connector {
 
@@ -54,16 +54,18 @@ struct StringFormatter {
       const size_t index,
       VectorPtr& vec) = 0;
 
-  /// Split the input string of flink-style by given delimiter, the sub-string represents complex field would be
-  /// taken as a whole and not be splitted. e.g. split('a,+I[1,2,3]', ',') -> [a,+I[1,2,3]].
+  /// Split the input string of flink-style by given delimiter, the sub-string
+  /// represents complex field would be taken as a whole and not be splitted.
+  /// e.g. split('a,+I[1,2,3]', ',') -> [a,+I[1,2,3]].
   static const std::vector<std::string> split(
       const std::string& s,
       const std::string& delimiter);
-  /// Normalize the input string of flink-style to make it easy to be splitted. e.g. +I[1,2,3] -> 1,2,3.
+  /// Normalize the input string of flink-style to make it easy to be splitted.
+  /// e.g. +I[1,2,3] -> 1,2,3.
   static const void normalize(std::string& s, const TypeKind kind);
 
-  protected:
-    const tz::TimeZone* timeZone_;
+ protected:
+  const tz::TimeZone* timeZone_;
 };
 
 using FormatterPtr = std::shared_ptr<StringFormatter>;
@@ -83,7 +85,7 @@ struct DefaultFormatter : public StringFormatter {
       ss << "null";
     } else {
       T val;
-      switch(input->encoding()) {
+      switch (input->encoding()) {
         case VectorEncoding::Simple::FLAT: {
           auto flat = std::dynamic_pointer_cast<FlatVector<T>>(input);
           val = flat->valueAt(index);
@@ -181,7 +183,8 @@ struct DefaultFormatter : public StringFormatter {
     } else if constexpr (std::is_same_v<T, StringView>) {
       ss << t.str();
     } else if constexpr (std::is_same_v<T, Timestamp>) {
-      TimestampToStringOptions options{.precision=TimestampPrecision::kMilliseconds};
+      TimestampToStringOptions options{
+          .precision = TimestampPrecision::kMilliseconds};
       ss << t.toString(options);
     } else {
       VELOX_FAIL("Not supported type: {}", typeid(T).name());
@@ -217,10 +220,11 @@ struct DefaultFormatter : public StringFormatter {
       return sv;
     } else if constexpr (std::is_same_v<T, Timestamp>) {
       const auto parsed =
-        util::fromTimestampWithTimezoneString(s.data(), s.size(), util::TimestampParseMode::kLegacyCast)
-        .thenOrThrow(folly::identity, [&](const Status& status) {
-              VELOX_FAIL("error while parse timestamp: {}", status.message());
-        });
+          util::fromTimestampWithTimezoneString(
+              s.data(), s.size(), util::TimestampParseMode::kLegacyCast)
+              .thenOrThrow(folly::identity, [&](const Status& status) {
+                VELOX_FAIL("error while parse timestamp: {}", status.message());
+              });
       return util::fromParsedTimestampWithTimeZone(parsed, timeZone_);
     } else {
       VELOX_FAIL("Not supported type: {}", typeid(T).name());
@@ -428,6 +432,8 @@ struct MapFormatter : public StringFormatter {
   FormatterPtr valueFormatter_;
 };
 
-const FormatterPtr createFormatter(const TypePtr& type, const tz::TimeZone* timeZone);
+const FormatterPtr createFormatter(
+    const TypePtr& type,
+    const tz::TimeZone* timeZone);
 
-} // namespace facebook::velox::stateful
+} // namespace facebook::velox::connector

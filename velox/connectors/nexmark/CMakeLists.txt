@@ -13,7 +13,7 @@
 # limitations under the License.
 
 velox_add_library(
-  velox_nexmark_connector 
+  velox_nexmark_connector
   OBJECT
   StringsGenerator.cpp
   PersonGenerator.cpp
@@ -23,11 +23,8 @@ velox_add_library(
   NexmarkGeneratorConfig.cpp
   NexmarkConnector.cpp)
 
-velox_link_libraries(
-  velox_nexmark_connector PRIVATE velox_connector)
+velox_link_libraries(velox_nexmark_connector PRIVATE velox_connector)
 
 if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)
 endif()
-
-

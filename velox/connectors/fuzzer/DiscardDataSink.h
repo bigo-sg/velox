@@ -64,8 +64,6 @@ class DiscardDataSink : public DataSink {
  private:
   long lastTime = 0;
   long rowNums = 0;
-
 };
 
 } // namespace facebook::velox::connector::fuzzer
-

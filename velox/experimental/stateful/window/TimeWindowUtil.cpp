@@ -32,7 +32,7 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
   // consider the DST timezone
   if (useDayLightSaving) {
     // TODO: support time zone
-    //int64_t utcWindowStart =
+    // int64_t utcWindowStart =
     //          getWindowStartWithOffset(
     //                  toUtcTimestampMills(currentWatermark, shiftTimezone),
     //                  0L, interval);
@@ -69,7 +69,9 @@ int64_t TimeWindowUtil::getWindowStartWithOffset(
 
 int64_t TimeWindowUtil::getCurrentProcessingTime() {
   auto now = std::chrono::system_clock::now();
-  return std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             now.time_since_epoch())
+      .count();
 }
 
 // static

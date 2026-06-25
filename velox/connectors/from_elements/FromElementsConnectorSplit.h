@@ -15,8 +15,8 @@
  */
 #pragma once
 
-#include "velox/connectors/Connector.h"
 #include <folly/dynamic.h>
+#include "velox/connectors/Connector.h"
 
 namespace facebook::velox::connector::from_elements {
 

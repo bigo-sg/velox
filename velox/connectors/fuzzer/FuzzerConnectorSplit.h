@@ -34,7 +34,8 @@ struct FuzzerConnectorSplit : public connector::ConnectorSplit {
     return obj;
   }
 
-  static std::shared_ptr<FuzzerConnectorSplit> create(const folly::dynamic& obj) {
+  static std::shared_ptr<FuzzerConnectorSplit> create(
+      const folly::dynamic& obj) {
     const auto connectorId = obj["connectorId"].asString();
     const auto numRows = obj["numRows"].asInt();
     return std::make_shared<FuzzerConnectorSplit>(connectorId, numRows);

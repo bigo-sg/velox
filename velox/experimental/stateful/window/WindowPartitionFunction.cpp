@@ -39,8 +39,8 @@ WindowPartitionFunction::WindowPartitionFunction(
 }
 
 std::optional<int64_t> WindowPartitionFunction::partition(
-  const RowVector& input,
-  std::vector<int64_t>& partitions) {
+    const RowVector& input,
+    std::vector<int64_t>& partitions) {
   if (inputType_->childAt(rowtimeIndex_)->kind() == TypeKind::BIGINT) {
     // TODO: this is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
@@ -64,15 +64,16 @@ std::optional<int64_t> WindowPartitionFunction::partition(
     } else if (windowType_ == WindowType::TUMBLE) { // Windowed Slice Assigner
       partitions[i] = timestamp;
     } else {
-      VELOX_UNSUPPORTED("Unsupported window type: {}", static_cast<int32_t>(windowType_));
+      VELOX_UNSUPPORTED(
+          "Unsupported window type: {}", static_cast<int32_t>(windowType_));
     }
   }
   return std::nullopt;
 }
 
 std::optional<uint32_t> WindowPartitionFunction::partition(
-  const RowVector& /* input */,
-  std::vector<uint32_t>& /* partitions */) {
+    const RowVector& /* input */,
+    std::vector<uint32_t>& /* partitions */) {
   VELOX_NYI();
 }
 

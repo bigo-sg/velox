@@ -16,11 +16,11 @@
 
 #pragma once
 
+#include <cmath>
 #include "velox/connectors/Connector.h"
 #include "velox/connectors/utils/StringFormatter.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
-#include <cmath>
 
 namespace facebook::velox::connector::print {
 
@@ -51,7 +51,6 @@ class PrintSink : public DataSink {
       int taskIndex);
 
  private:
-
   const RowTypePtr inputType_;
   const ConnectorQueryCtx* queryCtx_;
   const std::shared_ptr<StringFormatter> formatter_;

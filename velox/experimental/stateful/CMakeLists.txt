@@ -42,14 +42,14 @@ velox_add_library(
 velox_link_libraries(
   velox_stateful_exec
   PRIVATE
-  velox_stateful_agg
-  velox_stateful_join
-  velox_stateful_rank
-  velox_stateful_state
-  velox_stateful_window
-  velox_stateful_udf
-  velox_common_base
-  velox_exec)
+    velox_stateful_agg
+    velox_stateful_join
+    velox_stateful_rank
+    velox_stateful_state
+    velox_stateful_window
+    velox_stateful_udf
+    velox_common_base
+    velox_exec)
 
 if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)

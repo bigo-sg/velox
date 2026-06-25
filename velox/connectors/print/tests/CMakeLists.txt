@@ -19,10 +19,7 @@ add_test(velox_print_sink_test velox_print_sink_test)
 add_test(velox_print_table_handle_test velox_print_table_handle_test)
 
 target_link_libraries(
-  velox_print_sink_test
-  velox_print_connector
-  GTest::gtest
-  GTest::gtest_main)
+  velox_print_sink_test velox_print_connector GTest::gtest GTest::gtest_main)
 
 target_link_libraries(
   velox_print_table_handle_test

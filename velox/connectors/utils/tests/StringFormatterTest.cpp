@@ -79,11 +79,12 @@ TEST_F(StringFormatterTest, testSplit) {
 TEST_F(StringFormatterTest, testStringToTimestamp) {
   DefaultFormatter<Timestamp> formatter;
   TypePtr timestampType = std::make_shared<TimestampType>();
-  VectorPtr vec = FlatVector<Timestamp>::create(timestampType, 3, memoryPool.get());
+  VectorPtr vec =
+      FlatVector<Timestamp>::create(timestampType, 3, memoryPool.get());
   formatter.fromString("2025-09-08T19:14:12", timestampType, 0, vec);
   formatter.fromString("2025-09-08T19:14:12.100", timestampType, 1, vec);
   formatter.fromString("2025-09-08T19:14:12Z", timestampType, 2, vec);
-  TimestampToStringOptions options{.skipTrailingZeros=true};
+  TimestampToStringOptions options{.skipTrailingZeros = true};
   std::string s0 = vec->asFlatVector<Timestamp>()->valueAt(0).toString(options);
   std::string s1 = vec->asFlatVector<Timestamp>()->valueAt(1).toString(options);
   std::string s2 = vec->asFlatVector<Timestamp>()->valueAt(2).toString(options);
@@ -91,27 +92,38 @@ TEST_F(StringFormatterTest, testStringToTimestamp) {
   ASSERT_TRUE(s1 == "2025-09-08T19:14:12.1");
   ASSERT_TRUE(s2 == "2025-09-08T19:14:12");
   DefaultFormatter<Timestamp> formatter0(tz::locateZone("America/Los_Angeles"));
-  VectorPtr vec0 = FlatVector<Timestamp>::create(timestampType, 2, memoryPool.get());
+  VectorPtr vec0 =
+      FlatVector<Timestamp>::create(timestampType, 2, memoryPool.get());
   formatter0.fromString("2025-09-08T19:14:12", timestampType, 0, vec0);
   formatter0.fromString("2025-09-08T19:14:12.100", timestampType, 1, vec0);
-  std::string s3 = vec0->asFlatVector<Timestamp>()->valueAt(0).toString(options);
-  std::string s4 = vec0->asFlatVector<Timestamp>()->valueAt(1).toString(options);
+  std::string s3 =
+      vec0->asFlatVector<Timestamp>()->valueAt(0).toString(options);
+  std::string s4 =
+      vec0->asFlatVector<Timestamp>()->valueAt(1).toString(options);
   ASSERT_TRUE(s3 == "2025-09-09T02:14:12");
   ASSERT_TRUE(s4 == "2025-09-09T02:14:12.1");
   DefaultFormatter<Timestamp> formatter1(tz::locateZone("Asia/Shanghai"));
-  VectorPtr vec1 = FlatVector<Timestamp>::create(timestampType, 6, memoryPool.get());;
-  formatter1.fromString("2025-09-08T19:14:12America/Los_Angeles", timestampType, 0, vec1);
+  VectorPtr vec1 =
+      FlatVector<Timestamp>::create(timestampType, 6, memoryPool.get());
+  formatter1.fromString(
+      "2025-09-08T19:14:12America/Los_Angeles", timestampType, 0, vec1);
   formatter1.fromString("2025-09-08T19:14:12.1Z", timestampType, 1, vec1);
   formatter1.fromString("2025-09-08T19:14:12+03:00", timestampType, 2, vec1);
   formatter1.fromString("2025-09-08T19:14:12-03:00", timestampType, 3, vec1);
   formatter1.fromString("2025-09-08T19:14:12+03:15", timestampType, 4, vec1);
   formatter1.fromString("2025-09-08T19:14:12-03:15", timestampType, 5, vec1);
-  std::string s5 = vec1->asFlatVector<Timestamp>()->valueAt(0).toString(options);
-  std::string s6 = vec1->asFlatVector<Timestamp>()->valueAt(1).toString(options);
-  std::string s7 = vec1->asFlatVector<Timestamp>()->valueAt(2).toString(options);
-  std::string s8 = vec1->asFlatVector<Timestamp>()->valueAt(3).toString(options);
-  std::string s9 = vec1->asFlatVector<Timestamp>()->valueAt(4).toString(options);
-  std::string s10 = vec1->asFlatVector<Timestamp>()->valueAt(5).toString(options);
+  std::string s5 =
+      vec1->asFlatVector<Timestamp>()->valueAt(0).toString(options);
+  std::string s6 =
+      vec1->asFlatVector<Timestamp>()->valueAt(1).toString(options);
+  std::string s7 =
+      vec1->asFlatVector<Timestamp>()->valueAt(2).toString(options);
+  std::string s8 =
+      vec1->asFlatVector<Timestamp>()->valueAt(3).toString(options);
+  std::string s9 =
+      vec1->asFlatVector<Timestamp>()->valueAt(4).toString(options);
+  std::string s10 =
+      vec1->asFlatVector<Timestamp>()->valueAt(5).toString(options);
   ASSERT_TRUE(s5 == "2025-09-09T02:14:12");
   ASSERT_TRUE(s6 == "2025-09-08T19:14:12.1");
   ASSERT_TRUE(s7 == "2025-09-08T16:14:12");
@@ -120,7 +132,7 @@ TEST_F(StringFormatterTest, testStringToTimestamp) {
   ASSERT_TRUE(s10 == "2025-09-08T22:29:12");
 }
 
-} // namespace facebook::velox::stateful::test
+} // namespace facebook::velox::connector::test
 
 int main(int argc, char* argv[]) {
   testing::InitGoogleTest(&argc, argv);

@@ -13,10 +13,18 @@
 # limitations under the License.
 include_guard(GLOBAL)
 
-set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(BUILD_PERF_TOOLS OFF CACHE BOOL "" FORCE)
-set(BUILD_STATIC_LIB OFF CACHE BOOL "" FORCE)
-set(BUILD_DYNAMIC_LIB ON CACHE BOOL "" FORCE)
+set(BUILD_TESTS
+    OFF
+    CACHE BOOL "" FORCE)
+set(BUILD_PERF_TOOLS
+    OFF
+    CACHE BOOL "" FORCE)
+set(BUILD_STATIC_LIB
+    OFF
+    CACHE BOOL "" FORCE)
+set(BUILD_DYNAMIC_LIB
+    ON
+    CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
   pulsarclient

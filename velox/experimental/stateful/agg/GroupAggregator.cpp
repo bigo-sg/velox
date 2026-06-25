@@ -45,9 +45,7 @@ void GroupAggregator::open(StreamOperatorStateHandler* stateHandler) {
   accState_ = stateHandler->getValueState(stateDesc);
 }
 
-RowVectorPtr GroupAggregator::processElements(
-    int64_t key,
-    RowVectorPtr input) {
+RowVectorPtr GroupAggregator::processElements(int64_t key, RowVectorPtr input) {
   // TODO: not identically equal to Flink.
   bool firstRow;
   RowVectorPtr accumulators = accState_->value(key, State::VOID_NAMESPACE);

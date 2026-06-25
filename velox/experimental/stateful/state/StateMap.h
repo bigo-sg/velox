@@ -18,11 +18,11 @@
 #include "velox/common/base/BitUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
 
+#include <climits>
 #include <cstdint>
 #include <memory>
-#include <vector>
 #include <set>
-#include <climits>
+#include <vector>
 
 namespace facebook::velox::stateful {
 
@@ -38,9 +38,8 @@ int32_t roundUpToPowerOfTwo(int32_t x) {
 }
 } // namespace
 
-template<typename K, typename N, typename S>
+template <typename K, typename N, typename S>
 struct StateMapEntry {
-
   K key_;
   N namespace_;
   S state_;
@@ -49,14 +48,35 @@ struct StateMapEntry {
   int32_t entryVersion_;
   int32_t stateVersion_;
 
-  StateMapEntry(K key, N ns, S state, uint64_t hash, std::shared_ptr<StateMapEntry<K, N, S>>& next, int32_t entryVersion, int32_t stateVersion)
-   : key_(key), namespace_(ns), state_(state), hash_(hash), next_(next), entryVersion_(entryVersion), stateVersion_(stateVersion) {}
+  StateMapEntry(
+      K key,
+      N ns,
+      S state,
+      uint64_t hash,
+      std::shared_ptr<StateMapEntry<K, N, S>>& next,
+      int32_t entryVersion,
+      int32_t stateVersion)
+      : key_(key),
+        namespace_(ns),
+        state_(state),
+        hash_(hash),
+        next_(next),
+        entryVersion_(entryVersion),
+        stateVersion_(stateVersion) {}
 
   StateMapEntry(StateMapEntry<K, N, S> other, int entryVersion)
-    : StateMapEntry(other.key_, other.namespace_, other.state_, other.hash_, other.next_, entryVersion, other.stateVersion_) {}
+      : StateMapEntry(
+            other.key_,
+            other.namespace_,
+            other.state_,
+            other.hash_,
+            other.next_,
+            entryVersion,
+            other.stateVersion_) {}
 
   bool operator==(const StateMapEntry<K, N, S>& entry) const {
-    return entry.key_ == key_ && entry.namespace_ == namespace_ && entry.state_ == state_;
+    return entry.key_ == key_ && entry.namespace_ == namespace_ &&
+        entry.state_ == state_;
   }
 
   uint64_t hashCode() {
@@ -74,7 +94,6 @@ struct StateMapEntry {
  */
 template <typename K, typename N, typename S>
 class StateMap {
-
 #define MIN_TRANSFERRED_PER_INCREMENTAL_REHASH 4
 #define MINIMUM_CAPACITY 4
 #define MAXIMUM_CAPACITY 1 << 30
@@ -84,36 +103,37 @@ class StateMap {
  public:
   StateMap() : StateMap(DEFAULT_CAPACITY) {}
   StateMap(int32_t capacity) {
-      primaryTable_ = empty_;
-      incrementalRehashTable_ = empty_;
-      highestRequiredSnapshotVersion_ = 0;
-      stateMapVersion_ = 0;
-      rehashIndex_ = 0;
-      primaryTableSize_ = 0;
-      incrementalRehashTableSize_ = 0;
-      modCount_ = 0;
-      lastNamespace_ = N{};
+    primaryTable_ = empty_;
+    incrementalRehashTable_ = empty_;
+    highestRequiredSnapshotVersion_ = 0;
+    stateMapVersion_ = 0;
+    rehashIndex_ = 0;
+    primaryTableSize_ = 0;
+    incrementalRehashTableSize_ = 0;
+    modCount_ = 0;
+    lastNamespace_ = N{};
 
-      if (capacity < 0) {
-        threshold_ = -1;
-        return;
-      }
+    if (capacity < 0) {
+      threshold_ = -1;
+      return;
+    }
 
-      if (capacity < MINIMUM_CAPACITY) {
-        capacity = MINIMUM_CAPACITY;
-      } else if (capacity > MAXIMUM_CAPACITY) {
-        capacity = MAXIMUM_CAPACITY;
-      } else {
-        capacity = roundUpToPowerOfTwo(capacity);
-      }
+    if (capacity < MINIMUM_CAPACITY) {
+      capacity = MINIMUM_CAPACITY;
+    } else if (capacity > MAXIMUM_CAPACITY) {
+      capacity = MAXIMUM_CAPACITY;
+    } else {
+      capacity = roundUpToPowerOfTwo(capacity);
+    }
 
-      primaryTable_ = makeTable(capacity);
+    primaryTable_ = makeTable(capacity);
   }
 
   S get(K key, N ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
     int32_t requiredVersion = highestRequiredSnapshotVersion_;
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab = selectActiveTable(hash);
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
+        selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
     for (auto e = tab[index]; e != nullptr; e = e->next_) {
       if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
@@ -139,7 +159,8 @@ class StateMap {
 
   bool containsKey(K key, N ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab = selectActiveTable(hash);
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
+        selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
     for (auto e = tab[index]; e != nullptr; e = e->next_) {
       if (e->hash_ == hash && e->namespace_ == ns && e->key_ == key) {
@@ -175,7 +196,8 @@ class StateMap {
 
   std::shared_ptr<StateMapEntry<K, N, S>> putEntry(K key, N ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab = selectActiveTable(hash);
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
+        selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
     for (auto e = tab[index]; e != nullptr; e = e->next_) {
       if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
@@ -189,14 +211,17 @@ class StateMap {
     if (size() > threshold_) {
       doubleCapacity();
     }
-    return addNewStateMapEntry(tab, key,ns, hash);
+    return addNewStateMapEntry(tab, key, ns, hash);
   }
 
   std::shared_ptr<StateMapEntry<K, N, S>> removeEntry(K key, N ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab = selectActiveTable(hash);
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
+        selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
-    for (std::shared_ptr<StateMapEntry<K, N, S>> e = tab[index], prev = nullptr; e != nullptr; prev = e, e = e->next_) {
+    for (std::shared_ptr<StateMapEntry<K, N, S>> e = tab[index], prev = nullptr;
+         e != nullptr;
+         prev = e, e = e->next_) {
       if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
         if (prev == nullptr) {
           tab[index] = e->next_;
@@ -218,7 +243,11 @@ class StateMap {
     return nullptr;
   }
 
-  std::shared_ptr<StateMapEntry<K, N, S>> addNewStateMapEntry(std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& table, K key, N& ns, uint64_t hash) {
+  std::shared_ptr<StateMapEntry<K, N, S>> addNewStateMapEntry(
+      std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& table,
+      K key,
+      N& ns,
+      uint64_t hash) {
     if (ns == lastNamespace_) {
       ns = lastNamespace_;
     } else {
@@ -226,7 +255,15 @@ class StateMap {
     }
 
     uint64_t index = hash & (table.size() - 1);
-    std::shared_ptr<StateMapEntry<K, N, S>> newEntry = std::make_shared<StateMapEntry<K, N, S>>(key, ns, nullptr, hash, table[index], stateMapVersion_, stateMapVersion_);
+    std::shared_ptr<StateMapEntry<K, N, S>> newEntry =
+        std::make_shared<StateMapEntry<K, N, S>>(
+            key,
+            ns,
+            nullptr,
+            hash,
+            table[index],
+            stateMapVersion_,
+            stateMapVersion_);
     table[index] = newEntry;
     if (&table == &primaryTable_) {
       ++primaryTableSize_;
@@ -237,31 +274,38 @@ class StateMap {
   }
 
   std::shared_ptr<StateMapEntry<K, N, S>> handleChainedEntryCopyOnWrite(
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab, uint64_t mapIdx, std::shared_ptr<StateMapEntry<K, N, S>>& untilEntry) {
-      int32_t required = highestRequiredSnapshotVersion_;
-      std::shared_ptr<StateMapEntry<K, N, S>> current = tab[mapIdx];
-      std::shared_ptr<StateMapEntry<K, N, S>> copy = nullptr;
+      std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab,
+      uint64_t mapIdx,
+      std::shared_ptr<StateMapEntry<K, N, S>>& untilEntry) {
+    int32_t required = highestRequiredSnapshotVersion_;
+    std::shared_ptr<StateMapEntry<K, N, S>> current = tab[mapIdx];
+    std::shared_ptr<StateMapEntry<K, N, S>> copy = nullptr;
+    if (current->entryVersion_ < required) {
+      copy =
+          std::make_shared<StateMapEntry<K, N, S>>(*current, stateMapVersion_);
+      tab[mapIdx] = copy;
+    } else {
+      copy = current;
+    }
+
+    while (current != untilEntry) {
+      current = current->next_;
       if (current->entryVersion_ < required) {
-        copy = std::make_shared<StateMapEntry<K, N, S>>(*current, stateMapVersion_);
-        tab[mapIdx] = copy;
+        copy->next_ = std::make_shared<StateMapEntry<K, N, S>>(
+            *current, stateMapVersion_);
+        copy = copy->next_;
       } else {
         copy = current;
       }
-
-      while (current != untilEntry) {
-        current = current->next_;
-        if (current->entryVersion_ < required) {
-          copy->next_ = std::make_shared<StateMapEntry<K, N, S>>(*current, stateMapVersion_);
-          copy = copy->next_;
-        } else {
-          copy = current;
-        }
-      }
-      return copy;
+    }
+    return copy;
   }
 
-  std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& selectActiveTable(uint64_t hashCode) {
-    return (hashCode & (primaryTable_.size() - 1)) >= rehashIndex_ ? primaryTable_ : incrementalRehashTable_;
+  std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& selectActiveTable(
+      uint64_t hashCode) {
+    return (hashCode & (primaryTable_.size() - 1)) >= rehashIndex_
+        ? primaryTable_
+        : incrementalRehashTable_;
   }
 
   uint64_t compositeHash(K key, N ns) {
@@ -273,8 +317,10 @@ class StateMap {
   }
 
   void incrementalRehash() {
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& oldMap = primaryTable_;
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& newMap = incrementalRehashTable_;
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& oldMap =
+        primaryTable_;
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& newMap =
+        incrementalRehashTable_;
 
     size_t oldCapacity = oldMap.size();
     size_t newMask = newMap.size() - 1;
@@ -303,7 +349,7 @@ class StateMap {
         primaryTableSize_ += incrementalRehashTableSize_;
         incrementalRehashTableSize_ = 0;
         rehashIndex_ = 0;
-        return ;
+        return;
       }
     }
 
@@ -325,7 +371,8 @@ class StateMap {
 
   void doubleCapacity() {
     VELOX_CHECK(!isRehashing(), "There is already a rehash in progress.");
-    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& oldMap = primaryTable_;
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& oldMap =
+        primaryTable_;
     int oldCapacity = oldMap.size();
     if (oldCapacity == MAXIMUM_CAPACITY) {
       return;
@@ -334,14 +381,17 @@ class StateMap {
     incrementalRehashTable_ = makeTable(oldCapacity * 2);
   }
 
-  std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> makeTable(uint64_t newCapacity) {
+  std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> makeTable(
+      uint64_t newCapacity) {
     if (newCapacity < MAXIMUM_CAPACITY) {
       threshold_ = (newCapacity >> 1) + (newCapacity >> 2);
     } else {
       if (size() > MAX_ARRAY_SIZE) {
-        VELOX_FAIL("Maximum capacity of CopyOnWriteStateMap is reached and the job cannot continue.");
+        VELOX_FAIL(
+            "Maximum capacity of CopyOnWriteStateMap is reached and the job cannot continue.");
       } else {
-        LOG(WARNING) << "Maximum capacity of 2^30 in StateMap reached. Cannot increase hash map size.";
+        LOG(WARNING)
+            << "Maximum capacity of 2^30 in StateMap reached. Cannot increase hash map size.";
         threshold_ = MAX_ARRAY_SIZE;
       }
     }

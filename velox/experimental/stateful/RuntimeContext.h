@@ -28,7 +28,8 @@ class RuntimeContext {
       : operatorId_(operatorId),
         keyedStateBackend_(std::move(keyedStateBackend)){};
 
-  // The type of state has to be specified as C++ does not support templates well.
+  // The type of state has to be specified as C++ does not support templates
+  // well.
   std::shared_ptr<MapState<uint32_t, int32_t, RowVectorPtr, int32_t>>
   getMapState(StateDescriptor& stateDescriptor) {
     return keyedStateBackend_->getOrCreateMapState(stateDescriptor);

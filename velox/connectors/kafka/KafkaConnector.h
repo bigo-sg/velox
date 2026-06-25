@@ -32,8 +32,7 @@ class KafkaConnector : public Connector {
       const std::string& id,
       std::shared_ptr<const config::ConfigBase> config,
       folly::Executor* /* executor **/)
-      : Connector(id),
-        config_(std::make_shared<ConnectionConfig>(config)) {}
+      : Connector(id), config_(std::make_shared<ConnectionConfig>(config)) {}
 
   const std::shared_ptr<const config::ConfigBase>& connectorConfig()
       const override {
@@ -47,9 +46,11 @@ class KafkaConnector : public Connector {
   std::unique_ptr<DataSource> createDataSource(
       const RowTypePtr& outputType,
       const ConnectorHandlePtr& tableHandle,
-      const std::unordered_map<std::string, std::shared_ptr<connector::ColumnHandle>>& columnHandles,
+      const std::unordered_map<
+          std::string,
+          std::shared_ptr<connector::ColumnHandle>>& columnHandles,
       ConnectorQueryCtx* connectorQueryCtx) override;
-  
+
   std::unique_ptr<DataSink> createDataSink(
       RowTypePtr inputType,
       ConnectorInsertTableHandlePtr connectorInsertTableHandle,

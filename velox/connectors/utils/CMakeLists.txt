@@ -15,10 +15,7 @@
 # velox_add_library(velox_kafka_config OBJECT KafkaConfig.cpp)
 # velox_link_libraries(velox_kafka_config velox_core velox_exception)
 
-velox_add_library(
-  velox_connector_util
-  OBJECT
-  StringFormatter.cpp)
+velox_add_library(velox_connector_util OBJECT StringFormatter.cpp)
 
 velox_link_libraries(velox_connector_util velox_common_io velox_connector)
 

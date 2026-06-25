@@ -130,8 +130,7 @@ class KafkaDataSource : public DataSource {
   /// Create message queue with given size.
   void createCachedQueue(const uint32_t size);
 
-  void updateNextOffsets(
-      const cppkafka::TopicPartitionList& topicPartitions);
+  void updateNextOffsets(const cppkafka::TopicPartitionList& topicPartitions);
 
   /// Create deserializer to deserialize the consumed recored to the given row
   /// type.

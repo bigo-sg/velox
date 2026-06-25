@@ -32,26 +32,34 @@ TEST(NexmarkUtilsTest, FormatDateTimeZeroPadding) {
 
 TEST(NexmarkUtilsTest, ComputeNexmarkSeedIsDeterministic) {
   EXPECT_EQ(
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0));
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0));
 }
 
 TEST(NexmarkUtilsTest, ComputeNexmarkSeedIsSensitiveToFirstEventId) {
   EXPECT_NE(
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
-      computeNexmarkSeed(/*firstEventId=*/2, /*maxEvents=*/1000, /*firstEventNumber=*/0));
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
+      computeNexmarkSeed(
+          /*firstEventId=*/2, /*maxEvents=*/1000, /*firstEventNumber=*/0));
 }
 
 TEST(NexmarkUtilsTest, ComputeNexmarkSeedIsSensitiveToMaxEvents) {
   EXPECT_NE(
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/2000, /*firstEventNumber=*/0));
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/2000, /*firstEventNumber=*/0));
 }
 
 TEST(NexmarkUtilsTest, ComputeNexmarkSeedIsSensitiveToFirstEventNumber) {
   EXPECT_NE(
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
-      computeNexmarkSeed(/*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/1));
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/0),
+      computeNexmarkSeed(
+          /*firstEventId=*/1, /*maxEvents=*/1000, /*firstEventNumber=*/1));
 }
 
 } // namespace facebook::velox::connector::nexmark::test

@@ -16,15 +16,15 @@
 #pragma once
 #include <cstdint>
 
+#include <algorithm>
+#include <type_traits>
+#include <vector>
 #include "velox/exec/Operator.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/vector/ComplexVector.h"
-#include <algorithm>
-#include <type_traits>
-#include <vector>
 
 namespace facebook::velox::stateful {
 

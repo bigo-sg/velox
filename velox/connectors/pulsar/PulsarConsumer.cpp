@@ -15,12 +15,12 @@
  */
 
 #include "velox/connectors/pulsar/PulsarConsumer.h"
-#include "velox/common/base/Exceptions.h"
-#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
 #include <folly/String.h>
 #include <pulsar/Message.h>
 #include <pulsar/MessageIdBuilder.h>
 #include <pulsar/Result.h>
+#include "velox/common/base/Exceptions.h"
+#include "velox/connectors/pulsar/PulsarPartitionUtils.h"
 
 namespace facebook::velox::connector::pulsar {
 
@@ -62,16 +62,16 @@ PulsarConsumer::PulsarConsumer(
     const ConnectionConfigPtr& config,
     uint32_t receiveTimeoutMillis,
     uint32_t batchSize)
-    : client_(
-          config->getServiceUrl(),
-          config->getPulsarClientConfiguration()),
+    : client_(config->getServiceUrl(), config->getPulsarClientConfiguration()),
       receiveTimeoutMillis_(receiveTimeoutMillis),
       batchSize_(batchSize),
-      topic_(
-          partitionedTopicName(config->getTopic(), config->getPartitionIndex())),
+      topic_(partitionedTopicName(
+          config->getTopic(),
+          config->getPartitionIndex())),
       subscriptionName_(config->getSubscriptionName()),
-      endMessageId_(
-          parseMessageId(config->getEndMessageId(), config->getPartitionIndex())) {
+      endMessageId_(parseMessageId(
+          config->getEndMessageId(),
+          config->getPartitionIndex())) {
   auto result = client_.subscribe(
       topic_,
       subscriptionName_,
@@ -121,8 +121,9 @@ void PulsarConsumer::consumeBatch(
       ++stats_.receiveTimeouts;
       break;
     }
-    if (closed_.load() && (result == ::pulsar::ResultAlreadyClosed ||
-                           result == ::pulsar::ResultInterrupted)) {
+    if (closed_.load() &&
+        (result == ::pulsar::ResultAlreadyClosed ||
+         result == ::pulsar::ResultInterrupted)) {
       reachedEnd_ = true;
       break;
     }
@@ -161,8 +162,9 @@ void PulsarConsumer::acknowledge(
   const auto result = cumulative
       ? consumer_.acknowledgeCumulative(message.getMessageId())
       : consumer_.acknowledge(message);
-  if (closed_.load() && (result == ::pulsar::ResultAlreadyClosed ||
-                         result == ::pulsar::ResultInterrupted)) {
+  if (closed_.load() &&
+      (result == ::pulsar::ResultAlreadyClosed ||
+       result == ::pulsar::ResultInterrupted)) {
     return;
   }
   VELOX_CHECK(

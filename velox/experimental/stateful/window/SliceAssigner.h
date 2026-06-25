@@ -23,9 +23,9 @@ namespace facebook::velox::stateful {
 
 /// This class is relevant to Flink SliceAssigner.
 class SliceAssigner {
-public:
+ public:
   SliceAssigner(
-      std::unique_ptr<KeySelector>  keySelector,
+      std::unique_ptr<KeySelector> keySelector,
       int64_t size,
       int64_t step,
       int64_t offset,
@@ -42,7 +42,7 @@ public:
 
   int64_t getSliceEndInterval();
 
-private:
+ private:
   const std::unique_ptr<KeySelector> keySelector_;
   const int64_t size_;
   const int64_t step_;
@@ -53,4 +53,3 @@ private:
 };
 
 } // namespace facebook::velox::stateful
- 

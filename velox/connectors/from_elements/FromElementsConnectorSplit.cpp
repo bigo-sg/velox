@@ -39,6 +39,7 @@ std::shared_ptr<FromElementsConnectorSplit> FromElementsConnectorSplit::create(
 
 void FromElementsConnectorSplit::registerSerDe() {
   auto& registry = DeserializationRegistryForSharedPtr();
-  registry.Register("FromElementsConnectorSplit", FromElementsConnectorSplit::create);
+  registry.Register(
+      "FromElementsConnectorSplit", FromElementsConnectorSplit::create);
 }
 } // namespace facebook::velox::connector::from_elements

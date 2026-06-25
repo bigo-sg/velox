@@ -196,7 +196,8 @@ void NestedLoopJoinProbe::noMoreInput() {
   beginBuildMismatch();
 }
 
-void NestedLoopJoinProbe::setBuildData(const std::vector<RowVectorPtr>& buildData) {
+void NestedLoopJoinProbe::setBuildData(
+    const std::vector<RowVectorPtr>& buildData) {
   buildVectors_ = std::move(buildData);
 }
 

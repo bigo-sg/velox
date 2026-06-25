@@ -259,11 +259,18 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
 
   std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
       windowAggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
-  std::unique_ptr<KeySelector> keySelectorForSliceAssigner = std::make_unique<KeySelector>(
-      windowAggNode->sliceAssignerSpec()->create(INT_MAX, true), op->pool());
+  std::unique_ptr<KeySelector> keySelectorForSliceAssigner =
+      std::make_unique<KeySelector>(
+          windowAggNode->sliceAssignerSpec()->create(INT_MAX, true),
+          op->pool());
   std::unique_ptr<SliceAssigner> sliceAssigner =
-      std::make_unique<SliceAssigner>(std::move(keySelectorForSliceAssigner), windowAggNode->size(), windowAggNode->step(),
-      windowAggNode->offset(),Window::getType(windowAggNode->windowType()),windowAggNode->rowtimeIndex());
+      std::make_unique<SliceAssigner>(
+          std::move(keySelectorForSliceAssigner),
+          windowAggNode->size(),
+          windowAggNode->step(),
+          windowAggNode->offset(),
+          Window::getType(windowAggNode->windowType()),
+          windowAggNode->rowtimeIndex());
   if (windowAggNode->isLocalAgg()) {
     return std::make_unique<LocalWindowAggregator>(
         std::move(op),
@@ -461,7 +468,8 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(
       return std::make_unique<exec::StreamingAggregation>(
           nextOperatorId(), ctx_, aggregationNode);
     } else {
-      return std::make_unique<exec::StreamingAggregation>(nextOperatorId(), ctx_, aggregationNode);
+      return std::make_unique<exec::StreamingAggregation>(
+          nextOperatorId(), ctx_, aggregationNode);
     }
   } else if (
       auto expandNode =

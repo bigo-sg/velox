@@ -25,8 +25,8 @@ std::shared_ptr<JniCaller> StatefulOperator::jniCaller_;
 
 std::shared_ptr<NativeCallbackBridge> StatefulOperator::nativeCallbackBridge()
     const {
-  auto task = std::dynamic_pointer_cast<StatefulTask>(
-      operator_->operatorCtx()->task());
+  auto task =
+      std::dynamic_pointer_cast<StatefulTask>(operator_->operatorCtx()->task());
   VELOX_CHECK(task, "Current task is not a StatefulTask");
   return task->nativeCallbackBridge();
 }

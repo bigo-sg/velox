@@ -24,7 +24,8 @@ namespace {
 long getCurrentTime() {
   auto now = std::chrono::system_clock::now();
   auto duration = now.time_since_epoch();
-  return std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+  return std::chrono::duration_cast<std::chrono::milliseconds>(duration)
+      .count();
 }
 } // namespace
 
@@ -36,7 +37,8 @@ void DiscardDataSink::appendData(RowVectorPtr input) {
   rowNums += input->size();
   if (rowNums / 100000 != preNum / 100000) {
     long now = getCurrentTime();
-    std::cout << "Discard  " << rowNums << " using " << (now - lastTime)  << std::endl;
+    std::cout << "Discard  " << rowNums << " using " << (now - lastTime)
+              << std::endl;
     lastTime = now;
   }
 }

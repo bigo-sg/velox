@@ -36,12 +36,14 @@ std::map<int64_t, RowVectorPtr> KeySelector::partition(
   // TODO: The partition function doesn't use max parallelism.
   std::vector<int64_t> partitions(input->size());
   std::optional<int64_t> res;
-  auto windowPartitionFunction = dynamic_cast<WindowPartitionFunction*>(partitionFunction_.get());
+  auto windowPartitionFunction =
+      dynamic_cast<WindowPartitionFunction*>(partitionFunction_.get());
   if (windowPartitionFunction) {
     res = windowPartitionFunction->partition(*input, partitions);
   } else {
     std::vector<uint32_t> tmpPartitions(input->size());
-    std::optional<uint32_t> tmpRes = partitionFunction_->partition(*input, tmpPartitions);
+    std::optional<uint32_t> tmpRes =
+        partitionFunction_->partition(*input, tmpPartitions);
     if (tmpRes) {
       res = static_cast<int64_t>(*tmpRes);
     }

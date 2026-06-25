@@ -27,11 +27,11 @@ class KafkaCSVRecordDeserializer : public KafkaRecordDeserializer {
       : KafkaRecordDeserializer(outputType, memoryPool) {}
 
   const void deserialize(
-      const std::string & message,
+      const std::string& message,
       const size_t index,
       VectorPtr& vec) override {
-        VELOX_NYI("Not implemented.");
-    }
+    VELOX_NYI("Not implemented.");
+  }
 };
 
 } // namespace facebook::velox::connector::kafka

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
-#include "velox/experimental/stateful/window/SliceAssigner.h"
 #include <cstdint>
+#include "velox/experimental/stateful/window/SliceAssigner.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {

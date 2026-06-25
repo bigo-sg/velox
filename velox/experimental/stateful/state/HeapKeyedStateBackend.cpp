@@ -54,9 +54,8 @@ HeapKeyedStateBackend::getOrCreateValueState(StateDescriptor& stateDescriptor) {
     return std::dynamic_pointer_cast<
         ValueState<int64_t, int64_t, RowVectorPtr>>(stateIte->second);
   }
-  auto state =
-      std::make_shared<HeapValueState<int64_t, int64_t, RowVectorPtr>>(
-          stateDescriptor.keyGroupNumber());
+  auto state = std::make_shared<HeapValueState<int64_t, int64_t, RowVectorPtr>>(
+      stateDescriptor.keyGroupNumber());
   keyValueStatesByName_.insert({stateDescriptor.name(), state});
   return state;
 }

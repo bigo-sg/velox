@@ -66,8 +66,10 @@ class InternalPriorityQueue {
 //   The implementation evicts arbitrary values by reassigning their priority
 //   to a sentinel that is strictly more extreme than any real priority and
 //   then popping the head. Therefore:
-//     - For min-heap: real priorities MUST be > std::numeric_limits<int64_t>::min().
-//     - For max-heap: real priorities MUST be < std::numeric_limits<int64_t>::max().
+//     - For min-heap: real priorities MUST be >
+//     std::numeric_limits<int64_t>::min().
+//     - For max-heap: real priorities MUST be <
+//     std::numeric_limits<int64_t>::max().
 //   Timer services using timestamps satisfy this trivially.
 template <
     typename T,
@@ -78,7 +80,8 @@ template <
     typename EqualTo = std::equal_to<T>>
 class HeapPriorityQueue
     : public InternalPriorityQueue<T>,
-      public velox::IndexedPriorityQueue<T, kMaxQueue, Allocator, Hash, EqualTo> {
+      public velox::
+          IndexedPriorityQueue<T, kMaxQueue, Allocator, Hash, EqualTo> {
  public:
   using IndexedBase =
       velox::IndexedPriorityQueue<T, kMaxQueue, Allocator, Hash, EqualTo>;
@@ -104,13 +107,15 @@ class HeapPriorityQueue
 
   // Returns and removes the head. Throws if empty.
   T poll() override {
-    VELOX_CHECK(!IndexedBase::empty(), "Cannot poll from an empty priority queue");
+    VELOX_CHECK(
+        !IndexedBase::empty(), "Cannot poll from an empty priority queue");
     return IndexedBase::pop();
   }
 
   // Returns the head without removing it. Throws if empty.
   const T& peek() const override {
-    VELOX_CHECK(!IndexedBase::empty(), "Cannot peek from an empty priority queue");
+    VELOX_CHECK(
+        !IndexedBase::empty(), "Cannot peek from an empty priority queue");
     return IndexedBase::top();
   }
 

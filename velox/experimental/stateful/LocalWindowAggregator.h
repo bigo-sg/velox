@@ -19,8 +19,8 @@
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StreamElement.h"
-#include "velox/experimental/stateful/window/WindowBuffer.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
+#include "velox/experimental/stateful/window/WindowBuffer.h"
 
 namespace facebook::velox::stateful {
 

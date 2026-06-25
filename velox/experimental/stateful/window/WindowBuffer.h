@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 #pragma once
+#include <climits>
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include "velox/experimental/stateful/window/WindowKey.h"
 #include "velox/vector/ComplexVector.h"
-#include <climits>
-#include <mutex>
 
 namespace facebook::velox::stateful {
 

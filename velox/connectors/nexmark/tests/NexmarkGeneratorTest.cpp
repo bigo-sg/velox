@@ -18,8 +18,8 @@
 
 #include "velox/common/memory/Memory.h"
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/NexmarkGenerator.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 
 namespace facebook::velox::connector::nexmark::test {
 

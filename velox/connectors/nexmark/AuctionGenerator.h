@@ -17,8 +17,8 @@
 #pragma once
 
 #include "velox/connectors/nexmark/Event.h"
-#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/LongGenerator.h"
+#include "velox/connectors/nexmark/NexmarkGeneratorConfig.h"
 #include "velox/connectors/nexmark/NexmarkUtils.h"
 #include "velox/connectors/nexmark/PersonGenerator.h"
 #include "velox/connectors/nexmark/PriceGenerator.h"
@@ -59,8 +59,8 @@ class AuctionGenerator {
       pcg32_fast& random,
       int64_t timestamp,
       const NexmarkGeneratorConfig& config) {
-    int64_t id =
-        lastBase0AuctionId(config, eventId) + NexmarkGeneratorConfig::FIRST_AUCTION_ID;
+    int64_t id = lastBase0AuctionId(config, eventId) +
+        NexmarkGeneratorConfig::FIRST_AUCTION_ID;
 
     int64_t seller;
     // Here P(auction will be for a hot seller) = 1 - 1/hotSellersRatio.
@@ -74,8 +74,8 @@ class AuctionGenerator {
     }
     seller += NexmarkGeneratorConfig::FIRST_PERSON_ID;
 
-    int64_t category =
-        NexmarkGeneratorConfig::FIRST_CATEGORY_ID + getNextInt(random, NUM_CATEGORIES);
+    int64_t category = NexmarkGeneratorConfig::FIRST_CATEGORY_ID +
+        getNextInt(random, NUM_CATEGORIES);
     int64_t initialBid = PriceGenerator::nextPrice(random);
     int64_t expires = timestamp +
         nextAuctionLengthMs(eventsCountSoFar, random, timestamp, config);

@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 #pragma once
-#include "velox/connectors/utils/StringFormatter.h"
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/connectors/Connector.h"
+#include "velox/connectors/utils/StringFormatter.h"
 #include "velox/type/Type.h"
 #include "velox/vector/ComplexVector.h"
 
@@ -25,9 +25,9 @@ namespace facebook::velox::connector::from_elements {
 class FromElementsSource : public DataSource {
  public:
   FromElementsSource(
-    const RowTypePtr& outputType,
-    const ConnectorQueryCtx* queryCtx,
-    const std::vector<std::string>& s);
+      const RowTypePtr& outputType,
+      const ConnectorQueryCtx* queryCtx,
+      const std::vector<std::string>& s);
 
   void addSplit(std::shared_ptr<ConnectorSplit> split) override;
 

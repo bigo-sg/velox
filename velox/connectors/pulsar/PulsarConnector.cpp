@@ -15,10 +15,10 @@
  */
 
 #include "velox/connectors/pulsar/PulsarConnector.h"
+#include <mutex>
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarDataSource.h"
 #include "velox/connectors/pulsar/PulsarTableHandle.h"
-#include <mutex>
 
 namespace facebook::velox::connector::pulsar {
 

@@ -17,8 +17,7 @@ find_library(PulsarClient_LIBRARY NAMES pulsar)
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(
-  PulsarClient
-  REQUIRED_VARS PulsarClient_LIBRARY PulsarClient_INCLUDE_DIR)
+  PulsarClient REQUIRED_VARS PulsarClient_LIBRARY PulsarClient_INCLUDE_DIR)
 
 if(PulsarClient_FOUND AND NOT TARGET PulsarClient::pulsar)
   add_library(PulsarClient::pulsar UNKNOWN IMPORTED)

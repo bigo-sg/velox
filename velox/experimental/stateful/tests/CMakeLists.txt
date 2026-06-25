@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_executable(velox_stateful_watermark_generator_test WatermarkGeneratorTest.cpp)
+add_executable(velox_stateful_watermark_generator_test
+               WatermarkGeneratorTest.cpp)
 
-add_test(
-  velox_stateful_watermark_generator_test
-  velox_stateful_watermark_generator_test)
+add_test(velox_stateful_watermark_generator_test
+         velox_stateful_watermark_generator_test)
 
 target_link_libraries(
   velox_stateful_watermark_generator_test

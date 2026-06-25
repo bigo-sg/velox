@@ -103,7 +103,8 @@ void KafkaDataSource::updateNextOffsets(
     const cppkafka::TopicPartitionList& topicPartitions) {
   for (const auto& topicPartition : topicPartitions) {
     if (topicPartition.get_offset() >= 0) {
-      nextOffsets_[{topicPartition.get_topic(), topicPartition.get_partition()}] =
+      nextOffsets_[{
+          topicPartition.get_topic(), topicPartition.get_partition()}] =
           topicPartition.get_offset();
     }
   }
@@ -158,7 +159,8 @@ void KafkaDataSource::addSplit(ConnectorSplitPtr split) {
       "Failed to add split, because split format is different from kafka config.");
   cppkafka::TopicPartitionList topicPartitions =
       getSplitTopicPartitions(*kafkaConnectorSplit);
-  consumer_->setTopicPartitionsOffset(topicPartitions, config_->getStartupMode());
+  consumer_->setTopicPartitionsOffset(
+      topicPartitions, config_->getStartupMode());
   applyRestoredOffsets(topicPartitions);
   updateNextOffsets(topicPartitions);
   consumer_->assign(topicPartitions);

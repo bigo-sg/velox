@@ -36,16 +36,16 @@ class WindowAggregator : public StatefulOperator,
                          public Triggerable<int64_t, int64_t> {
  public:
   WindowAggregator(
-    std::unique_ptr<exec::Operator> localAggregator,
-    std::unique_ptr<exec::Operator> globalAggregator,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    std::unique_ptr<KeySelector> keySelector,
-    std::unique_ptr<SliceAssigner> sliceAssigner,
-    const int64_t windowInterval,
-    const bool useDayLightSaving,
-    const bool isEventTime,
-    const int32_t windowStartIndex,
-    const int32_t windowEndIndex);
+      std::unique_ptr<exec::Operator> localAggregator,
+      std::unique_ptr<exec::Operator> globalAggregator,
+      std::vector<std::unique_ptr<StatefulOperator>> targets,
+      std::unique_ptr<KeySelector> keySelector,
+      std::unique_ptr<SliceAssigner> sliceAssigner,
+      const int64_t windowInterval,
+      const bool useDayLightSaving,
+      const bool isEventTime,
+      const int32_t windowStartIndex,
+      const int32_t windowEndIndex);
 
   void initialize() override;
 
@@ -65,8 +65,8 @@ class WindowAggregator : public StatefulOperator,
     // processWatermarkInternal(timestamp);
   }
 
-  void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
-                       timer) override;
+  void onEventTime(
+      std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;
 
   void onProcessingTime(
       std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;

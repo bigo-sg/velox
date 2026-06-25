@@ -15,15 +15,15 @@
  */
 #pragma once
 
-#include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
 #include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
+#include "velox/connectors/kafka/format/StreamJSONRecordDeserializer.h"
 
+#include <type_traits>
+#include <typeinfo>
+#include "simdjson.h"
 #include "velox/type/StringView.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/Type.h"
-#include "simdjson.h"
-#include <type_traits>
-#include <typeinfo>
 
 namespace facebook::velox::connector::kafka {
 

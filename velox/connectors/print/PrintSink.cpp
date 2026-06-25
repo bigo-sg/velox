@@ -39,7 +39,9 @@ PrintSink::PrintSink(
     const ConnectorQueryCtx* queryCtx)
     : inputType_(inputType),
       queryCtx_(queryCtx),
-      formatter_(createFormatter(inputType_, tz::locateZone(queryCtx->sessionTimezone()))),
+      formatter_(createFormatter(
+          inputType_,
+          tz::locateZone(queryCtx->sessionTimezone()))),
       prefix_([&] {
         const auto* props = queryCtx->sessionProperties();
         int parallelism = 1;

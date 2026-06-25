@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
- #pragma once
+#pragma once
 
- #include "velox/connectors/nexmark/pcg_random.hpp"
+#include "velox/connectors/nexmark/pcg_random.hpp"
 
- #include <random>
+#include <random>
 
 namespace facebook::velox::connector::nexmark {
 

@@ -73,10 +73,7 @@ ConnectorTableHandlePtr KafkaTableHandle::create(
   }
 
   return std::make_shared<const KafkaTableHandle>(
-      connectorId,
-      tableName,
-      dataColumns,
-      tableParameters);
+      connectorId, tableName, dataColumns, tableParameters);
 }
 
 void KafkaTableHandle::registerSerDe() {
