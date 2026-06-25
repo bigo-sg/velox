@@ -72,6 +72,18 @@ jobs:
         # it doesn't work
         run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
 
+      - name: Ensure ccache directory exists
+        run: mkdir -p "${CCACHE_DIR}"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-linux-gluten-${{ runner.os }}-
+
       - name: Zero Ccache Statistics
         run: ccache -sz
 
