@@ -83,6 +83,7 @@ jobs:
           restore-keys: |
             ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-
             ccache-linux-gluten-${{ runner.os }}-
+          save-always: true
 
       - name: Zero Ccache Statistics
         run: ccache -sz
