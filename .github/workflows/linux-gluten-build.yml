@@ -75,15 +75,14 @@ jobs:
       - name: Ensure ccache directory exists
         run: mkdir -p "${CCACHE_DIR}"
 
-      - name: Cache ccache
-        uses: actions/cache@v4
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
             ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-
             ccache-linux-gluten-${{ runner.os }}-
-          save-always: true
 
       - name: Zero Ccache Statistics
         run: ccache -sz
@@ -111,3 +110,10 @@ jobs:
 
       - name: Ccache after
         run: ccache -s
+
+      - name: Save ccache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
