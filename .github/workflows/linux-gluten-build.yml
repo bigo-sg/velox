@@ -103,7 +103,7 @@ jobs:
             "-DVELOX_ENABLE_CCACHE=ON"
           )
 
-          env xsimd_SOURCE=BUNDLED folly_SOURCE=BUNDLED cmake -S . -B _build/velox4j-like -GNinja "${EXTRA_CMAKE_FLAGS[@]}"
+          cmake -S . -B _build/velox4j-like -GNinja "${EXTRA_CMAKE_FLAGS[@]}"
 
       - name: Build Velox
         run: cmake --build _build/velox4j-like --target velox -j$(nproc)
