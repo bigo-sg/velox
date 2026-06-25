@@ -1,0 +1,259 @@
+velox/connectors/nexmark/pcg_extras.hpp
+  s_b22380fb8ec98d::t_dc8353a204b810 2-16
+velox/experimental/stateful/NativeCallbackBridge.h
+  s_b22380fb8ec98d::t_dc8353a204b810 6
+velox/experimental/stateful/window/WindowProcessFunction.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19-21
+velox/experimental/stateful/window/WindowPartitionFunction.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 42-43,67-68,75-76
+velox/experimental/stateful/rank/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 15-16
+velox/connectors/filesystem/tests/FileSystemConnectorTestBase.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 183
+velox/connectors/from_elements/FromElementsConnector.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 55
+velox/experimental/stateful/window/WindowKey.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 53-54
+velox/experimental/stateful/window/Window.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 21-22,26,41-42,99,102
+velox/connectors/kafka/KafkaTableHandle.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 76
+velox/experimental/stateful/StatefulTask.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19
+velox/functions/sparksql/DateTimeFunctions.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 150
+velox/connectors/kafka/format/KafkaRecordDeserializer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 44
+velox/connectors/nexmark/PersonGenerator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 20,35,96-104,106-149
+velox/connectors/kafka/KafkaConnectorSplit.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 22,44-46,72-73
+velox/functions/sparksql/registration/RegisterDatetime.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 98
+velox/connectors/pulsar/PulsarTableHandle.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18
+velox/connectors/nexmark/pcg_random.hpp
+  s_b22380fb8ec98d::t_dc8353a204b810 2-16
+velox/experimental/stateful/LocalWindowAggregator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18
+velox/connectors/nexmark/NexmarkConnector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 52,58-59,82-83
+velox/experimental/stateful/state/HeapKeyedStateBackend.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 57-58
+velox/experimental/stateful/RuntimeContext.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 31-32
+velox/connectors/filesystem/FileSystemConfig.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19,49-53,100-102
+velox/connectors/utils/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18,24
+velox/connectors/pulsar/PulsarClientConfig.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 22-23,27-28,54-55
+velox/experimental/stateful/ProcessingTimeTimerService.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 78-79,155,168
+velox/connectors/from_elements/FromElementsConnectorSplit.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19
+velox/connectors/kafka/format/JSONRecordDeserializer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19-21
+velox/experimental/stateful/StatefulOperator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 28-29
+velox/experimental/stateful/WatermarkGenerator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 28-30,38,51,59,61-66,68-69,71-72,82-98
+velox/connectors/print/PrintTableHandle.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18
+velox/connectors/from_elements/FromElementsTableHandle.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 28,39-40
+velox/connectors/nexmark/tests/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 43
+velox/experimental/stateful/udf/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 15,19
+velox/connectors/utils/StringFormatter.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 27-34,57-59,63-64,67-68,88,186-187,223-227,435-437,439
+velox/connectors/filesystem/FileSystemConnector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19
+velox/connectors/fuzzer/FuzzerConnector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 37
+velox/connectors/kafka/KafkaConnector.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 35,49-51,53
+velox/connectors/from_elements/FromElementsConnectorSplit.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 42-43,45
+velox/connectors/kafka/KafkaConfig.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19,49-50,60-62
+velox/connectors/from_elements/FromElementsSource.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19,28-30,63
+velox/connectors/filesystem/FileSystemConfig.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 43-44,95-97
+velox/exec/NestedLoopJoinProbe.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 199-200
+velox/connectors/nexmark/tests/NexmarkConnectorTestBase.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 55-56
+velox/connectors/nexmark/PersonGenerator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 24-25,28-37,40-50,53-61,78-79
+velox/connectors/print/tests/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 22
+velox/connectors/print/PrintSink.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 42-44
+velox/connectors/pulsar/PulsarConsumer.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 22-23,65,68-70,72-74,124-126,165-167
+velox/experimental/stateful/agg/AggsHandleFunction.h
+  s_b22380fb8ec98d::t_dc8353a204b810 4
+velox/experimental/stateful/WindowJoin.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 29-99
+velox/connectors/kafka/format/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 17-18
+velox/connectors/utils/tests/StringFormatterTest.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 82-83,87,95-96,99-102,106-110,116-127,136,143
+velox/connectors/nexmark/NexmarkConnectorSplit.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 56-57,71-72
+velox/connectors/filesystem/FileSystemDataSink.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19-20
+velox/experimental/stateful/WatermarkGenerator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 86-87
+velox/connectors/fuzzer/FuzzerConnectorSplit.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 37-38
+velox/connectors/nexmark/NexmarkGenerator.cpp
+  s_b22380fb8ec98d::t_dc8353a204b810 1-15
+  s_b22380fb8ec98d::t_2a3c60fe638618 49-50,74-75,95-96
+velox/connectors/pulsar/tests/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 25-26,38-39,42-43
+velox/experimental/stateful/InternalPriorityQueue.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 69-72,83-84,110-111,117-118
+CMake/resolve_dependency_modules/pulsarclient.cmake
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 16-27
+velox/connectors/nexmark/AuctionGenerator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 21,62-63,77-78
+velox/experimental/stateful/LocalWindowAggregator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 23
+CMake/resolve_dependency_modules/cppkafka.cmake
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 39-40
+velox/connectors/pulsar/PulsarConnector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18
+velox/connectors/nexmark/LongGenerator.h
+  s_b22380fb8ec98d::t_dc8353a204b810 1-15
+velox/connectors/from_elements/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 26-27
+velox/connectors/utils/tests/StringFormatterTest.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 24-25,36
+velox/experimental/stateful/window/SliceAssigner.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 26,28,45
+velox/experimental/stateful/window/SliceAssigner.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 17-20,87-88,92-95,105-106,114-115,128-129,131-132
+velox/experimental/stateful/StatefulPlanner.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 262-265,267-273,471-472
+velox/connectors/nexmark/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 16,26
+velox/experimental/stateful/tests/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 15-16,18-19
+velox/connectors/nexmark/StringsGenerator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18,21
+velox/experimental/stateful/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 45-52
+velox/experimental/stateful/ProcessingTimeScheduler.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 21
+CMake/resolve_dependency_modules/grpc.cmake
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 35-37
+velox/connectors/nexmark/StringsGenerator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 30-32
+velox/experimental/stateful/window/WindowBuffer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 17,21
+velox/experimental/stateful/KeySelector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 39-40,45-46
+velox/experimental/stateful/window/TimeWindowUtil.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 35,72-74
+velox/connectors/nexmark/NexmarkUtils.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 46-47
+velox/vector/BaseVector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 903
+velox/connectors/kafka/KafkaConnector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 25-27,30
+velox/connectors/filesystem/FileSystemInsertTableHandle.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 32-35
+velox/connectors/fuzzer/DiscardDataSink.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 27-28,40-41
+velox/connectors/pulsar/tests/run_pulsar_standalone_test.sh
+  s_b22380fb8ec98d::t_dc8353a204b810 2-14
+velox/experimental/stateful/StatefulPlanNode.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 18,71,73,599-600,608,631-632,658
+velox/connectors/kafka/format/RawRecordDeserializer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 46-49,51-52
+velox/experimental/stateful/agg/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 15
+velox/connectors/utils/StringFormatter.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 23-25,71,176
+velox/experimental/stateful/tests/WatermarkGeneratorTest.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 21,151,298-299,309-310,329,374
+velox/connectors/kafka/KafkaDataSource.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 133
+velox/connectors/kafka/KafkaDataSource.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 106-107,162-163
+velox/connectors/from_elements/FromElementsSource.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 24-26,28-39,60
+velox/experimental/stateful/WindowAggregator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 39-48,68-69
+velox/connectors/nexmark/AuctionGenerator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 33-34,79-80,82-83,86-87
+velox/connectors/from_elements/FromElementsConnector.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 32-34,37
+velox/connectors/kafka/format/CSVRecordDeserializer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 30,33-34
+velox/exec/Task.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 780-787
+CMake/FindPulsarClient.cmake
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 20
+velox/connectors/kafka/KafkaTableHandle.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19
+velox/connectors/nexmark/tests/NexmarkGeneratorTest.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 22
+velox/connectors/print/PrintSink.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19
+velox/connectors/nexmark/NexmarkGeneratorConfig.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 43-44
+velox/experimental/stateful/agg/GroupAggregator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 48
+velox/connectors/filesystem/FileSystemDataSink.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19-22,43,97-99,198,240,296,387-389,476-480
+velox/experimental/stateful/state/StateMap.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 21,25,41,51-65,68-75,78-79,106-127,129,135-136,162-163,199-200,214,219-220,222-224,246-250,258-266,277-292,294-296,300-301,304-308,320-323,352,374-375,384-385,390-391,393-394
+velox/connectors/from_elements/FromElementsTableHandle.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 20,64
+velox/connectors/kafka/format/StreamJSONRecordDeserializer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19,21-23
+velox/connectors/nexmark/Event.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 22,25
+velox/connectors/fuzzer/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 15-16
+velox/experimental/stateful/WindowAggregator.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 16-17,23-24,39-40,49-50,83-84,86-90,92-97,103-104,107-108,111-112,182-185,231-232,237-241,244-245,250-253,257,261-262,266-270,274-275
+velox/connectors/pulsar/PulsarConsumer.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 24,53
+velox/connectors/kafka/tests/run_kafka_connector_integration_test.sh
+  s_b22380fb8ec98d::t_dc8353a204b810 2-14
+velox/connectors/print/PrintConnector.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 50
+velox/experimental/stateful/state/KeyedStateBackend.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 19,57-58
+velox/experimental/stateful/join/CMakeLists.txt
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 15
+velox/connectors/nexmark/tests/NexmarkUtilsTest.cpp
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 35-38,43-46,51-54,59-62
+velox/experimental/stateful/StatefulPlanNode.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 119,152,160-161,169-185,418-419
+velox/connectors/nexmark/PriceGenerator.h
+  s_b22380fb8ec98d::t_f8bf160a5b3eca 17,19,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "e7431682b3f8c93ca5812dd15db5e446fa99e6b7",
+  "prompts": {},
+  "logical_commit_id": "e7431682b3f8c93ca5812dd15db5e446fa99e6b7",
+  "sessions": {
+    "s_b22380fb8ec98d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_102977ae5ffeuA07tU8aSEBqgT",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
