@@ -86,6 +86,7 @@ jobs:
             "-DVELOX_BUILD_TESTING=OFF"
             "-DVELOX_ENABLE_ARROW=ON"
             "-DVELOX_ENABLE_KAFKA_CONNECTOR=ON"
+            "-DVELOX_ENABLE_PULSAR_CONNECTOR=OFF"
             "-DVELOX_ENABLE_CCACHE=ON"
           )
 
