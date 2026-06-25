@@ -105,7 +105,6 @@ TEST_F(StringFormatterTest, testStringToTimestamp) {
   DefaultFormatter<Timestamp> formatter1(tz::locateZone("Asia/Shanghai"));
   VectorPtr vec1 =
       FlatVector<Timestamp>::create(timestampType, 6, memoryPool.get());
-  ;
   formatter1.fromString(
       "2025-09-08T19:14:12America/Los_Angeles", timestampType, 0, vec1);
   formatter1.fromString("2025-09-08T19:14:12.1Z", timestampType, 1, vec1);
