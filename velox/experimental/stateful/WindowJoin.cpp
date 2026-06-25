@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include "velox/experimental/stateful/WindowJoin.h"
 #include <cstdint>
 #include "velox/experimental/stateful/join/JoinRecordStateViews.h"
