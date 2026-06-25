@@ -51,9 +51,6 @@ jobs:
     name: Build Velox for Gluten
     runs-on: ubuntu-latest
     container: ghcr.io/lgbo-ustc/velox4j:latest
-    credentials:
-      username: ${{ secrets.GHCR_USERNAME }}
-      password: ${{ secrets.GHCR_TOKEN }}
     defaults:
       run:
         shell: bash
