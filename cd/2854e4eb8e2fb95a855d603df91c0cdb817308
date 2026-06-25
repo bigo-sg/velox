@@ -1,0 +1,20 @@
+.github/workflows/linux-gluten-build.yml
+  s_6eaa12dc49085f::t_5c4517b58c477d 75-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "cd2854e4eb8e2fb95a855d603df91c0cdb817308",
+  "prompts": {},
+  "logical_commit_id": "cd2854e4eb8e2fb95a855d603df91c0cdb817308",
+  "sessions": {
+    "s_6eaa12dc49085f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_103be902fffe4Dg8k73bgYM8CF",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
