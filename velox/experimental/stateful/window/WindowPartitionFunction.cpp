@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
-#include <cstdint>
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
 
+#include <cstdint>
 #include <numeric>
 
 namespace facebook::velox::stateful {
 
 WindowPartitionFunction::WindowPartitionFunction(
     const RowTypePtr& inputType,
-    const column_index_t rowtimeIndex,
+    const int32_t rowtimeIndex,
     int64_t size,
     int64_t step,
     int64_t offset,
@@ -35,14 +35,19 @@ WindowPartitionFunction::WindowPartitionFunction(
       step_(step),
       offset_(offset),
       windowType_(windowType) {
+  // VELOX_CHECK_GT(inputType->size(), rowtimeIndex, "rowtimeIndex invalid: {}",
+  //    rowtimeIndex);
   sliceSize_ = std::gcd(size, step);
 }
 
 std::optional<int64_t> WindowPartitionFunction::partition(
-  const RowVector& input,
-  std::vector<int64_t>& partitions) {
+    const RowVector& input,
+    std::vector<int64_t>& partitions) {
+  if (rowtimeIndex_ < 0) {
+    return std::optional<int64_t>(TimeWindowUtil::getCurrentProcessingTime());
+  }
   if (inputType_->childAt(rowtimeIndex_)->kind() == TypeKind::BIGINT) {
-    // TODO: this is a optimization, as the RowVector may have be partitioned in
+    // This is a optimization, as the RowVector may have be partitioned in
     // local aggregation, so need not to partition again in global agg, but need
     // to verify whether the judge condition is enough.
     auto child = input.childAt(rowtimeIndex_);
@@ -50,16 +55,14 @@ std::optional<int64_t> WindowPartitionFunction::partition(
     return ts;
   }
   const auto size = input.size();
-  partitions.clear();
   partitions.resize(size);
   // TODO: support more window types. Support time zone.
   for (auto i = 0; i < size; ++i) {
-    const auto& child = input.childAt(rowtimeIndex_);
+    auto child = input.childAt(rowtimeIndex_);
     auto ts = child->as<SimpleVector<Timestamp>>()->valueAt(i);
     int64_t timestamp = ts.toMillis();
     if (windowType_ == WindowType::HOP) { // Hopping window
-      int64_t start = TimeWindowUtil::getWindowStartWithOffset(
-          timestamp, offset_, sliceSize_);
+      int64_t start = TimeWindowUtil::getWindowStartWithOffset(timestamp, offset_, sliceSize_);
       partitions[i] = start + sliceSize_;
     } else if (windowType_ == WindowType::TUMBLE) { // Windowed Slice Assigner
       partitions[i] = timestamp;
@@ -71,9 +74,9 @@ std::optional<int64_t> WindowPartitionFunction::partition(
 }
 
 std::optional<uint32_t> WindowPartitionFunction::partition(
-  const RowVector& /* input */,
-  std::vector<uint32_t>& /* partitions */) {
-  VELOX_NYI();
+    const RowVector& input,
+    std::vector<uint32_t>& partitions) {
+  return std::nullopt;
 }
 
 int64_t getTimestamp(
@@ -114,22 +117,15 @@ core::PartitionFunctionSpecPtr StreamWindowPartitionFunctionSpec::deserialize(
   auto size = obj["size"].asInt();
   auto step = obj["step"].asInt();
   auto offset = obj["offset"].asInt();
-  auto windowType = Window::getType(obj["windowType"].asInt());
+  auto windowType = obj["windowType"].asInt();
 
   return std::make_shared<StreamWindowPartitionFunctionSpec>(
       ISerializable::deserialize<RowType>(obj["inputType"]),
       rowtimeIndex,
       size,
-      step,
+      step, 
       offset,
-      windowType);
-}
-
-void registerPartitionFunctionSerDe() {
-  auto& registry = DeserializationWithContextRegistryForSharedPtr();
-  registry.Register(
-      "StreamWindowPartitionFunctionSpec",
-      StreamWindowPartitionFunctionSpec::deserialize);
+      static_cast<WindowType>(windowType));
 }
 
 } // namespace facebook::velox::stateful

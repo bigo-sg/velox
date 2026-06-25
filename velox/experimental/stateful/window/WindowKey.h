@@ -17,7 +17,6 @@
 #include <cstdint>
 #include <functional>
 
-#include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 
@@ -36,6 +35,13 @@ class WindowKey {
 
   bool operator==(const WindowKey& other) const {
     return key_ == other.key() && window_ == other.window();
+  }
+
+  bool operator<(const WindowKey& other) const {
+    if (window_ != other.window_) {
+      return window_ < other.window_;
+    }
+    return key_ < other.key_;
   }
 
  private:

@@ -36,11 +36,12 @@ class StatefulPlanner {
 
  protected:
   StatefulPlanner(exec::DriverCtx* ctx, StateBackend* stateBackend)
-      : ctx_(ctx), stateBackend_(stateBackend) {}
+      : ctx_(ctx), stateBackend_(stateBackend), parallelism_(ctx->queryConfig().statefulTaskParallelism()) {}
 
  private:
   exec::DriverCtx* ctx_ = nullptr;
   StateBackend* stateBackend_ = nullptr;
+  int32_t parallelism_ = 0;
 
   StatefulOperatorPtr transformStatefulOperators(
       const core::PlanNodePtr& planNode);

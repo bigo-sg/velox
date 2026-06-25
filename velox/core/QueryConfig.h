@@ -562,6 +562,13 @@ class QueryConfig {
   static constexpr const char* kFieldNamesInJsonCastEnabled =
       "field_names_in_json_cast_enabled";
 
+  static constexpr const char* kStatefulTaskParallelism =
+      "stateful_task_parallelism";
+
+  int32_t statefulTaskParallelism() const {
+    return get<int32_t>(kStatefulTaskParallelism, 0);
+  }
+
   bool selectiveNimbleReaderEnabled() const {
     return get<bool>(kSelectiveNimbleReaderEnabled, false);
   }

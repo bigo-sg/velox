@@ -28,7 +28,7 @@ int64_t TimeWindowUtil::getNextTriggerWatermark(
     return currentWatermark;
   }
 
-  int64_t triggerWatermark;
+  int64_t triggerWatermark = currentWatermark;
   // consider the DST timezone
   if (useDayLightSaving) {
     // TODO: support time zone
@@ -114,20 +114,36 @@ RowVectorPtr TimeWindowUtil::mergeVectors(
   if (datas.empty()) {
     return nullptr;
   }
-  // TODO: refine it
-  auto numColumns = datas.front()->childrenSize();
-  std::vector<VectorPtr> mergedColumns(numColumns);
 
+  RowVectorPtr firstNonEmpty = nullptr;
   size_t totalRows = 0;
+  size_t nonEmptyBatches = 0;
   for (const auto& data : datas) {
+    if (!data || data->size() == 0) {
+      continue;
+    }
+    if (!firstNonEmpty) {
+      firstNonEmpty = data;
+    }
     totalRows += data->size();
+    ++nonEmptyBatches;
   }
 
-  auto merged =
-      BaseVector::create<RowVector>(datas.front()->type(), totalRows, pool);
+  if (nonEmptyBatches == 0) {
+    return nullptr;
+  }
+  if (nonEmptyBatches == 1) {
+    // Fast path: avoid allocating/copying when only one input has rows.
+    return firstNonEmpty;
+  }
 
-  size_t offset = 0;
-  for (auto& data : datas) {
+  auto merged = BaseVector::create<RowVector>(firstNonEmpty->type(), totalRows, pool);
+
+  vector_size_t offset = 0;
+  for (const auto& data : datas) {
+    if (!data || data->size() == 0) {
+      continue;
+    }
     merged->copy(data.get(), offset, 0, data->size());
     offset += data->size();
   }

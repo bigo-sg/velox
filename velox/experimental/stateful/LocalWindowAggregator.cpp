@@ -16,7 +16,6 @@
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/window/SliceAssigner.h"
 #include <cstdint>
-#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
 
@@ -47,15 +46,13 @@ void LocalWindowAggregator::advance() {
   if (!input_) {
     return;
   }
-
+  // partition input by key
   std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
   for (const auto& [key, data] : keyToData) {
-    std::map<int64_t, RowVectorPtr> sliceEndToData =
-        sliceAssigner_->assignSliceEnd(data);
-    for (const auto& [sliceEnd, data] : sliceEndToData) {
-      // TODO: addElement may have data output.
-      auto windowData = data;
-      windowBuffer_->addElement(key, sliceEnd, windowData);
+    // assign slice end to data
+    std::map<int64_t, RowVectorPtr> sliceEndToData = sliceAssigner_->assignSliceEnd(data);
+    for (auto& [sliceEnd, data] : sliceEndToData) {
+      windowBuffer_->addElement(key, sliceEnd, data);
     }
   }
   input_.reset();
@@ -68,17 +65,32 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
       // we only need to call advanceProgress() when current watermark may
       // trigger window
       auto windowKeyToData = windowBuffer_->advanceProgress(currentWatermark_);
+      auto* aggregator = op().get();
+      auto* aggPool = aggregator->pool();
+      int64_t windowTriggered = -1;
       for (const auto& [windowKey, datas] : windowKeyToData) {
-        if (datas.empty()) {
+        const int64_t window = windowKey.window();
+        if (datas.empty() || currentWatermark_ < window) {
           continue;
         }
-        op()->addInput(TimeWindowUtil::mergeVectors(datas, op()->pool()));
-        RowVectorPtr output = op()->getOutput();
-        if (output) {
-          pushOutput(std::make_shared<StreamRecord>(
-              getPlanNodeId(),
-              addWindowEndToVector(std::move(output), windowKey.window())));
+        RowVectorPtr mergedInput = (datas.size() == 1) ? datas.front() : TimeWindowUtil::mergeVectors(datas, aggPool);
+        if (!mergedInput) {
+          continue;
         }
+        aggregator->addInput(mergedInput);
+        RowVectorPtr output = aggregator->getOutput();
+        if (output) {
+          pushOutput(
+            std::make_shared<StreamRecord>(getPlanNodeId(),
+            windowKey.key(),
+            std::move(addWindowEndToVector(output, window))));
+          if (windowTriggered < window) {
+            windowTriggered = window;
+          }
+        }
+      }
+      if (windowTriggered >= 0) {
+        windowBuffer_->clear(windowTriggered);
       }
       nextTriggerWatermark_ = TimeWindowUtil::getNextTriggerWatermark(
           currentWatermark_,
@@ -87,10 +99,11 @@ void LocalWindowAggregator::processWatermarkInternal(int64_t timestamp) {
           useDayLightSaving_);
     }
   }
+  pushOutput(std::make_shared<Watermark>(getPlanNodeId(), timestamp));
 }
 
 void LocalWindowAggregator::close() {
-  processWatermarkInternal(INT_MAX);
+  // processWatermarkInternal(INT_MAX);
   StatefulOperator::close();
   input_.reset();
   windowBuffer_->clear();
@@ -103,7 +116,6 @@ RowVectorPtr LocalWindowAggregator::addWindowEndToVector(
     int64_t sliceEnd) {
   auto newColumn = BaseVector::create(BIGINT(), vector->size(), vector->pool());
   auto windowEndCol = newColumn->as<FlatVector<int64_t>>();
-
   for (int i = 0; i < vector->size(); ++i) {
     windowEndCol->set(i, sliceEnd);
   }

@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 #pragma once
-#include <experimental/stateful/window/Window.h>
+#include "velox/experimental/stateful/window/Window.h"
 #include <cstdint>
+
 #include "velox/core/PlanNode.h"
 
 namespace facebook::velox::stateful {
@@ -26,7 +27,7 @@ class WindowPartitionFunction : public core::PartitionFunction {
  public:
   WindowPartitionFunction(
       const RowTypePtr& inputType,
-      const column_index_t rowtimeIndex,
+      const int32_t rowtimeIndex,
       int64_t size,
       int64_t step,
       int64_t offset,
@@ -37,12 +38,12 @@ class WindowPartitionFunction : public core::PartitionFunction {
       std::vector<uint32_t>& partitions) override;
 
   std::optional<int64_t> partition(
-      const RowVector& input,
-      std::vector<int64_t>& partitions) override;
+     const RowVector& input,
+     std::vector<int64_t>& partitions) override;
 
  private:
   RowTypePtr inputType_;
-  column_index_t rowtimeIndex_;
+  int32_t rowtimeIndex_;
   int64_t size_;
   int64_t step_;
   int64_t offset_;
@@ -54,7 +55,7 @@ class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
  public:
   StreamWindowPartitionFunctionSpec(
       const RowTypePtr& inputType,
-      column_index_t rowtimeIndex,
+      int32_t rowtimeIndex,
       int64_t size,
       int64_t step,
       int64_t offset,
@@ -80,13 +81,11 @@ class StreamWindowPartitionFunctionSpec : public core::PartitionFunctionSpec {
 
  private:
   RowTypePtr inputType_;
-  column_index_t rowtimeIndex_;
+  int32_t rowtimeIndex_;
   int64_t size_;
   int64_t step_;
   int64_t offset_;
   WindowType windowType_;
 };
-
-void registerPartitionFunctionSerDe();
 
 } // namespace facebook::velox::stateful

@@ -36,12 +36,13 @@ class WindowAggregator : public StatefulOperator,
                          public Triggerable<int64_t, int64_t> {
  public:
   WindowAggregator(
-    std::unique_ptr<exec::Operator> localAggregator,
+    std::unique_ptr<exec::Operator> mergeOperator,
     std::unique_ptr<exec::Operator> globalAggregator,
     std::vector<std::unique_ptr<StatefulOperator>> targets,
     std::unique_ptr<KeySelector> keySelector,
     std::unique_ptr<SliceAssigner> sliceAssigner,
     const int64_t windowInterval,
+    const int64_t windowSize,
     const bool useDayLightSaving,
     const bool isEventTime,
     const int32_t windowStartIndex,
@@ -62,14 +63,13 @@ class WindowAggregator : public StatefulOperator,
   }
 
   void processWatermark(int64_t timestamp) override {
-    // processWatermarkInternal(timestamp);
+    processWatermarkInternal(timestamp);
   }
 
   void onEventTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>>
                        timer) override;
 
-  void onProcessingTime(
-      std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;
+  void onProcessingTime(std::shared_ptr<TimerHeapInternalTimer<int64_t, int64_t>> timer) override;
 
   void onProcessingTime(int64_t timestamp) override;
 
@@ -91,6 +91,7 @@ class WindowAggregator : public StatefulOperator,
   std::unique_ptr<SliceAssigner> sliceAssigner_;
   WindowBufferPtr windowBuffer_;
   const int64_t windowInterval_;
+  const int64_t windowSize_;
   const bool useDayLightSaving_;
   const int shiftTimeZone_ = 0; // TODO: support time zone shift
   const bool isEventTime_ = true;

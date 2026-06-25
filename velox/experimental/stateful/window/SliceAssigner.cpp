@@ -14,27 +14,17 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/window/SliceAssigner.h"
-#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include "velox/experimental/stateful/window/Window.h"
-#include "velox/type/Timestamp.h"
 #include "velox/vector/ComplexVector.h"
-#include "velox/vector/ConstantVector.h"
 #include "velox/vector/DictionaryVector.h"
-#include "velox/vector/FlatVector.h"
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include <cstdint>
 #include <numeric>
-#include <unordered_map>
 #include <vector>
 
 namespace facebook::velox::stateful {
 
 namespace {
-
-void prepareChildrenLoaded(const RowVectorPtr& input) {
-  for (auto& child : input->children()) {
-    child->loadedVector();
-  }
-}
 
 RowVectorPtr wrapChildrenByIndices(
     const RowVectorPtr& input,
@@ -73,92 +63,65 @@ SliceAssigner::SliceAssigner(
     int64_t step,
     int64_t offset,
     WindowType windowType,
-    int rowtimeIndex)
+    int rowtimeIndex,
+    bool expandHopWindows)
     : keySelector_(std::move(keySelector)),
       size_(size),
       step_(step),
       offset_(offset),
       windowType_(windowType),
-      rowtimeIndex_(rowtimeIndex) {
-  // TODO: calculate sliceSize_ based on windowType.
-  sliceSize_ = std::gcd(size, step);
+      rowtimeIndex_(rowtimeIndex),
+      expandHopWindows_(expandHopWindows) {
+  if (windowType_ == WindowType::TUMBLE) {
+    sliceSize_ = size;
+  } else if (windowType_ == WindowType::HOP) {
+    sliceSize_ = std::gcd(size, step);
+  } else {
+    VELOX_FAIL("window type: {} is not supported", static_cast<int32_t>(windowType_));
+  }
 }
 
 std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(const RowVectorPtr& input) {
-  if (rowtimeIndex_ < 0) {
-    int64_t timestampMs = TimeWindowUtil::getCurrentProcessingTime();
-    if (windowType_ == WindowType::TUMBLE) {
-      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-      int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
-      return {{windowStart + size_, input}};
+  auto calculateWindowEnd = [&]
+  (int64_t timestampMs, int64_t offset, int64_t sliceSize, int64_t windowSize, bool notExpandEventTimeWindow) -> int64_t {
+    if (notExpandEventTimeWindow) {
+       return timestampMs;
     } else {
-      return {{timestampMs, input}};
+      int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+      return TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset, sliceSize) + windowSize;
     }
-  } else {
-    const VectorPtr& rowtimeVector = input->childAt(rowtimeIndex_);
-    prepareChildrenLoaded(input);
-    const auto* tsSimple = rowtimeVector->as<SimpleVector<Timestamp>>();
-    const auto* tsSimpleInt = rowtimeVector->as<SimpleVector<int64_t>>();
-    VELOX_CHECK(tsSimple != nullptr || tsSimpleInt != nullptr,
-        "rowtime column must be TIMESTAMP/Int64 simple vector");
-
-    const vector_size_t numRows = rowtimeVector->size();
-    auto isNullAtRow = [&](vector_size_t row) {
-      return tsSimple ? tsSimple->isNullAt(row) : tsSimpleInt->isNullAt(row);
-    };
-    auto timestampMillisAt = [&](vector_size_t row) {
-      return tsSimple ? tsSimple->valueAt(row).toMillis() : tsSimpleInt->valueAt(row);
-    };
-
-    velox::memory::MemoryPool* pool = input->pool();
-    std::map<int64_t, RowVectorPtr> sliceEndToData;
-
+  };
+  std::map<int64_t, RowVectorPtr> res;
+  std::map<int64_t, RowVectorPtr> partitionToData = keySelector_->partition(input);
+  // set window end to data
+  auto setWindowEnd = [&](int64_t windowEnd, const RowVectorPtr& data) {
+    if (res.count(windowEnd) == 0) {
+      res[windowEnd] = data;
+    } else {
+      res[windowEnd] = TimeWindowUtil::mergeVectors({res[windowEnd], data}, input->pool());
+    }
+  };
+  bool isEventTimeWindow = rowtimeIndex_ >= 0 && (windowType_ == WindowType::HOP || windowType_ == WindowType::TUMBLE);
+  // assign slice end to data
+  for (auto& kv : partitionToData) {
+    int64_t windowEnd = calculateWindowEnd(kv.first, offset_, sliceSize_, size_,
+      isEventTimeWindow && !expandHopWindows_);
     if (windowType_ == WindowType::TUMBLE) {
-      std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
-      for (vector_size_t i = 0; i < numRows; ++i) {
-        if (isNullAtRow(i)) {
-          continue;
+      setWindowEnd(windowEnd, kv.second);
+    } else if (windowType_ == WindowType::HOP) {
+      if (expandHopWindows_) {
+        int64_t end = rowtimeIndex_ < 0 ? windowEnd : windowEnd - sliceSize_;
+        for (; end >= kv.first; end -= sliceSize_) {
+          setWindowEnd(end, kv.second);
         }
-        int64_t timestampMs = timestampMillisAt(i);
-        int64_t utcTimestamp = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-        int64_t windowStart =
-            stateful::TimeWindowUtil::getWindowStartWithOffset(utcTimestamp, offset_, size_);
-        const int64_t sliceEnd = windowStart + size_;
-        groups[sliceEnd].push_back(i);
+      } else {
+        setWindowEnd(windowEnd, kv.second);
       }
-      for (auto& [sliceEnd, rowIndices] : groups) {
-        const vector_size_t n = rowIndices.size();
-        BufferPtr indicesBuf = allocateIndices(n, pool);
-        auto* raw = indicesBuf->asMutable<vector_size_t>();
-        for (vector_size_t j = 0; j < n; ++j) {
-          raw[j] = rowIndices[j];
-        }
-        sliceEndToData[sliceEnd] =
-            wrapChildrenByIndices(input, n, indicesBuf, pool);
-      }
-      return sliceEndToData;
+    } else {
+      VELOX_FAIL("window type: {} is not supported", static_cast<int32_t>(windowType_));
     }
-    std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
-    for (vector_size_t i = 0; i < numRows; ++i) {
-      if (isNullAtRow(i)) {
-        continue;
-      }
-      int64_t timestampMs = timestampMillisAt(i);
-      int64_t key = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-      groups[key].push_back(i);
-    }
-    for (auto& [timeKey, rowIndices] : groups) {
-      const vector_size_t n = rowIndices.size();
-      BufferPtr indicesBuf = allocateIndices(n, pool);
-      auto* raw = indicesBuf->asMutable<vector_size_t>();
-      for (vector_size_t j = 0; j < n; ++j) {
-        raw[j] = rowIndices[j];
-      }
-      sliceEndToData[timeKey] =
-          wrapChildrenByIndices(input, n, indicesBuf, pool);
-    }
-    return sliceEndToData;
   }
+  return res;
 }
 
 int64_t SliceAssigner::getLastWindowEnd(int64_t sliceEnd) {

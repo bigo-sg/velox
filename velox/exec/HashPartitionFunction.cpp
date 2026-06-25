@@ -109,11 +109,11 @@ std::optional<uint32_t> HashPartitionFunction::partition(
   } else {
     if (localExchange_) {
       for (auto i = 0; i < size; ++i) {
-        partitions[i] = localExchangeHash(hashes_[i]) % numPartitions_;
+        partitions[i] = numPartitions_ > 0 ? localExchangeHash(hashes_[i]) % numPartitions_ : localExchangeHash(hashes_[i]);
       }
     } else {
       for (auto i = 0; i < size; ++i) {
-        partitions[i] = hashes_[i] % numPartitions_;
+        partitions[i] = numPartitions_ > 0 ? hashes_[i] % numPartitions_ : hashes_[i];
       }
     }
   }
