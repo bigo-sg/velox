@@ -11,10 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
+
 add_executable(velox_buffer_test BufferTest.cpp StringViewBufferHolderTest.cpp)
 
-add_test(velox_buffer_test velox_buffer_test
-         --gtest_filter=-BufferTest.testAllocateSizeOverflow)
+gtest_add_tests(TARGET velox_buffer_test TEST_LIST velox_buffer_test_cases)
+set_tests_properties(BufferTest.testAllocateSizeOverflow PROPERTIES DISABLED
+                                                                    TRUE)
 
 target_link_libraries(
   velox_buffer_test
