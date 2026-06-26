@@ -62,6 +62,8 @@ jobs:
       xsimd_SOURCE: BUNDLED
       folly_SOURCE: BUNDLED
       geos_SOURCE: BUNDLED
+      absl_SOURCE: BUNDLED
+      gRPC_SOURCE: BUNDLED
       PulsarClient_SOURCE: BUNDLED
       USE_CLANG: "false"
     steps:
@@ -101,6 +103,7 @@ jobs:
             "-DVELOX_ENABLE_KAFKA_CONNECTOR=ON"
             "-DVELOX_ENABLE_PULSAR_CONNECTOR=ON"
             "-DVELOX_ENABLE_CCACHE=ON"
+            "-Dc-ares_SOURCE=BUNDLED"
           )
 
           cmake -S . -B _build/velox4j-like -GNinja "${EXTRA_CMAKE_FLAGS[@]}"
