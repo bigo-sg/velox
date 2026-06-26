@@ -1,0 +1,86 @@
+velox/common/memory/tests/MockSharedArbitratorTest.cpp
+  s_d09925d7b970da::t_0b9778cfe708a3 2314
+velox/exec/tests/CMakeLists.txt
+  s_d09925d7b970da::t_d9129262b8bf0d 322
+  s_d09925d7b970da::t_c9d33322dfdfcf 25
+  s_d09925d7b970da::t_1e360d1079524e 123,129
+.github/workflows/linux-gluten-build.yml
+  s_d09925d7b970da::t_4d67969a097f0c 102-103
+  s_d09925d7b970da::t_d77e228eb0de26 21
+  s_d09925d7b970da::t_df5f58eca8648e 112-117
+  s_d09925d7b970da::t_0a7db9bc284db4 100
+velox/common/base/tests/CMakeLists.txt
+  s_d09925d7b970da::t_ea875bf0a1e3c8 40
+velox/dwio/parquet/tests/writer/CMakeLists.txt
+  s_d09925d7b970da::t_bfba057876d724 40
+velox/dwio/parquet/tests/reader/CMakeLists.txt
+  s_d09925d7b970da::t_39be5367dda892 91
+  s_d09925d7b970da::t_2cbda959b017e7 20
+velox/exec/fuzzer/tests/CMakeLists.txt
+  s_d09925d7b970da::t_325ea2be46fbe2 17
+velox/functions/prestosql/aggregates/tests/ArrayAggTest.cpp
+  s_d09925d7b970da::t_4575dadb70c2f0 560
+velox/common/caching/tests/CMakeLists.txt
+  s_d09925d7b970da::t_69665fd427e4ad 35
+  s_d09925d7b970da::t_b0c5f960a384e9 17
+  s_d09925d7b970da::t_be04f32c72a840 52
+velox/common/memory/tests/StreamArenaTest.cpp
+  s_d09925d7b970da::t_22c7bd653fea2c 146
+velox/dwio/parquet/writer/arrow/tests/CMakeLists.txt
+  s_d09925d7b970da::t_9a91e642a7f876 32
+velox/connectors/tpch/tests/CMakeLists.txt
+  s_d09925d7b970da::t_c92a02d7d6feca 17
+velox/parse/tests/CMakeLists.txt
+  s_d09925d7b970da::t_55cbb3ce831f63 18
+velox/functions/prestosql/tests/CMakeLists.txt
+  s_d09925d7b970da::t_b15a0b6b41cee8 118
+velox/expression/tests/CMakeLists.txt
+  s_d09925d7b970da::t_2327d06612d3a3 56
+velox/connectors/hive/tests/CMakeLists.txt
+  s_d09925d7b970da::t_c6095d930a6f12 28
+velox/dwio/dwrf/test/CMakeLists.txt
+  s_d09925d7b970da::t_7bc9ee289e140f 394
+  s_d09925d7b970da::t_045ec314ac958f 484
+  s_d09925d7b970da::t_f290b3470c6d9e 357
+  s_d09925d7b970da::t_6d77f2bb2b8067 436
+  s_d09925d7b970da::t_800a204327ef1d 549
+  s_d09925d7b970da::t_6da99b1bcd9570 56
+  s_d09925d7b970da::t_a6eb7eca482856 290
+velox/vector/arrow/tests/CMakeLists.txt
+  s_d09925d7b970da::t_e673de380b317a 18
+velox/functions/sparksql/tests/CMakeLists.txt
+  s_d09925d7b970da::t_faffe0ed18668d 72
+velox/functions/prestosql/aggregates/tests/ArbitraryTest.cpp
+  s_d09925d7b970da::t_a7fc0ebed8c866 468
+velox/duckdb/conversion/tests/CMakeLists.txt
+  s_d09925d7b970da::t_589c57e879bf2e 19
+velox/common/dynamic_registry/tests/CMakeLists.txt
+  s_d09925d7b970da::t_513bc9e6de881d 101
+velox/vector/tests/CMakeLists.txt
+  s_d09925d7b970da::t_e6c7bb08bffd5e 94
+  s_d09925d7b970da::t_a39fbf03f7fdc1 77
+  s_d09925d7b970da::t_f6c3170f1488c9 42
+velox/serializers/tests/CMakeLists.txt
+  s_d09925d7b970da::t_3c303eeacf21ff 20
+velox/dwio/catalog/fbhive/test/CMakeLists.txt
+  s_d09925d7b970da::t_0899f4ca70f8a8 17
+velox/tool/trace/tests/CMakeLists.txt
+  s_d09925d7b970da::t_5fdfa340d86079 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "6e08593ecbd4cf258af39c7639b8353933c69941",
+  "prompts": {},
+  "logical_commit_id": "6e08593ecbd4cf258af39c7639b8353933c69941",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
