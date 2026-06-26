@@ -128,4 +128,7 @@ jobs:
           key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
 
       - name: Run Tests
-        run: ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
+        timeout-minutes: 60
+        run: >-
+          ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
+          --stop-on-failure --timeout 300
