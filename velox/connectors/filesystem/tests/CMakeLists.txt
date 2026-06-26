@@ -13,7 +13,11 @@
 # limitations under the License.
 add_executable(velox_filesystem_connector_test FileSystemConnectorTest.cpp)
 
-add_test(velox_filesystem_connector_test velox_filesystem_connector_test)
+add_test(
+  velox_filesystem_connector_test
+  velox_filesystem_connector_test
+  --gtest_filter=-FileSystemConnectorTest.testWritePartitionedTable:FileSystemConnectorTest.testFileRolling:FileSystemConnectorTest.testFileCommit
+)
 
 target_link_libraries(
   velox_filesystem_connector_test

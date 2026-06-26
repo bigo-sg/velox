@@ -16,8 +16,11 @@ add_executable(
   CompactRowSerializerTest.cpp PrestoOutputStreamListenerTest.cpp
   PrestoSerializerTest.cpp UnsafeRowSerializerTest.cpp)
 
-add_test(velox_serializer_test velox_serializer_test)
-set_tests_properties(velox_serializer_test PROPERTIES DISABLED TRUE)
+add_test(
+  velox_serializer_test
+  velox_serializer_test
+  --gtest_filter=-PrestoSerializerTest/PrestoSerializerTest.typeMismatch/0:PrestoSerializerTest/PrestoSerializerTest.typeMismatch/1:PrestoSerializerTest/PrestoSerializerTest.typeMismatch/2:PrestoSerializerTest/PrestoSerializerTest.typeMismatch/3:PrestoSerializerTest/PrestoSerializerTest.typeMismatch/4:PrestoSerializerTest/PrestoSerializerTest.typeMismatch/5:PrestoSerializerTest/PrestoSerializerTest.checksum/0:PrestoSerializerTest/PrestoSerializerTest.checksum/1:PrestoSerializerTest/PrestoSerializerTest.checksum/2:PrestoSerializerTest/PrestoSerializerTest.checksum/3:PrestoSerializerTest/PrestoSerializerTest.checksum/4:PrestoSerializerTest/PrestoSerializerTest.checksum/5:PrestoSerializerTest/PrestoSerializerTest.nullVector/0:PrestoSerializerTest/PrestoSerializerTest.nullVector/1:PrestoSerializerTest/PrestoSerializerTest.nullVector/2:PrestoSerializerTest/PrestoSerializerTest.nullVector/3:PrestoSerializerTest/PrestoSerializerTest.nullVector/4:PrestoSerializerTest/PrestoSerializerTest.nullVector/5
+)
 
 target_link_libraries(
   velox_serializer_test

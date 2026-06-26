@@ -14,8 +14,8 @@
 
 add_executable(velox_parse_test QueryPlannerTest.cpp)
 
-add_test(velox_parse_test velox_parse_test)
-set_tests_properties(velox_parse_test PROPERTIES DISABLED TRUE)
+add_test(velox_parse_test velox_parse_test
+         --gtest_filter=-QueryPlannerTest.error)
 
 target_link_libraries(
   velox_parse_test velox_parse_parser GTest::gtest GTest::gtest_main)

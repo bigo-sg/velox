@@ -17,8 +17,6 @@ add_test(
   NAME velox_dwio_parquet_page_reader_test
   COMMAND velox_dwio_parquet_page_reader_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(velox_dwio_parquet_page_reader_test PROPERTIES DISABLED
-                                                                    TRUE)
 target_link_libraries(
   velox_dwio_parquet_page_reader_test velox_dwio_native_parquet_reader
   velox_link_libs ${TEST_LINK_LIBS})
@@ -88,9 +86,8 @@ add_executable(velox_dwio_parquet_table_scan_test ParquetTableScanTest.cpp)
 add_test(
   NAME velox_dwio_parquet_table_scan_test
   COMMAND velox_dwio_parquet_table_scan_test
+          --gtest_filter=-ParquetTableScanTest.decimalSubfieldFilter
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(velox_dwio_parquet_table_scan_test PROPERTIES DISABLED
-                                                                   TRUE)
 target_link_libraries(
   velox_dwio_parquet_table_scan_test
   velox_dwio_parquet_reader

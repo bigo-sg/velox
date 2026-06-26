@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
+
 add_subdirectory(utils)
 
 add_executable(
@@ -22,8 +24,6 @@ add_test(
   NAME aggregate_companion_functions_test
   COMMAND aggregate_companion_functions_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(aggregate_companion_functions_test PROPERTIES DISABLED
-                                                                   TRUE)
 
 target_link_libraries(
   aggregate_companion_functions_test
@@ -115,19 +115,18 @@ add_executable(
   TaskTest.cpp
   TreeOfLosersTest.cpp)
 
-add_test(
-  NAME velox_exec_test
-  COMMAND velox_exec_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+gtest_add_tests(
+  TARGET velox_exec_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  TEST_LIST velox_exec_test_cases)
+set_tests_properties(${velox_exec_test_cases} PROPERTIES DISABLED TRUE TIMEOUT
+                                                         3000)
 
-set_tests_properties(velox_exec_test PROPERTIES TIMEOUT 3000)
-set_tests_properties(velox_exec_test PROPERTIES DISABLED TRUE)
-
-add_test(
-  NAME velox_exec_infra_test
-  COMMAND velox_exec_infra_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(velox_exec_infra_test PROPERTIES DISABLED TRUE)
+gtest_add_tests(
+  TARGET velox_exec_infra_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  TEST_LIST velox_exec_infra_test_cases)
+set_tests_properties(${velox_exec_infra_test_cases} PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_exec_test
@@ -320,7 +319,6 @@ add_test(
   NAME cpr_http_client_test
   COMMAND cpr_http_client_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(cpr_http_client_test PROPERTIES DISABLED TRUE)
 target_link_libraries(
   cpr_http_client_test cpr::cpr GTest::gtest GTest::gtest_main)
 

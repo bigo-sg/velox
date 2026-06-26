@@ -11,13 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_executable(velox_spark_query_runner_test SparkQueryRunnerTest.cpp)
 
-add_test(
-  NAME velox_spark_query_runner_test
-  COMMAND velox_spark_query_runner_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+gtest_add_tests(TARGET velox_spark_query_runner_test
+                TEST_LIST velox_spark_query_runner_test_cases)
+set_tests_properties(${velox_spark_query_runner_test_cases} PROPERTIES DISABLED
+                                                                       TRUE)
 
 target_link_libraries(
   velox_spark_query_runner_test

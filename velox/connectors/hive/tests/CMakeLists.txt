@@ -24,8 +24,11 @@ add_executable(
   HiveSplitTest.cpp
   PartitionIdGeneratorTest.cpp
   TableHandleTest.cpp)
-add_test(velox_hive_connector_test velox_hive_connector_test)
-set_tests_properties(velox_hive_connector_test PROPERTIES DISABLED TRUE)
+add_test(
+  velox_hive_connector_test
+  velox_hive_connector_test
+  --gtest_filter=-HiveDataSinkTest.ensureFilesUnsupported:HivePartitionUtilTest.partitionName:HivePartitionUtilTest.partitionNameForNull
+)
 
 target_link_libraries(
   velox_hive_connector_test

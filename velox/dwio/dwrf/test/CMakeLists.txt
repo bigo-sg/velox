@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_subdirectory(utils)
 
@@ -52,8 +53,11 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwio_dwrf_compression_test CompressionTest.cpp)
-add_test(velox_dwio_dwrf_compression_test velox_dwio_dwrf_compression_test)
-set_tests_properties(velox_dwio_dwrf_compression_test PROPERTIES DISABLED TRUE)
+add_test(
+  velox_dwio_dwrf_compression_test
+  velox_dwio_dwrf_compression_test
+  --gtest_filter=-TestCompression/CompressionTest.getCompressionBufferOOM/0:TestCompression/CompressionTest.getCompressionBufferOOM/1:TestCompression/CompressionTest.getCompressionBufferOOM/2:TestCompression/CompressionTest.getCompressionBufferOOM/3:TestCompression/CompressionTest.getCompressionBufferOOM/4:TestCompression/CompressionTest.getCompressionBufferOOM/5
+)
 
 target_link_libraries(
   velox_dwio_dwrf_compression_test
@@ -83,7 +87,10 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwio_dwrf_stripe_stream_test TestStripeStream.cpp)
-add_test(velox_dwio_dwrf_stripe_stream_test velox_dwio_dwrf_stripe_stream_test)
+gtest_add_tests(TARGET velox_dwio_dwrf_stripe_stream_test
+                TEST_LIST velox_dwio_dwrf_stripe_stream_test_cases)
+set_tests_properties(${velox_dwio_dwrf_stripe_stream_test_cases}
+                     PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_stripe_stream_test
@@ -286,8 +293,8 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwio_dwrf_reader_base_test ReaderBaseTests.cpp)
-add_test(velox_dwio_dwrf_reader_base_test velox_dwio_dwrf_reader_base_test)
-set_tests_properties(velox_dwio_dwrf_reader_base_test PROPERTIES DISABLED TRUE)
+add_test(velox_dwio_dwrf_reader_base_test velox_dwio_dwrf_reader_base_test
+         --gtest_filter=-ReaderBaseTest.InvalidPostScriptThrows)
 
 target_link_libraries(
   velox_dwio_dwrf_reader_base_test
@@ -353,8 +360,8 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwio_dwrf_rle_test TestRle.cpp)
-add_test(velox_dwio_dwrf_rle_test velox_dwio_dwrf_rle_test)
-set_tests_properties(velox_dwio_dwrf_rle_test PROPERTIES DISABLED TRUE)
+add_test(velox_dwio_dwrf_rle_test velox_dwio_dwrf_rle_test
+         --gtest_filter=-RLEv1Test.seekTest)
 
 target_link_libraries(
   velox_dwio_dwrf_rle_test velox_link_libs Folly::folly ${TEST_LINK_LIBS})
@@ -377,7 +384,10 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwio_dwrf_column_reader_test TestColumnReader.cpp)
-add_test(velox_dwio_dwrf_column_reader_test velox_dwio_dwrf_column_reader_test)
+gtest_add_tests(TARGET velox_dwio_dwrf_column_reader_test
+                TEST_LIST velox_dwio_dwrf_column_reader_test_cases)
+set_tests_properties(${velox_dwio_dwrf_column_reader_test_cases}
+                     PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_column_reader_test
@@ -387,11 +397,12 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwio_dwrf_reader_test ReaderTest.cpp)
-add_test(
-  NAME velox_dwio_dwrf_reader_test
-  COMMAND velox_dwio_dwrf_reader_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(velox_dwio_dwrf_reader_test PROPERTIES DISABLED TRUE)
+gtest_add_tests(
+  TARGET velox_dwio_dwrf_reader_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  TEST_LIST velox_dwio_dwrf_reader_test_cases)
+set_tests_properties(${velox_dwio_dwrf_reader_test_cases} PROPERTIES DISABLED
+                                                                     TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_reader_test
@@ -407,7 +418,10 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwrf_e2e_filter_test E2EFilterTest.cpp)
-add_test(velox_dwrf_e2e_filter_test velox_dwrf_e2e_filter_test)
+gtest_add_tests(TARGET velox_dwrf_e2e_filter_test
+                TEST_LIST velox_dwrf_e2e_filter_test_cases)
+set_tests_properties(${velox_dwrf_e2e_filter_test_cases} PROPERTIES DISABLED
+                                                                    TRUE)
 
 target_link_libraries(
   velox_dwrf_e2e_filter_test
@@ -432,8 +446,11 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwrf_column_writer_test ColumnWriterTest.cpp)
-add_test(velox_dwrf_column_writer_test velox_dwrf_column_writer_test)
-set_tests_properties(velox_dwrf_column_writer_test PROPERTIES DISABLED TRUE)
+add_test(
+  velox_dwrf_column_writer_test
+  velox_dwrf_column_writer_test
+  --gtest_filter=-ColumnWriterTest.TestShortWriter:ColumnWriterTest.TestIntWriter
+)
 
 target_link_libraries(
   velox_dwrf_column_writer_test
@@ -480,8 +497,11 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwrf_e2e_writer_test E2EWriterTest.cpp)
-add_test(velox_dwrf_e2e_writer_test velox_dwrf_e2e_writer_test)
-set_tests_properties(velox_dwrf_e2e_writer_test PROPERTIES DISABLED TRUE)
+add_test(
+  velox_dwrf_e2e_writer_test
+  velox_dwrf_e2e_writer_test
+  --gtest_filter=-E2EWriterTest.TooManyFlatMapKeys:E2EWriterTest.FlatMapConfigNotMapColumn:E2EEncryptionTest.ReadWithoutKey
+)
 
 target_link_libraries(
   velox_dwrf_e2e_writer_test
@@ -498,7 +518,10 @@ target_link_libraries(
   ${TEST_LINK_LIBS})
 
 add_executable(velox_dwrf_e2e_reader_test E2EReaderTest.cpp)
-add_test(velox_dwrf_e2e_reader_test velox_dwrf_e2e_reader_test)
+gtest_add_tests(TARGET velox_dwrf_e2e_reader_test
+                TEST_LIST velox_dwrf_e2e_reader_test_cases)
+set_tests_properties(${velox_dwrf_e2e_reader_test_cases} PROPERTIES DISABLED
+                                                                    TRUE)
 
 target_link_libraries(
   velox_dwrf_e2e_reader_test
@@ -546,7 +569,6 @@ target_link_libraries(
 
 add_executable(physical_size_aggregator_test PhysicalSizeAggregatorTest.cpp)
 add_test(physical_size_aggregator_test physical_size_aggregator_test)
-set_tests_properties(physical_size_aggregator_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   physical_size_aggregator_test
@@ -585,7 +607,9 @@ endif()
 add_executable(velox_dwio_cache_test CacheInputTest.cpp
                                      DirectBufferedInputTest.cpp)
 
-add_test(velox_dwio_cache_test velox_dwio_cache_test)
+gtest_add_tests(TARGET velox_dwio_cache_test
+                TEST_LIST velox_dwio_cache_test_cases)
+set_tests_properties(${velox_dwio_cache_test_cases} PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_cache_test

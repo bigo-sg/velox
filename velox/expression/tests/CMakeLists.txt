@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_executable(
   velox_expression_test
@@ -49,11 +50,11 @@ add_executable(
   VariadicViewTest.cpp
   VectorReaderTest.cpp)
 
-add_test(
-  NAME velox_expression_test
-  COMMAND velox_expression_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(velox_expression_test PROPERTIES DISABLED TRUE)
+gtest_add_tests(
+  TARGET velox_expression_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  TEST_LIST velox_expression_test_cases)
+set_tests_properties(${velox_expression_test_cases} PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_expression_test

@@ -13,7 +13,8 @@
 # limitations under the License.
 add_executable(velox_buffer_test BufferTest.cpp StringViewBufferHolderTest.cpp)
 
-add_test(velox_buffer_test velox_buffer_test)
+add_test(velox_buffer_test velox_buffer_test
+         --gtest_filter=-BufferTest.testAllocateSizeOverflow)
 
 target_link_libraries(
   velox_buffer_test

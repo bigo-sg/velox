@@ -68,8 +68,11 @@ add_executable(
   UuidTest.cpp
   XxHash64Test.cpp)
 
-add_test(velox_functions_spark_test velox_functions_spark_test)
-set_tests_properties(velox_functions_spark_test PROPERTIES DISABLED TRUE)
+add_test(
+  velox_functions_spark_test
+  velox_functions_spark_test
+  --gtest_filter=-ArithmeticTest.checkedAdd:ArithmeticTest.checkedSubtract:ArithmeticTest.checkedMultiply:ArithmeticTest.checkedDivide:AtLeastNNonNullsTest.error:DateTimeFunctionsTest.unixTimestampDateInput:ElementAtTest.allFlavors2:FromJsonTest.invalidType:GetJsonObjectTest.nullResult:GetStructFieldTest.invalidOrdinal:MakeDecimalTest.makeDecimal:MakeTimestampTest.errors:MakeTimestampTest.invalidTimezone:MaskTest.maskWithError:RegexFunctionsTest.blockUnsupportedEdgeCases:RegexFunctionsTest.regexMatchRegistration:SortArrayTest.invalidInput:SparkPartitionIdTest.error:UuidTest.nonConstantSeed
+)
 
 target_link_libraries(
   velox_functions_spark_test

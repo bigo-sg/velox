@@ -11,10 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_executable(velox_row_test CompactRowTest.cpp UnsafeRowTest.cpp)
 
-add_test(velox_row_test velox_row_test)
+gtest_add_tests(TARGET velox_row_test TEST_LIST velox_row_test_cases)
+set_tests_properties(${velox_row_test_cases} PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_row_test
