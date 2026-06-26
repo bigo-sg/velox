@@ -111,13 +111,13 @@ jobs:
       - name: Build Velox
         run: cmake --build _build/velox4j-like --target velox -j$(nproc)
 
+      - name: Ccache after build velox
+        run: ccache -s
+
       - name: Build Tests
         run: cmake --build _build/velox4j-like -j$(nproc)
 
-      - name: Run Tests
-        run: ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
-
-      - name: Ccache after
+      - name: Ccache after build tests
         run: ccache -s
 
       - name: Save ccache
@@ -126,3 +126,6 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Run Tests
+        run: ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
