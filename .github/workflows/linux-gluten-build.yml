@@ -122,7 +122,7 @@ jobs:
 
       - name: Save ccache
         uses: actions/cache/save@v4
-        if: always()
+        if: success()
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
