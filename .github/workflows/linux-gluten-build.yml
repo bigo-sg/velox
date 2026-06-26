@@ -57,7 +57,7 @@ jobs:
     env:
       CCACHE_DIR: "${{ github.workspace }}/ccache"
       VELOX_DEPENDENCY_SOURCE: SYSTEM
-      CPU_TARGET: generic
+      CPU_TARGET: sse
       GTest_SOURCE: BUNDLED
       simdjson_SOURCE: BUNDLED
       xsimd_SOURCE: BUNDLED
