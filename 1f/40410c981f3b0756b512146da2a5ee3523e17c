@@ -1,0 +1,30 @@
+.github/workflows/linux-gluten-build.yml
+  s_d09925d7b970da::t_217bcce6191eaf 101-102
+CMake/resolve_dependency_modules/cpr.cmake
+  s_d09925d7b970da::t_6ce43414c6a442 29-33,65-66,73-76
+  s_d09925d7b970da::t_d9da02b595bd04 55-64,67-72,77-83
+  s_d09925d7b970da::t_14f4ed37ec4f00 28,34
+velox/dwio/parquet/writer/arrow/tests/CMakeLists.txt
+  s_d09925d7b970da::t_4034657e7921be 32-33
+velox/exec/tests/CMakeLists.txt
+  s_d09925d7b970da::t_4034657e7921be 25-26
+velox/dwio/parquet/tests/reader/CMakeLists.txt
+  s_d09925d7b970da::t_4034657e7921be 20-21,92-93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "1f40410c981f3b0756b512146da2a5ee3523e17c",
+  "prompts": {},
+  "logical_commit_id": "1f40410c981f3b0756b512146da2a5ee3523e17c",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
