@@ -22,7 +22,8 @@ add_test(
   NAME aggregate_companion_functions_test
   COMMAND aggregate_companion_functions_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_tests_properties(aggregate_companion_functions_test PROPERTIES DISABLED TRUE)
+set_tests_properties(aggregate_companion_functions_test PROPERTIES DISABLED
+                                                                   TRUE)
 
 target_link_libraries(
   aggregate_companion_functions_test

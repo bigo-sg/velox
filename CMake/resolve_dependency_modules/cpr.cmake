@@ -25,6 +25,13 @@ set(VELOX_CPR_SOURCE_URL
 set(curl_SOURCE BUNDLED)
 velox_resolve_dependency(curl)
 
+# Build bundled curl with OpenSSL so it has CURL_OPENSSL_4 versioned symbols
+# compatible with librdkafka and libpulsar which were linked against system
+# curl.
+set(CURL_USE_OPENSSL
+    ON
+    CACHE BOOL "")
+
 velox_resolve_dependency_url(CPR)
 
 message(STATUS "Building cpr from source")
@@ -45,3 +52,32 @@ FetchContent_MakeAvailable(cpr)
 # CPR_USE_SYSTEM_CURL=OFF. unset BUILD_TESTING here.
 unset(BUILD_TESTING)
 unset(BUILD_SHARED_LIBS)
+
+# Add versioned symbol support to bundled curl so that librdkafka and libpulsar
+# (compiled against system curl with CURL_OPENSSL_4) can resolve their versioned
+# symbol references at link time.
+FetchContent_GetProperties(curl)
+if(curl_POPULATED AND TARGET libcurl_shared)
+  set(_curl_vers_in "${curl_SOURCE_DIR}/lib/libcurl.vers.in")
+  set(_curl_vers_out "${curl_BINARY_DIR}/lib/libcurl.vers")
+  if(EXISTS "${_curl_vers_in}")
+    file(READ "${_curl_vers_in}" _curl_vers_content)
+    string(REPLACE "@CURL_LT_SHLIB_VERSIONED_FLAVOUR@" "OPENSSL_"
+                   _curl_vers_content "${_curl_vers_content}")
+    file(WRITE "${_curl_vers_out}" "${_curl_vers_content}")
+    get_target_property(_curl_link_flags libcurl_shared LINK_FLAGS)
+    if(NOT _curl_link_flags)
+      set(_curl_link_flags "")
+    endif()
+    if(NOT "${_curl_link_flags}" MATCHES "version-script")
+      set_target_properties(
+        libcurl_shared
+        PROPERTIES LINK_FLAGS
+                   "${_curl_link_flags} -Wl,--version-script,${_curl_vers_out}")
+      message(STATUS "curl: enabled versioned symbols (CURL_OPENSSL_4)")
+    endif()
+    unset(_curl_link_flags)
+  endif()
+  unset(_curl_vers_in)
+  unset(_curl_vers_out)
+endif()
