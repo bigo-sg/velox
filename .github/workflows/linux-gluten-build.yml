@@ -57,6 +57,7 @@ jobs:
     env:
       CCACHE_DIR: "${{ github.workspace }}/ccache"
       VELOX_DEPENDENCY_SOURCE: SYSTEM
+      CPU_TARGET: generic
       GTest_SOURCE: BUNDLED
       simdjson_SOURCE: BUNDLED
       xsimd_SOURCE: BUNDLED
@@ -81,10 +82,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-
-            ccache-linux-gluten-${{ runner.os }}-
+            ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-
+            ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-
 
       - name: Zero Ccache Statistics
         run: ccache -sz
@@ -125,7 +126,7 @@ jobs:
         if: success()
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
 
       - name: Run Tests
         timeout-minutes: 60

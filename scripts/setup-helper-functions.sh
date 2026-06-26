@@ -76,6 +76,7 @@ function github_checkout {
 #   aarch64: Target general 64 bit arm cpus.
 #   avx:     Target Intel CPUs with AVX.
 #   sse:     Target Intel CPUs with sse.
+#   generic: Do not add CPU-specific compiler flags.
 # Echo's the appropriate compiler flags which can be captured as so
 # CXX_FLAGS=$(get_cxx_flags) or
 # CXX_FLAGS=$(get_cxx_flags "avx")
@@ -124,6 +125,10 @@ function get_cxx_flags {
 
     "sse")
       echo -n "-msse4.2 "
+    ;;
+
+    "generic")
+      echo -n ""
     ;;
 
     "aarch64")
@@ -223,4 +228,3 @@ function cmake_install {
   cmake --build "${BINARY_DIR}" "-j ${NPROC}" || { echo 'build failed' ; exit 1; }
   ${SUDO} cmake --install "${BINARY_DIR}"
 }
-
