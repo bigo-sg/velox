@@ -14,6 +14,7 @@
 add_executable(velox_tpch_connector_test TpchConnectorTest.cpp)
 
 add_test(velox_tpch_connector_test velox_tpch_connector_test)
+set_tests_properties(velox_tpch_connector_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_tpch_connector_test

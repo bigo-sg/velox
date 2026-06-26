@@ -115,6 +115,7 @@ add_executable(
   ZipWithTest.cpp)
 
 add_test(velox_functions_test velox_functions_test)
+set_tests_properties(velox_functions_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_functions_test

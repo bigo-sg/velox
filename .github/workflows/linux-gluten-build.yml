@@ -96,10 +96,10 @@ jobs:
             "-DVELOX_MONO_LIBRARY=ON"
             "-DVELOX_BUILD_SHARED=ON"
             "-DVELOX_BUILD_STATIC=OFF"
-            "-DVELOX_BUILD_TESTING=OFF"
+            "-DVELOX_BUILD_TESTING=ON"
             "-DVELOX_ENABLE_ARROW=ON"
-            "-DVELOX_ENABLE_KAFKA_CONNECTOR=ON"
-            "-DVELOX_ENABLE_PULSAR_CONNECTOR=ON"
+            "-DVELOX_ENABLE_KAFKA_CONNECTOR=OFF"
+            "-DVELOX_ENABLE_PULSAR_CONNECTOR=OFF"
             "-DVELOX_ENABLE_CCACHE=ON"
           )
 
@@ -107,6 +107,12 @@ jobs:
 
       - name: Build Velox
         run: cmake --build _build/velox4j-like --target velox -j$(nproc)
+
+      - name: Build Tests
+        run: cmake --build _build/velox4j-like -j$(nproc)
+
+      - name: Run Tests
+        run: ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
 
       - name: Ccache after
         run: ccache -s

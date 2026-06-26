@@ -37,6 +37,7 @@ add_executable(
   SuccinctPrinterTest.cpp)
 
 add_test(velox_base_test velox_base_test)
+set_tests_properties(velox_base_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_base_test

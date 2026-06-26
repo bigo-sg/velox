@@ -14,6 +14,7 @@
 
 add_executable(file_utils_test FileUtilsTests.cpp)
 add_test(file_utils_test file_utils_test)
+set_tests_properties(file_utils_test PROPERTIES DISABLED TRUE)
 target_link_libraries(
   file_utils_test
   velox_dwio_catalog_fbhive

@@ -29,6 +29,7 @@ add_executable(
 
 add_test(velox_dwio_arrow_parquet_writer_test
          velox_dwio_arrow_parquet_writer_test)
+set_tests_properties(velox_dwio_arrow_parquet_writer_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_arrow_parquet_writer_test

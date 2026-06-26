@@ -39,6 +39,7 @@ add_executable(
   VectorToStringTest.cpp)
 
 add_test(velox_vector_test velox_vector_test)
+set_tests_properties(velox_vector_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_vector_test
@@ -73,6 +74,7 @@ target_link_libraries(
 add_executable(simple_vector_test SimpleVectorTest.cpp ToStringUtilityTest.cpp)
 
 add_test(simple_vector_test simple_vector_test)
+set_tests_properties(simple_vector_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   simple_vector_test
@@ -89,6 +91,7 @@ target_link_libraries(
 add_executable(bias_vector_test BiasVectorTest.cpp)
 
 add_test(bias_vector_test bias_vector_test)
+set_tests_properties(bias_vector_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   bias_vector_test

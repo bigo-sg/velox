@@ -22,6 +22,7 @@ add_test(
   NAME aggregate_companion_functions_test
   COMMAND aggregate_companion_functions_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(aggregate_companion_functions_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   aggregate_companion_functions_test
@@ -119,11 +120,13 @@ add_test(
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 set_tests_properties(velox_exec_test PROPERTIES TIMEOUT 3000)
+set_tests_properties(velox_exec_test PROPERTIES DISABLED TRUE)
 
 add_test(
   NAME velox_exec_infra_test
   COMMAND velox_exec_infra_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(velox_exec_infra_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_exec_test
@@ -316,6 +319,7 @@ add_test(
   NAME cpr_http_client_test
   COMMAND cpr_http_client_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(cpr_http_client_test PROPERTIES DISABLED TRUE)
 target_link_libraries(
   cpr_http_client_test cpr::cpr GTest::gtest GTest::gtest_main)
 

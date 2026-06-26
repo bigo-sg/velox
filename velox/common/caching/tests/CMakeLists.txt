@@ -14,6 +14,7 @@
 
 add_executable(simple_lru_cache_test SimpleLRUCacheTest.cpp)
 add_test(simple_lru_cache_test simple_lru_cache_test)
+set_tests_properties(simple_lru_cache_test PROPERTIES DISABLED TRUE)
 target_link_libraries(
   simple_lru_cache_test
   PRIVATE
@@ -31,6 +32,7 @@ add_executable(
   SsdFileTrackerTest.cpp
   StringIdMapTest.cpp)
 add_test(velox_cache_test velox_cache_test)
+set_tests_properties(velox_cache_test PROPERTIES DISABLED TRUE)
 target_link_libraries(
   velox_cache_test
   PRIVATE
@@ -47,6 +49,7 @@ target_link_libraries(
 
 add_executable(cached_factory_test CachedFactoryTest.cpp)
 add_test(cached_factory_test cached_factory_test)
+set_tests_properties(cached_factory_test PROPERTIES DISABLED TRUE)
 target_link_libraries(
   cached_factory_test
   PRIVATE

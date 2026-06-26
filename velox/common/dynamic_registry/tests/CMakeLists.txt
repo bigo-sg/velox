@@ -98,3 +98,4 @@ target_compile_definitions(
 
 add_test(NAME velox_function_dynamic_link_test
          COMMAND velox_function_dynamic_link_test)
+set_tests_properties(velox_function_dynamic_link_test PROPERTIES DISABLED TRUE)

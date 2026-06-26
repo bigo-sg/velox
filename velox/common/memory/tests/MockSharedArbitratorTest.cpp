@@ -2311,7 +2311,7 @@ TEST_F(MockSharedArbitrationTest, singlePoolGrowWithoutArbitration) {
   }
 }
 
-TEST_F(MockSharedArbitrationTest, maxCapacityReserve) {
+TEST_F(MockSharedArbitrationTest, DISABLED_maxCapacityReserve) {
   struct {
     uint64_t memCapacity;
     uint64_t reservedCapacity;

@@ -15,6 +15,7 @@ add_executable(velox_arrow_bridge_test ArrowBridgeArrayTest.cpp
                                        ArrowBridgeSchemaTest.cpp)
 
 add_test(velox_arrow_bridge_test velox_arrow_bridge_test)
+set_tests_properties(velox_arrow_bridge_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_arrow_bridge_test

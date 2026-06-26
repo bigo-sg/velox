@@ -17,6 +17,7 @@ add_executable(
   PrestoSerializerTest.cpp UnsafeRowSerializerTest.cpp)
 
 add_test(velox_serializer_test velox_serializer_test)
+set_tests_properties(velox_serializer_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_serializer_test

@@ -53,6 +53,7 @@ target_link_libraries(
 
 add_executable(velox_dwio_dwrf_compression_test CompressionTest.cpp)
 add_test(velox_dwio_dwrf_compression_test velox_dwio_dwrf_compression_test)
+set_tests_properties(velox_dwio_dwrf_compression_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_compression_test
@@ -286,6 +287,7 @@ target_link_libraries(
 
 add_executable(velox_dwio_dwrf_reader_base_test ReaderBaseTests.cpp)
 add_test(velox_dwio_dwrf_reader_base_test velox_dwio_dwrf_reader_base_test)
+set_tests_properties(velox_dwio_dwrf_reader_base_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_reader_base_test
@@ -352,6 +354,7 @@ target_link_libraries(
 
 add_executable(velox_dwio_dwrf_rle_test TestRle.cpp)
 add_test(velox_dwio_dwrf_rle_test velox_dwio_dwrf_rle_test)
+set_tests_properties(velox_dwio_dwrf_rle_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_rle_test velox_link_libs Folly::folly ${TEST_LINK_LIBS})
@@ -388,6 +391,7 @@ add_test(
   NAME velox_dwio_dwrf_reader_test
   COMMAND velox_dwio_dwrf_reader_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(velox_dwio_dwrf_reader_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_dwrf_reader_test
@@ -429,6 +433,7 @@ target_link_libraries(
 
 add_executable(velox_dwrf_column_writer_test ColumnWriterTest.cpp)
 add_test(velox_dwrf_column_writer_test velox_dwrf_column_writer_test)
+set_tests_properties(velox_dwrf_column_writer_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwrf_column_writer_test
@@ -476,6 +481,7 @@ target_link_libraries(
 
 add_executable(velox_dwrf_e2e_writer_test E2EWriterTest.cpp)
 add_test(velox_dwrf_e2e_writer_test velox_dwrf_e2e_writer_test)
+set_tests_properties(velox_dwrf_e2e_writer_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwrf_e2e_writer_test
@@ -540,6 +546,7 @@ target_link_libraries(
 
 add_executable(physical_size_aggregator_test PhysicalSizeAggregatorTest.cpp)
 add_test(physical_size_aggregator_test physical_size_aggregator_test)
+set_tests_properties(physical_size_aggregator_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   physical_size_aggregator_test

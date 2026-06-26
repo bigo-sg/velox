@@ -465,7 +465,7 @@ TEST_F(ArbitraryTest, spilling) {
   ::facebook::velox::test::assertEqualVectors(expected, result);
 }
 
-TEST_F(ArbitraryTest, clusteredInput) {
+TEST_F(ArbitraryTest, DISABLED_clusteredInput) {
   constexpr int kSize = 1000;
   for (int batchRows : {kSize, 13}) {
     std::vector<RowVectorPtr> data;

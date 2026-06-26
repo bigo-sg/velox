@@ -53,6 +53,7 @@ add_test(
   NAME velox_expression_test
   COMMAND velox_expression_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(velox_expression_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_expression_test

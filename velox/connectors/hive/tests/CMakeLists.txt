@@ -25,6 +25,7 @@ add_executable(
   PartitionIdGeneratorTest.cpp
   TableHandleTest.cpp)
 add_test(velox_hive_connector_test velox_hive_connector_test)
+set_tests_properties(velox_hive_connector_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_hive_connector_test

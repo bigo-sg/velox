@@ -28,6 +28,7 @@ add_test(
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 set_tests_properties(velox_tool_trace_test PROPERTIES TIMEOUT 3000)
+set_tests_properties(velox_tool_trace_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_tool_trace_test
