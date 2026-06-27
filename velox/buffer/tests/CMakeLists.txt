@@ -15,10 +15,8 @@ include(GoogleTest)
 
 add_executable(velox_buffer_test BufferTest.cpp StringViewBufferHolderTest.cpp)
 
-gtest_add_tests(TARGET velox_buffer_test TEST_LIST velox_buffer_test_cases)
-set_tests_properties(
-  BufferTest.testAlignedBuffer BufferTest.testAllocateSizeOverflow
-  PROPERTIES DISABLED TRUE)
+add_test(velox_buffer_test velox_buffer_test)
+set_tests_properties(velox_buffer_test PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_buffer_test
