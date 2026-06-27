@@ -140,3 +140,83 @@ jobs:
         run: >-
           ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
           --stop-on-failure --timeout 300
+
+      - name: Diagnose first failed test
+        if: failure()
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y gdb
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          build_dir = "_build/velox4j-like"
+          failed_log = os.path.join(build_dir, "Testing/Temporary/LastTestsFailed.log")
+
+          if not os.path.exists(failed_log):
+              print(f"{failed_log} does not exist")
+              sys.exit(0)
+
+          with open(failed_log, "r", encoding="utf-8") as stream:
+              failed = [line.split(":", 1)[-1].strip() for line in stream if line.strip()]
+
+          if not failed:
+              print(f"No failed tests found in {failed_log}")
+              sys.exit(0)
+
+          test_name = failed[0]
+          print(f"Diagnosing first failed test: {test_name}")
+
+          ctest_json = subprocess.check_output(
+              ["ctest", "--test-dir", build_dir, "--show-only=json-v1"], text=True
+          )
+          tests = {test.get("name"): test for test in json.loads(ctest_json).get("tests", [])}
+          test = tests.get(test_name)
+          if not test:
+              print(f"Could not find CTest metadata for {test_name}")
+              sys.exit(0)
+
+          command = test.get("command") or []
+          print("CTest command:", command)
+          if not command:
+              sys.exit(0)
+
+          executable = command[0]
+          candidates = [executable]
+          if not os.path.isabs(executable):
+              candidates.append(os.path.join(build_dir, executable))
+
+          binary = next(
+              (path for path in candidates if os.path.isfile(path) and os.access(path, os.X_OK)),
+              None,
+          )
+          if not binary:
+              print(f"Could not find executable for {test_name}: {executable}")
+              sys.exit(0)
+
+          subprocess.run(["file", binary], check=False)
+          subprocess.run(["ldd", binary], check=False)
+          subprocess.run(
+              [
+                  "gdb",
+                  "-batch",
+                  "-ex",
+                  "run",
+                  "-ex",
+                  "bt full",
+                  "-ex",
+                  "info registers",
+                  "-ex",
+                  "x/16i $pc-32",
+                  "--args",
+                  binary,
+                  *command[1:],
+              ],
+              check=False,
+          )
+          PY
