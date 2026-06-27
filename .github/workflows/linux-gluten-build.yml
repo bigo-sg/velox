@@ -83,10 +83,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-
-            ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-
+            ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-
+            ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-
 
       - name: Zero Ccache Statistics
         run: ccache -sz
@@ -133,7 +133,7 @@ jobs:
         if: success()
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
 
       - name: Run Tests
         timeout-minutes: 60
