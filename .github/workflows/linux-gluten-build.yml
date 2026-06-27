@@ -144,6 +144,11 @@ jobs:
         if: failure()
         continue-on-error: true
         run: |
+          if ! command -v gdb >/dev/null 2>&1; then
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y gdb
+          fi
+
           TEST_BINARY="_build/velox4j-like/velox/common/base/tests/velox_id_map_test"
 
           if [[ ! -x "${TEST_BINARY}" ]]; then
