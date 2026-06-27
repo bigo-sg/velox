@@ -139,3 +139,23 @@ jobs:
         run: >-
           ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
           --stop-on-failure --timeout 300
+
+      - name: Diagnose velox_id_map_test failure
+        if: failure()
+        continue-on-error: true
+        run: |
+          TEST_BINARY="_build/velox4j-like/velox/common/base/tests/velox_id_map_test"
+
+          if [[ ! -x "${TEST_BINARY}" ]]; then
+            echo "${TEST_BINARY} does not exist or is not executable"
+            exit 0
+          fi
+
+          file "${TEST_BINARY}"
+          ldd "${TEST_BINARY}"
+          gdb -batch \
+            -ex run \
+            -ex "bt full" \
+            -ex "info registers" \
+            -ex "x/16i \$pc-32" \
+            --args "${TEST_BINARY}"
