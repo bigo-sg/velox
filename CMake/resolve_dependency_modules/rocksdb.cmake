@@ -21,6 +21,12 @@ set(VELOX_ROCKSDB_SOURCE_URL
     "https://github.com/ververica/frocksdb/archive/refs/heads/FRocksDB-6.20.3.zip"
 )
 set(ROCKSDB_BUILD_SHARED ON)
+set(PORTABLE ON)
+set(FORCE_SSE42 ON)
+set(WITH_BENCHMARK_TOOLS OFF)
+set(WITH_CORE_TOOLS OFF)
+set(WITH_TESTS OFF)
+set(WITH_TOOLS OFF)
 
 velox_resolve_dependency_url(ROCKSDB)
 
