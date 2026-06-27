@@ -1,0 +1,20 @@
+CMake/resolve_dependency_modules/rocksdb.cmake
+  s_d09925d7b970da::t_38ff7a1ebf5139 24-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "2cab0ac26343888360b46666adc2ae6ae9719b24",
+  "prompts": {},
+  "logical_commit_id": "2cab0ac26343888360b46666adc2ae6ae9719b24",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
