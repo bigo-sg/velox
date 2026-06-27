@@ -141,7 +141,7 @@ jobs:
           ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
           --stop-on-failure --timeout 300
 
-      - name: Diagnose velox_id_map_test failure
+      - name: Diagnose failed tests
         if: failure()
         continue-on-error: true
         run: |
@@ -150,18 +150,89 @@ jobs:
             DEBIAN_FRONTEND=noninteractive apt-get install -y gdb
           fi
 
-          TEST_BINARY="_build/velox4j-like/velox/common/base/tests/velox_id_map_test"
-
-          if [[ ! -x "${TEST_BINARY}" ]]; then
-            echo "${TEST_BINARY} does not exist or is not executable"
+          FAILED_LOG="_build/velox4j-like/Testing/Temporary/LastTestsFailed.log"
+          if [[ ! -f "${FAILED_LOG}" ]]; then
+            echo "${FAILED_LOG} does not exist"
             exit 0
           fi
 
-          file "${TEST_BINARY}"
-          ldd "${TEST_BINARY}"
-          gdb -batch \
-            -ex run \
-            -ex "bt full" \
-            -ex "info registers" \
-            -ex "x/16i \$pc-32" \
-            --args "${TEST_BINARY}"
+          cat "${FAILED_LOG}"
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          build_dir = "_build/velox4j-like"
+          failed_log = os.path.join(build_dir, "Testing/Temporary/LastTestsFailed.log")
+
+          failed_tests = []
+          with open(failed_log, "r", encoding="utf-8") as stream:
+              for line in stream:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  failed_tests.append(line.split(":", 1)[-1].strip())
+
+          if not failed_tests:
+              print("No failed tests found in", failed_log)
+              sys.exit(0)
+
+          ctest_json = subprocess.check_output(
+              ["ctest", "--test-dir", build_dir, "--show-only=json-v1"],
+              text=True,
+          )
+          tests = json.loads(ctest_json).get("tests", [])
+          tests_by_name = {test.get("name"): test for test in tests}
+
+          for test_name in failed_tests:
+              print(f"::group::Diagnose {test_name}")
+              test = tests_by_name.get(test_name)
+              if not test:
+                  print(f"Could not find CTest metadata for {test_name}")
+                  print("::endgroup::")
+                  continue
+
+              command = test.get("command") or []
+              print("CTest command:", command)
+              if not command:
+                  print(f"No command found for {test_name}")
+                  print("::endgroup::")
+                  continue
+
+              executable = command[0]
+              candidates = [executable]
+              if not os.path.isabs(executable):
+                  candidates.append(os.path.join(build_dir, executable))
+
+              binary = next(
+                  (path for path in candidates if os.path.isfile(path) and os.access(path, os.X_OK)),
+                  None,
+              )
+              if not binary:
+                  print(f"Could not find executable for {test_name}: {executable}")
+                  print("::endgroup::")
+                  continue
+
+              subprocess.run(["file", binary], check=False)
+              subprocess.run(["ldd", binary], check=False)
+              subprocess.run(
+                  [
+                      "gdb",
+                      "-batch",
+                      "-ex",
+                      "run",
+                      "-ex",
+                      "bt full",
+                      "-ex",
+                      "info registers",
+                      "-ex",
+                      "x/16i $pc-32",
+                      "--args",
+                      binary,
+                      *command[1:],
+                  ],
+                  check=False,
+              )
+              print("::endgroup::")
+          PY
