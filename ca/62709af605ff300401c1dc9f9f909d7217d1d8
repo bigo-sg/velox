@@ -1,0 +1,20 @@
+velox/serializers/tests/CMakeLists.txt
+  s_d09925d7b970da::t_0b573c857f3634 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "ca62709af605ff300401c1dc9f9f909d7217d1d8",
+  "prompts": {},
+  "logical_commit_id": "ca62709af605ff300401c1dc9f9f909d7217d1d8",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
