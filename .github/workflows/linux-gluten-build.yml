@@ -139,7 +139,7 @@ jobs:
         timeout-minutes: 60
         run: >-
           ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
-          --stop-on-failure --timeout 300
+          --timeout 300
 
       - name: Diagnose first failed test
         if: failure()
