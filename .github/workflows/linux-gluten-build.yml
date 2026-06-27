@@ -90,6 +90,12 @@ jobs:
       - name: Zero Ccache Statistics
         run: ccache -sz
 
+      - name: CPU info
+        run: |
+          nproc
+          lscpu
+          grep -m1 '^flags' /proc/cpuinfo
+
       - name: Configure Build
         run: |
           EXTRA_CMAKE_FLAGS=(
