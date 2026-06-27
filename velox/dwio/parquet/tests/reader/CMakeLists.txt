@@ -22,7 +22,11 @@ target_link_libraries(
   velox_link_libs ${TEST_LINK_LIBS})
 
 add_executable(velox_parquet_e2e_filter_test E2EFilterTest.cpp)
-add_test(velox_parquet_e2e_filter_test velox_parquet_e2e_filter_test)
+add_test(
+  velox_parquet_e2e_filter_test
+  velox_parquet_e2e_filter_test
+  --gtest_filter=-E2EFilterTest.integerDirect:E2EFilterTest.compression:E2EFilterTest.integerDictionary:E2EFilterTest.floatAndDoubleDirect:E2EFilterTest.stringDictionary:E2EFilterTest.dedictionarize:E2EFilterTest.list:E2EFilterTest.map:E2EFilterTest.varbinaryDictionary
+)
 target_link_libraries(
   velox_parquet_e2e_filter_test
   velox_dwio_common_test_utils

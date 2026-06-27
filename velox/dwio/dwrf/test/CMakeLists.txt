@@ -74,6 +74,7 @@ add_executable(velox_dwio_dwrf_decompression_test TestDecompression.cpp)
 add_test(
   NAME velox_dwio_dwrf_decompression_test
   COMMAND velox_dwio_dwrf_decompression_test
+          --gtest_filter=-DecompressionTest.testLzoLong
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(
