@@ -50,7 +50,7 @@ jobs:
   linux-gluten:
     name: Build Velox for Gluten
     runs-on: ubuntu-latest
-    container: ghcr.io/lgbo-ustc/velox4j:latest
+    container: ghcr.io/lgbo-ustc/velox4j:sse-v1
     defaults:
       run:
         shell: bash
