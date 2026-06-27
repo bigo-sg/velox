@@ -1,0 +1,26 @@
+velox/serializers/tests/CMakeLists.txt
+  s_d09925d7b970da::t_6efc9d76841b1c 22
+velox/runner/tests/CMakeLists.txt
+  s_d09925d7b970da::t_6efc9d76841b1c 17-18
+velox/dwio/dwrf/test/CMakeLists.txt
+  s_d09925d7b970da::t_6efc9d76841b1c 77
+velox/dwio/parquet/tests/reader/CMakeLists.txt
+  s_d09925d7b970da::t_6efc9d76841b1c 25-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "ea3c78d26f1b3a0ad60ec889d5d026ed1b3cc34f",
+  "prompts": {},
+  "logical_commit_id": "ea3c78d26f1b3a0ad60ec889d5d026ed1b3cc34f",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
