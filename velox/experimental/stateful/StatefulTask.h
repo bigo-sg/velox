@@ -77,6 +77,11 @@ class StatefulTask : public exec::Task {
 
   void notifyCheckpointAborted(int64_t checkpointId);
 
+  /// Inject a checkpoint barrier into the operator chain.  The barrier flows
+  /// through the chain, triggering snapshotState on each operator and flushing
+  /// sinks.  The barrier eventually appears in the task output queue.
+  void injectBarrier(int64_t checkpointId);
+
   void init();
 
   // The task is finished, close all operators and reset driver

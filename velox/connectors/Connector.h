@@ -229,6 +229,10 @@ class DataSink {
   virtual std::vector<std::string> commit(int64_t id) {
     return {};
   }
+
+  /// Flush buffered data to underlying storage (e.g. file writers).  Called
+  /// by the checkpoint barrier handler before snapshotting a sink.
+  virtual void flush() {}
 };
 
 class DataSource {

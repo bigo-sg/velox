@@ -202,6 +202,7 @@ class FileSystemDataSink : public DataSink {
   connector::DataSink::Stats stats() const override;
 
   std::vector<std::string> commit(int64_t id) override;
+  void flush() override;
 
   // For test.
   const std::vector<FsWriterInfoPtr>& getWriteInfos() {

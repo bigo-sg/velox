@@ -451,6 +451,13 @@ void FileSystemDataSink::closeInternal() {
   }
 }
 
+void FileSystemDataSink::flush() {
+  for (size_t i = 0; i < writers_.size(); ++i) {
+    WRITER_NON_RECLAIMABLE_SECTION_GUARD(i);
+    writers_[i]->flush();
+  }
+}
+
 std::vector<std::string> FileSystemDataSink::commit(int64_t id) {
   for (const auto& writerInfo : writerInfo_) {
     if (!writerInfo->isCommitted()) {

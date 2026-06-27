@@ -238,4 +238,15 @@ void StatefulTask::finish() {
   testingFinish();
 }
 
+void StatefulTask::injectBarrier(int64_t checkpointId) {
+  VELOX_CHECK_NOT_NULL(operatorChain_, "Operator chain is not initialized");
+  // Inject the barrier into the operator chain.  processBarrier() handles
+  // draining, snapshotting, and forwarding the barrier to downstream targets.
+  // We do NOT call advance() afterwards: advance() would pull more data from
+  // the source *after* the barrier, which must not happen.
+  auto barrier = std::make_shared<Barrier>(
+      operatorChain_->getPlanNodeId(), checkpointId);
+  operatorChain_->addInput(barrier);
+}
+
 } // namespace facebook::velox::stateful

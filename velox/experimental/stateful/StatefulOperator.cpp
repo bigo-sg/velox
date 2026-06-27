@@ -51,6 +51,11 @@ bool StatefulOperator::isFinished() {
 }
 
 void StatefulOperator::addInput(StreamElementPtr input) {
+  if (input->isBarrier()) {
+    auto barrier = std::static_pointer_cast<Barrier>(input);
+    processBarrier(barrier->checkpointId());
+    return;
+  }
   auto record = std::static_pointer_cast<StreamRecord>(input);
   operator_->traceInput(record->record());
   operator_->addInput(record->record());
@@ -169,6 +174,39 @@ void StatefulOperator::processWatermark(int64_t timestamp, int index) {
 
 void StatefulOperator::processWatermark(int64_t timestamp) {
   emitWatermark(timestamp);
+}
+
+void StatefulOperator::processBarrier(int64_t checkpointId) {
+  // Drain in-flight data: advance the operator until no more output.
+  constexpr int32_t kMaxDrainIterations = 100;
+  constexpr int32_t kEmptyThreshold = 3;
+  int32_t emptyCount = 0;
+  for (int32_t i = 0; i < kMaxDrainIterations; ++i) {
+    sourceEmpty_ = true;
+    auto intermediateResult = operator_->getOutput();
+    if (!intermediateResult) {
+      if (++emptyCount >= kEmptyThreshold) {
+        break;
+      }
+      continue;
+    }
+    emptyCount = 0;
+    sourceEmpty_ = false;
+    pushOutput(std::make_shared<StreamRecord>(
+        getPlanNodeId(), std::move(intermediateResult)));
+  }
+
+  // Flush sink if this operator is a sink (e.g. TableWriter).
+  if (isSink()) {
+    operator_->flush();
+  }
+
+  // Snapshot this operator's state.
+  snapshotState(checkpointId);
+
+  // Propagate barrier downstream.
+  auto barrier = std::make_shared<Barrier>(getPlanNodeId(), checkpointId);
+  pushOutput(barrier);
 }
 
 void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {

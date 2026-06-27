@@ -28,6 +28,8 @@ class StreamElement {
 
   virtual bool isRecord() = 0;
 
+  virtual bool isBarrier() = 0;
+
   const std::string nodeId() const {
     return nodeId_;
   }
@@ -53,6 +55,10 @@ class Watermark : public StreamElement {
   }
 
   bool isRecord() override {
+    return false;
+  }
+
+  bool isBarrier() override {
     return false;
   }
 
@@ -103,6 +109,10 @@ class StreamRecord : public StreamElement {
     return true;
   }
 
+  bool isBarrier() override {
+    return false;
+  }
+
   bool hasTimestamp() const {
     return hasTimestamp_;
   }
@@ -112,5 +122,33 @@ class StreamRecord : public StreamElement {
   const int64_t timestamp_;
   bool hasTimestamp_ = false;
   const int key_;
+};
+
+/// Barrier element for Chandy-Lamport checkpoint alignment.  Flows through
+/// the operator chain alongside records and watermarks.  Each operator
+/// snapshots its state when the barrier arrives, then forwards it downstream.
+class Barrier : public StreamElement {
+ public:
+  Barrier(std::string nodeId, int64_t checkpointId)
+      : StreamElement(nodeId), checkpointId_(checkpointId) {}
+
+  int64_t checkpointId() const {
+    return checkpointId_;
+  }
+
+  bool isWatermark() override {
+    return false;
+  }
+
+  bool isRecord() override {
+    return false;
+  }
+
+  bool isBarrier() override {
+    return true;
+  }
+
+ private:
+  const int64_t checkpointId_;
 };
 } // namespace facebook::velox::stateful

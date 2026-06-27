@@ -119,6 +119,12 @@ class TableWriter : public Operator {
     return {};
   }
 
+  void flush() override {
+    if (dataSink_) {
+      dataSink_->flush();
+    }
+  }
+
   virtual bool needsInput() const override {
     return true;
   }

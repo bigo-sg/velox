@@ -70,6 +70,12 @@ class StatefulOperator {
 
   virtual void processWatermark(int64_t timestamp);
 
+
+  /// Process a checkpoint barrier. Default implementation: drain in-flight
+  /// data, snapshot state, flush sink if applicable, then propagate the
+  /// barrier downstream. Multi-input operators (e.g. StreamJoin) override
+  /// this to implement barrier alignment.
+  virtual void processBarrier(int64_t checkpointId);
   virtual void initializeState();
 
   void initializeStateBackend(StateBackend* stateBackend);
