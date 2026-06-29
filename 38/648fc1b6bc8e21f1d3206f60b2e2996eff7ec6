@@ -1,0 +1,20 @@
+CMake/resolve_dependency_modules/cppkafka/remove-uninstall-target.cmake
+  s_d09925d7b970da::t_8763d58559cd5f 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "38648fc1b6bc8e21f1d3206f60b2e2996eff7ec6",
+  "prompts": {},
+  "logical_commit_id": "38648fc1b6bc8e21f1d3206f60b2e2996eff7ec6",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
