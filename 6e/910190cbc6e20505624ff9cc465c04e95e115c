@@ -1,0 +1,22 @@
+CMake/resolve_dependency_modules/cppkafka.cmake
+  s_d09925d7b970da::t_9357585e54981d 36-37
+CMake/resolve_dependency_modules/rdkafka.cmake
+  s_d09925d7b970da::t_aed31b613dd740 49-53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "6e910190cbc6e20505624ff9cc465c04e95e115c",
+  "prompts": {},
+  "logical_commit_id": "6e910190cbc6e20505624ff9cc465c04e95e115c",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
