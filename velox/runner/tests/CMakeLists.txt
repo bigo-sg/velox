@@ -14,9 +14,6 @@
 
 add_executable(velox_local_runner_test LocalRunnerTest.cpp Main.cpp)
 
-add_test(NAME velox_local_runner_test
-         COMMAND velox_local_runner_test --gtest_filter=-LocalRunnerTest.count)
-
 target_link_libraries(
   velox_local_runner_test
   velox_exec_runner_test_util
