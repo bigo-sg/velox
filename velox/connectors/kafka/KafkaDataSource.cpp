@@ -29,7 +29,7 @@ namespace facebook::velox::connector::kafka {
 
 namespace {
 constexpr const char* kTaskIndex = "task_index";
-constexpr const char* kTaskParallelism = "task_parallelism";
+constexpr const char* kTaskParallelism = "parallelism";
 
 uint32_t javaStringHashCode(const std::string& value) {
   uint32_t hash = 0;

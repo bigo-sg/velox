@@ -194,7 +194,7 @@ class KafkaConnectorTestBase : public exec::test::OperatorTestBase {
       int32_t taskParallelism = 1) {
     std::unordered_map<std::string, std::string> sessionConfig;
     sessionConfig["task_index"] = std::to_string(taskIndex);
-    sessionConfig["task_parallelism"] = std::to_string(taskParallelism);
+    sessionConfig["parallelism"] = std::to_string(taskParallelism);
     return createQueryCtxWithSessionProperties(std::move(sessionConfig));
   }
 
