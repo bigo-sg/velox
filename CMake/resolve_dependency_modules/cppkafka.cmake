@@ -27,9 +27,9 @@ FetchContent_Declare(
   cppkafka
   URL ${VELOX_CPPKAFKA_SOURCE_URL}
   URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM}
-  PATCH_COMMAND
-    ${CMAKE_COMMAND} -P
-    ${CMAKE_CURRENT_LIST_DIR}/cppkafka/remove-uninstall-target.cmake)
+  PATCH_COMMAND ${CMAKE_COMMAND} -P
+                ${CMAKE_CURRENT_LIST_DIR}/cppkafka/remove-uninstall-target.cmake
+)
 
 set(CPPKAFKA_DISABLE_TESTS ON)
 set(CPPKAFKA_DISABLE_EXAMPLES ON)

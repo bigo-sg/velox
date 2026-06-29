@@ -13,8 +13,9 @@
 # limitations under the License.
 
 file(READ "CMakeLists.txt" _cppkafka_cmake)
-string(REPLACE
-       [=[
+string(
+  REPLACE
+    [=[
 if(NOT TARGET uninstall)
     # Confiugure the uninstall script
     configure_file(
@@ -28,7 +29,7 @@ if(NOT TARGET uninstall)
         COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/cmake_uninstall.cmake)
 endif()
 ]=]
-       ""
-       _cppkafka_cmake
-       "${_cppkafka_cmake}")
+    ""
+    _cppkafka_cmake
+    "${_cppkafka_cmake}")
 file(WRITE "CMakeLists.txt" "${_cppkafka_cmake}")
