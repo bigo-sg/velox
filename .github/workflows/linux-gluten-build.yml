@@ -63,7 +63,6 @@ jobs:
       xsimd_SOURCE: BUNDLED
       folly_SOURCE: BUNDLED
       geos_SOURCE: BUNDLED
-      RdKafka_SOURCE: BUNDLED
       CppKafka_SOURCE: BUNDLED
       absl_SOURCE: BUNDLED
       gRPC_SOURCE: BUNDLED
@@ -112,6 +111,7 @@ jobs:
             "-DVELOX_ENABLE_KAFKA_CONNECTOR=ON"
             "-DVELOX_ENABLE_PULSAR_CONNECTOR=ON"
             "-DVELOX_ENABLE_CCACHE=ON"
+            "-DVELOX_CPR_USE_SYSTEM_CURL=ON"
             "-Dc-ares_SOURCE=BUNDLED"
           )
 

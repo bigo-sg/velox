@@ -20,10 +20,16 @@ set(VELOX_CPR_SOURCE_URL
     "https://github.com/libcpr/cpr/archive/refs/tags/${VELOX_CPR_VERSION}.tar.gz"
 )
 
-# Add the dependency for curl, so that we can define the source URL for curl in
-# curl.cmake. This will override the curl version declared by cpr.
-set(curl_SOURCE BUNDLED)
-velox_resolve_dependency(curl)
+if(VELOX_CPR_USE_SYSTEM_CURL)
+  message(STATUS "Building cpr with system curl")
+  set(CPR_USE_SYSTEM_CURL ON)
+else()
+  # Add the dependency for curl, so that we can define the source URL for curl
+  # in curl.cmake. This will override the curl version declared by cpr.
+  set(curl_SOURCE BUNDLED)
+  velox_resolve_dependency(curl)
+  set(CPR_USE_SYSTEM_CURL OFF)
+endif()
 
 velox_resolve_dependency_url(CPR)
 
@@ -36,12 +42,13 @@ FetchContent_Declare(
     git apply ${CMAKE_CURRENT_LIST_DIR}/cpr/cpr-libcurl-compatible.patch && git
     apply ${CMAKE_CURRENT_LIST_DIR}/cpr/cpr-remove-sancheck.patch)
 set(BUILD_SHARED_LIBS ${VELOX_BUILD_SHARED})
-set(CPR_USE_SYSTEM_CURL OFF)
 # ZLIB has already been found by find_package(ZLIB, REQUIRED), set CURL_ZLIB=OFF
 # to save compile time.
 set(CURL_ZLIB OFF)
 FetchContent_MakeAvailable(cpr)
-# libcpr in its CMakeLists.txt file disables the BUILD_TESTING globally when
-# CPR_USE_SYSTEM_CURL=OFF. unset BUILD_TESTING here.
-unset(BUILD_TESTING)
+if(NOT VELOX_CPR_USE_SYSTEM_CURL)
+  # libcpr in its CMakeLists.txt file disables the BUILD_TESTING globally when
+  # CPR_USE_SYSTEM_CURL=OFF. unset BUILD_TESTING here.
+  unset(BUILD_TESTING)
+endif()
 unset(BUILD_SHARED_LIBS)

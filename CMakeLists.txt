@@ -150,6 +150,7 @@ option(VELOX_ENABLE_ARROW "Enable Arrow support" OFF)
 option(VELOX_ENABLE_GEO "Enable Geospatial support" ON)
 option(VELOX_ENABLE_REMOTE_FUNCTIONS "Enable remote function support" OFF)
 option(VELOX_ENABLE_CCACHE "Use ccache if installed." ON)
+option(VELOX_CPR_USE_SYSTEM_CURL "Use system curl when building cpr." OFF)
 option(VELOX_ENABLE_COMPRESSION_LZ4 "Enable Lz4 compression support." OFF)
 
 option(VELOX_BUILD_TEST_UTILS "Builds Velox test utilities" OFF)
@@ -546,9 +547,6 @@ velox_set_source(RocksDB)
 velox_resolve_dependency(RocksDB)
 
 if(${VELOX_ENABLE_KAFKA_CONNECTOR})
-  velox_set_source(RdKafka)
-  velox_resolve_dependency(RdKafka)
-
   velox_set_source(CppKafka)
   velox_resolve_dependency(CppKafka)
 endif()
