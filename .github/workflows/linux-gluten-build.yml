@@ -63,7 +63,6 @@ jobs:
       xsimd_SOURCE: BUNDLED
       folly_SOURCE: BUNDLED
       geos_SOURCE: BUNDLED
-      RocksDB_SOURCE: BUNDLED
       absl_SOURCE: BUNDLED
       gRPC_SOURCE: BUNDLED
       PulsarClient_SOURCE: BUNDLED
