@@ -546,6 +546,9 @@ velox_set_source(RocksDB)
 velox_resolve_dependency(RocksDB)
 
 if(${VELOX_ENABLE_KAFKA_CONNECTOR})
+  velox_set_source(RdKafka)
+  velox_resolve_dependency(RdKafka)
+
   velox_set_source(CppKafka)
   velox_resolve_dependency(CppKafka)
 endif()
