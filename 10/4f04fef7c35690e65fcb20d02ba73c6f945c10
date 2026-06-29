@@ -1,0 +1,33 @@
+.github/workflows/linux-gluten-build.yml
+  s_d09925d7b970da::t_e8bea6bae064f0 66-67
+CMake/resolve_dependency_modules/cppkafka/remove-uninstall-target.cmake
+  s_d09925d7b970da::t_cf3fed3591f1d1 1-20
+CMake/resolve_dependency_modules/cppkafka.cmake
+  s_d09925d7b970da::t_cf3fed3591f1d1 31-32
+  s_d09925d7b970da::t_a52aed0bc30e34 29-30
+CMake/resolve_dependency_modules/rdkafka.cmake
+  s_d09925d7b970da::t_e06ac50d3f7591 46-54,56-57,69
+  s_d09925d7b970da::t_e8bea6bae064f0 1-17,19-30,40-45,58-60,64-68
+  s_d09925d7b970da::t_26f593e0c61f2b 31-39,61-63
+  s_d09925d7b970da::t_f7268dfedaebb5 18
+  s_d09925d7b970da::t_181f345c162d3c 55
+CMakeLists.txt
+  s_d09925d7b970da::t_e8bea6bae064f0 549-551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "104f04fef7c35690e65fcb20d02ba73c6f945c10",
+  "prompts": {},
+  "logical_commit_id": "104f04fef7c35690e65fcb20d02ba73c6f945c10",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
