@@ -1,0 +1,25 @@
+.github/workflows/linux-gluten-build.yml
+  s_d09925d7b970da::t_900469a5af8116 114
+CMake/resolve_dependency_modules/cpr.cmake
+  s_d09925d7b970da::t_900469a5af8116 23-26,29-32,49-53
+  s_d09925d7b970da::t_aac965e1707626 27-28
+CMakeLists.txt
+  s_d09925d7b970da::t_900469a5af8116 153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "5f0f3cf69f9196068d73bd4ef4651d3da50b136b",
+  "prompts": {},
+  "logical_commit_id": "5f0f3cf69f9196068d73bd4ef4651d3da50b136b",
+  "sessions": {
+    "s_d09925d7b970da": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0fe9ae496ffeYnQL2b0NaoDms8",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
