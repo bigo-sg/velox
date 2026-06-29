@@ -39,10 +39,6 @@ set(WITH_CURL
     CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(rdkafka)
 
-if(TARGET rdkafka AND NOT TARGET RdKafka::rdkafka)
-  add_library(RdKafka::rdkafka ALIAS rdkafka)
-endif()
-
 if(TARGET rdkafka)
   set(_rdkafka_include_dir "${CMAKE_BINARY_DIR}/rdkafka-include")
   file(MAKE_DIRECTORY "${_rdkafka_include_dir}")
@@ -50,9 +46,11 @@ if(TARGET rdkafka)
        DESTINATION "${_rdkafka_include_dir}")
   file(COPY "${rdkafka_SOURCE_DIR}/src/rdkafka_mock.h"
        DESTINATION "${_rdkafka_include_dir}")
-  set_target_properties(
-    rdkafka PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
-                       "$<BUILD_INTERFACE:${_rdkafka_include_dir}>")
+  add_library(velox_rdkafka INTERFACE)
+  target_include_directories(velox_rdkafka
+                             INTERFACE "${_rdkafka_include_dir}")
+  target_link_libraries(velox_rdkafka INTERFACE $<LINK_ONLY:rdkafka>)
+  add_library(RdKafka::rdkafka ALIAS velox_rdkafka)
 endif()
 
 set(_rdkafka_config_dir "${CMAKE_BINARY_DIR}/rdkafka-config")
