@@ -24,9 +24,13 @@ class StreamElement {
  public:
   StreamElement(std::string nodeId) : nodeId_(std::move(nodeId)) {}
 
-  virtual bool isWatermark() = 0;
+  virtual bool isWatermark() {
+    return false;
+  }
 
-  virtual bool isRecord() = 0;
+  virtual bool isRecord() {
+    return false;
+  }
 
   virtual bool isWatermarkStatus() {
     return false;
@@ -56,10 +60,6 @@ class Watermark : public StreamElement {
     return true;
   }
 
-  bool isRecord() override {
-    return false;
-  }
-
  private:
   const int64_t timestamp_;
 };
@@ -72,14 +72,6 @@ class WatermarkStatus : public StreamElement {
 
   bool idle() const {
     return idle_;
-  }
-
-  bool isWatermark() override {
-    return false;
-  }
-
-  bool isRecord() override {
-    return false;
   }
 
   bool isWatermarkStatus() override {
@@ -123,10 +115,6 @@ class StreamRecord : public StreamElement {
 
   int key() const {
     return key_;
-  }
-
-  bool isWatermark() override {
-    return false;
   }
 
   bool isRecord() override {
