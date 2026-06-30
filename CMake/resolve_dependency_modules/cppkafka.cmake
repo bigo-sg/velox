@@ -26,15 +26,10 @@ message(STATUS "Building CPPKAFKA from source")
 FetchContent_Declare(
   cppkafka
   URL ${VELOX_CPPKAFKA_SOURCE_URL}
-  URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM}
-  PATCH_COMMAND ${CMAKE_COMMAND} -P
-                ${CMAKE_CURRENT_LIST_DIR}/cppkafka/remove-uninstall-target.cmake
-)
+  URL_HASH ${VELOX_CPPKAFKA_BUILD_SHA256_CHECKSUM})
 
 set(CPPKAFKA_DISABLE_TESTS ON)
 set(CPPKAFKA_DISABLE_EXAMPLES ON)
-set(CPPKAFKA_EXPORT_CMAKE_CONFIG OFF)
-set(CPPKAFKA_EXPORT_PKGCONFIG OFF)
 FetchContent_MakeAvailable(cppkafka)
 
 if(TARGET cppkafka)
