@@ -1,0 +1,20 @@
+velox/experimental/stateful/StreamElement.h
+  s_740041a40dfcba::t_0d3effe6cbd095 27-29,31-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9b5bac2274d6e5d3fc24e51eab602db7d7a13e7e",
+  "prompts": {},
+  "logical_commit_id": "9b5bac2274d6e5d3fc24e51eab602db7d7a13e7e",
+  "sessions": {
+    "s_740041a40dfcba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0e9942bd9ffeKbvUZ4oXaz8Nkc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
