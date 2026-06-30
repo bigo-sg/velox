@@ -158,6 +158,22 @@ void StatefulOperator::emitWatermark(int64_t timestamp) {
   }
 }
 
+void StatefulOperator::emitWatermarkStatus(bool idle) {
+  if (isSink()) {
+    return;
+  }
+
+  if (targets_.empty()) {
+    auto task = std::static_pointer_cast<StatefulTask>(
+        operator_->operatorCtx()->driverCtx()->task);
+    task->addOutput(std::make_shared<WatermarkStatus>(getPlanNodeId(), idle));
+    return;
+  }
+  for (auto& target : targets_) {
+    target->processWatermarkStatus(idle);
+  }
+}
+
 void StatefulOperator::processWatermark(int64_t timestamp, int index) {
   if (combinedWatermarkStatus_->updateWatermark(index, timestamp)) {
     // If the watermark is updated, we need to advance the timer service.
@@ -169,6 +185,21 @@ void StatefulOperator::processWatermark(int64_t timestamp, int index) {
 
 void StatefulOperator::processWatermark(int64_t timestamp) {
   emitWatermark(timestamp);
+}
+
+void StatefulOperator::processWatermarkStatus(bool idle, int index) {
+  const bool wasIdle = combinedWatermarkStatus_->isIdle();
+  if (combinedWatermarkStatus_->updateStatus(index, idle)) {
+    processWatermark(combinedWatermarkStatus_->getCombinedWatermark());
+  }
+  const bool isIdle = combinedWatermarkStatus_->isIdle();
+  if (wasIdle != isIdle) {
+    emitWatermarkStatus(isIdle);
+  }
+}
+
+void StatefulOperator::processWatermarkStatus(bool idle) {
+  processWatermarkStatus(idle, 0);
 }
 
 void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {

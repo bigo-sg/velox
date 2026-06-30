@@ -67,6 +67,11 @@ class StatefulTask : public exec::Task {
 
   void notifyWatermark(int64_t watermark);
 
+  // idle == true means WatermarkStatus.IDLE; false means ACTIVE.
+  void notifyWatermarkStatus(bool idle, int index);
+
+  void notifyWatermarkStatus(bool idle);
+
   void initializeState(
       const std::shared_ptr<const KeyedStateBackendParameters> params,
       const std::vector<std::string>& checkpointRecords = {});

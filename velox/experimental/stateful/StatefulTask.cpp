@@ -193,6 +193,14 @@ void StatefulTask::notifyWatermark(int64_t watermark) {
   operatorChain_->processWatermark(watermark);
 }
 
+void StatefulTask::notifyWatermarkStatus(bool idle, int index) {
+  operatorChain_->processWatermarkStatus(idle, index);
+}
+
+void StatefulTask::notifyWatermarkStatus(bool idle) {
+  operatorChain_->processWatermarkStatus(idle);
+}
+
 void StatefulTask::initializeState(
     const std::shared_ptr<const KeyedStateBackendParameters> parameters,
     const std::vector<std::string>& checkpointRecords) {
