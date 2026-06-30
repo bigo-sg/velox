@@ -58,6 +58,32 @@ TEST(TypeTest, constructorThrow) {
       "[names: {'a', 'b'}, types: {VARCHAR, NULL}]");
 }
 
+TEST(TypeTest, flinkTimestampSerde) {
+  Type::registerSerDe();
+
+  auto timestamp =
+      velox::ISerializable::deserialize<Type>(folly::dynamic::object(
+          "name", "Type")("type", "FLINK_TIMESTAMP")("precision", 3));
+  ASSERT_EQ(timestamp->kind(), TypeKind::TIMESTAMP);
+  ASSERT_STREQ(timestamp->name(), "FLINK_TIMESTAMP");
+  ASSERT_EQ(timestamp->toString(), "TIMESTAMP(3)");
+  ASSERT_EQ(timestamp->serialize()["precision"].asInt(), 3);
+
+  auto timestampLtz =
+      velox::ISerializable::deserialize<Type>(folly::dynamic::object(
+          "name", "Type")("type", "FLINK_TIMESTAMP_LTZ")("precision", 9));
+  ASSERT_EQ(timestampLtz->kind(), TypeKind::TIMESTAMP);
+  ASSERT_STREQ(timestampLtz->name(), "FLINK_TIMESTAMP_LTZ");
+  ASSERT_EQ(timestampLtz->toString(), "TIMESTAMP_LTZ(9)");
+  ASSERT_EQ(timestampLtz->serialize()["precision"].asInt(), 9);
+  ASSERT_NE(*timestamp, *timestampLtz);
+
+  auto timestampCopy =
+      velox::ISerializable::deserialize<Type>(timestamp->serialize());
+  ASSERT_EQ(*timestamp, *timestampCopy);
+  ASSERT_EQ(timestampCopy->toString(), "TIMESTAMP(3)");
+}
+
 TEST(TypeTest, array) {
   const auto arrayType = ARRAY(ARRAY(ARRAY(INTEGER())));
   ASSERT_EQ("ARRAY<ARRAY<ARRAY<INTEGER>>>", arrayType->toString());
