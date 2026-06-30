@@ -16,8 +16,7 @@ add_executable(velox_stateful_watermark_generator_test
                WatermarkGeneratorTest.cpp)
 
 add_executable(velox_stateful_combined_watermark_status_test
-               CombinedWatermarkStatusTest.cpp
-               ../CombinedWatermarkStatus.cpp)
+               CombinedWatermarkStatusTest.cpp ../CombinedWatermarkStatus.cpp)
 
 add_test(velox_stateful_watermark_generator_test
          velox_stateful_watermark_generator_test)
@@ -26,9 +25,7 @@ add_test(velox_stateful_combined_watermark_status_test
          velox_stateful_combined_watermark_status_test)
 
 target_link_libraries(
-  velox_stateful_combined_watermark_status_test
-  velox_common_base
-  GTest::gtest
+  velox_stateful_combined_watermark_status_test velox_common_base GTest::gtest
   GTest::gtest_main)
 
 target_link_libraries(

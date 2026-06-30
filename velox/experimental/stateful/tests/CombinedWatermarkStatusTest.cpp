@@ -56,7 +56,9 @@ TEST(CombinedWatermarkStatusTest, idleInputsAreExcludedFromMinimumWatermark) {
   EXPECT_EQ(status.getCombinedWatermark(), 100);
 }
 
-TEST(CombinedWatermarkStatusTest, watermarkReactivatesIdleInputWithoutRollback) {
+TEST(
+    CombinedWatermarkStatusTest,
+    watermarkReactivatesIdleInputWithoutRollback) {
   CombinedWatermarkStatus status(1);
 
   EXPECT_TRUE(status.updateWatermark(0, 100));
