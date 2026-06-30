@@ -1,0 +1,41 @@
+velox/experimental/stateful/StatefulOperator.cpp
+  s_740041a40dfcba::t_8a096520503c77 161-176,188-202
+  s_740041a40dfcba::t_e18ee87d86ec0c 203-204
+velox/experimental/stateful/StatefulOperator.h
+  s_740041a40dfcba::t_7b5b16a566059a 73-76,137
+velox/experimental/stateful/StreamElement.h
+  s_740041a40dfcba::t_a7f3963ec076db 31-34,65-68,70-90
+  s_740041a40dfcba::t_fde0084d6545e1 69
+  s_740041a40dfcba::t_73f865953d5ffd 91-92
+velox/experimental/stateful/CombinedWatermarkStatus.h
+  s_740041a40dfcba::t_fde0084d6545e1 65
+  s_740041a40dfcba::t_a123e6d9226c85 32-33,66-67,69-70
+  s_740041a40dfcba::t_9fe0f3f7da47ef 71
+velox/experimental/stateful/CombinedWatermarkStatus.cpp
+  s_740041a40dfcba::t_edf6a29d4f0bc1 25
+  s_740041a40dfcba::t_68b7a8c9a3ee84 27,29-31,37-40
+  s_740041a40dfcba::t_9af99629f41932 26
+  s_740041a40dfcba::t_0da5e3e665f05a 41-42
+velox/experimental/stateful/StatefulTask.h
+  s_740041a40dfcba::t_e76286c8732b53 71-74
+  s_740041a40dfcba::t_fde0084d6545e1 70
+velox/experimental/stateful/StatefulTask.cpp
+  s_740041a40dfcba::t_d3c75172defa0f 196-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "5d09299399b60cf75793a3dcc82449a5f4fea9ca",
+  "prompts": {},
+  "logical_commit_id": "5d09299399b60cf75793a3dcc82449a5f4fea9ca",
+  "sessions": {
+    "s_740041a40dfcba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0e9942bd9ffeKbvUZ4oXaz8Nkc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
