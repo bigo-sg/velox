@@ -1,0 +1,22 @@
+velox/experimental/stateful/tests/CMakeLists.txt
+  s_b9c3c5fb29732e::t_dc1cb8b32271b9 19,28
+velox/experimental/stateful/tests/CombinedWatermarkStatusTest.cpp
+  s_b9c3c5fb29732e::t_dc1cb8b32271b9 59-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "7fecc92bd5492b3757528654c970dabe69c6b1cd",
+  "prompts": {},
+  "logical_commit_id": "7fecc92bd5492b3757528654c970dabe69c6b1cd",
+  "sessions": {
+    "s_b9c3c5fb29732e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0e820ec0bffeqh0gzRBHC4I3mL",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
