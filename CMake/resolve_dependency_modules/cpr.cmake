@@ -46,9 +46,4 @@ set(BUILD_SHARED_LIBS ${VELOX_BUILD_SHARED})
 # to save compile time.
 set(CURL_ZLIB OFF)
 FetchContent_MakeAvailable(cpr)
-if(NOT VELOX_CPR_USE_SYSTEM_CURL)
-  # libcpr in its CMakeLists.txt file disables the BUILD_TESTING globally when
-  # CPR_USE_SYSTEM_CURL=OFF. unset BUILD_TESTING here.
-  unset(BUILD_TESTING)
-endif()
 unset(BUILD_SHARED_LIBS)
