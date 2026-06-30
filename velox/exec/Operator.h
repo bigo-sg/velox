@@ -243,6 +243,8 @@ class Operator : public BaseRuntimeStatWriter {
 
   virtual void abortCheckpoint(int64_t /*checkpointId*/) {}
 
+  virtual void setWatermark(int64_t watermark) {}
+
   /// Informs 'this' that addInput will no longer be called. This means
   /// that any partial state kept by 'this' should be returned by
   /// the next call(s) to getOutput. Not used if operator is a source operator,

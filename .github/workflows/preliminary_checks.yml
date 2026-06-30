@@ -56,13 +56,20 @@ jobs:
         run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
 
       - name: Check ${{ matrix.config.name }}
+        env:
+          CHECK_BASE: ${{ github.event.pull_request.base.ref }}
         run: |
-          make ${{ matrix.config.command }}
+          git fetch --no-tags origin "${CHECK_BASE:-main}:refs/remotes/origin/${CHECK_BASE:-main}"
+          echo "Checking changes against origin/${CHECK_BASE:-main}"
+          make ${{ matrix.config.command }} CHECK_BASE="${CHECK_BASE:-main}"
 
           if ! git diff --quiet; then
             diff=`git --no-pager diff`
-            echo "${{ matrix.command.message }} in the following files:"
+            echo "${{ matrix.config.message }} in the following files:"
             git --no-pager diff --name-only
+            files=`git --no-pager diff --name-only | paste -sd, -`
+            echo "::error title=${{ matrix.config.message }}::Files: $files"
+            git --no-pager diff
             echo "Check the Job summary for a copy-pasteable patch."
 
             echo "> [!IMPORTANT]" >> $GITHUB_STEP_SUMMARY

@@ -24,4 +24,4 @@ velox_add_library(
   FromElementsConnectorSplit.cpp)
 
 velox_link_libraries(velox_from_elements_connector velox_common_io
-                     velox_connector)
+                     velox_connector velox_connector_util)

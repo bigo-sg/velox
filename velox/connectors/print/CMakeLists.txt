@@ -22,7 +22,8 @@ velox_add_library(
   PrintTableHandle.cpp
   PrintConnector.cpp)
 
-velox_link_libraries(velox_print_connector velox_common_io velox_connector)
+velox_link_libraries(velox_print_connector velox_common_io velox_connector
+                     velox_connector_util)
 
 if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)

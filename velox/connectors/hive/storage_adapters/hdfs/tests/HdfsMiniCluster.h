@@ -48,6 +48,11 @@ class HdfsMiniCluster {
 
   bool isRunning();
 
+  bool hasMiniclusterJar() {
+    return boost::filesystem::is_regular_file(
+        env_["HADOOP_HOME"].to_string() + kMiniclusterJar);
+  }
+
   void addFile(std::string source, std::string destination);
   virtual ~HdfsMiniCluster();
 

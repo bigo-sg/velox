@@ -25,6 +25,7 @@ target_link_libraries(
   velox_hive_connector
   velox_dwio_common_exception
   velox_exec
+  velox_test_util
   GTest::gtest
   GTest::gtest_main
   GTest::gmock)

@@ -15,6 +15,8 @@
  */
 #pragma once
 
+#include <cstdint>
+#include <map>
 #include <optional>
 #include "boost/algorithm/string.hpp"
 #include "folly/container/F14Map.h"
@@ -66,10 +68,11 @@ struct FsWriterInfo : public hive::HiveWriterInfo {
         createTime_(createTime) {}
 
   bool shouldUpdateWriter(const FileSystemWriteConfigPtr& writeConfig_) {
-    if (std::time(nullptr) - createTime_ >
-        writeConfig_->getFileRollingIntervalMinutes() * 60) {
-      return true;
-    } else if (inputSizeInBytes > writeConfig_->getFileRollingSize()) {
+    int64_t currentTime = std::time(nullptr);
+    if ((currentTime - createTime_) * 1000 >
+            writeConfig_->getFileRollingIntervalMillis() ||
+        inputSizeInBytes > writeConfig_->getFileRollingSize() || fileRolled_ ||
+        committed_) {
       return true;
     }
     return false;
@@ -83,9 +86,18 @@ struct FsWriterInfo : public hive::HiveWriterInfo {
     return committed_;
   }
 
+  bool isFileRolled() {
+    return fileRolled_;
+  }
+
+  void setFileRolled(bool fileRolled) {
+    fileRolled_ = fileRolled;
+  }
+
  private:
   const time_t createTime_;
   bool committed_ = false;
+  bool fileRolled_ = false;
 };
 
 using FsWriterInfoPtr = std::shared_ptr<FsWriterInfo>;
@@ -201,7 +213,16 @@ class FileSystemDataSink : public DataSink {
 
   connector::DataSink::Stats stats() const override;
 
+  /// Seals files that belong to the given checkpoint.
+  std::vector<std::string> snapshot(int64_t id) override;
+
+  /// Commits files and returns committable partition or file paths.
+  /// Does not apply sink.partition-commit.policy.kind; Flink performs
+  /// partition commit (_SUCCESS, metastore) from the returned paths.
   std::vector<std::string> commit(int64_t id) override;
+
+  /// Receives event-time watermark in milliseconds.
+  void setWatermark(int64_t watermark) override;
 
   // For test.
   const std::vector<FsWriterInfoPtr>& getWriteInfos() {
@@ -215,7 +236,11 @@ class FileSystemDataSink : public DataSink {
 
   // For test
   const size_t getPendingWriterInfosSize() {
-    return pendingWriterInfo_.size();
+    size_t size = pendingWriterInfo_.size();
+    for (const auto& [_, writerInfos] : checkpointWriterInfo_) {
+      size += writerInfos.size();
+    }
+    return size;
   }
 
  private:
@@ -243,10 +268,10 @@ class FileSystemDataSink : public DataSink {
 
   std::vector<FsWriterInfoPtr> writerInfo_;
   std::vector<FsWriterInfoPtr> pendingWriterInfo_;
+  std::map<int64_t, std::vector<FsWriterInfoPtr>> checkpointWriterInfo_;
   std::vector<std::unique_ptr<dwio::common::Writer>> writers_;
   // IO statistics collected for each writer.
   std::vector<std::shared_ptr<io::IoStatistics>> ioStats_;
-  const int64_t watermark_ = 0;
 
   // Indices of dataChannel are stored in ascending order
   const std::vector<column_index_t> dataChannels_;
@@ -257,6 +282,10 @@ class FileSystemDataSink : public DataSink {
   const std::shared_ptr<dwio::common::WriterFactory> writerFactory_;
   const std::shared_ptr<const FsFileNameGenerator> fileNameGenerator_;
   std::shared_ptr<filesystems::FileSystem> fs_;
+  int64_t watermark_{INT64_MIN};
+  // Partition creation time in milliseconds (system clock) for process-time
+  // commit. Set when the first writer for a partition is opened.
+  folly::F14FastMap<std::string, int64_t> partitionCreateTimeMs_;
 
   void write(size_t index, RowVectorPtr input);
   // Compute the partition id for each row in 'input'.
@@ -274,6 +303,8 @@ class FileSystemDataSink : public DataSink {
   uint32_t appendWriter(const FsWriterId& id);
 
   uint32_t updateWriter(const FsWriterId& id);
+
+  void addPendingWriter(const FsWriterInfoPtr& writerInfo);
 
   FOLLY_ALWAYS_INLINE void checkRunning() const {
     VELOX_CHECK_EQ(

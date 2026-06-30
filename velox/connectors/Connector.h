@@ -226,9 +226,22 @@ class DataSink {
   /// Returns the stats of this data sink.
   virtual Stats stats() const = 0;
 
+  /// Seals writes that belong to the given checkpoint.
+  virtual std::vector<std::string> snapshot(int64_t /*id*/) {
+    return {};
+  }
+
+  /// Commits pending writes for the given checkpoint.
+  /// Returns committable paths for this checkpoint:
+  /// - Partitioned table: relative partition path, e.g. "dt=2025-07-11/hm=14".
+  /// - Non-partitioned table: full path to the committed target file,
+  ///   e.g. "hdfs://.../table/part--0-0".
   virtual std::vector<std::string> commit(int64_t id) {
     return {};
   }
+
+  /// Updates the current event-time watermark in milliseconds.
+  virtual void setWatermark(int64_t watermark) {}
 };
 
 class DataSource {

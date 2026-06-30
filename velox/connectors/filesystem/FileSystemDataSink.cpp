@@ -16,15 +16,15 @@
 
 #include "velox/connectors/filesystem/FileSystemDataSink.h"
 #include <common/compression/Compression.h>
-#include <regex>
+#include <algorithm>
 #include "boost/uuid/uuid.hpp"
 #include "boost/uuid/uuid_generators.hpp"
 #include "boost/uuid/uuid_io.hpp"
 #include "velox/common/base/Fs.h"
+#include "velox/dwio/catalog/fbhive/FileUtils.h"
 #include "velox/dwio/common/FileSink.h"
 #include "velox/dwio/common/Options.h"
 #include "velox/exec/OperatorUtils.h"
-#include "velox/type/TimestampConversion.h"
 
 namespace facebook::velox::connector::filesystem {
 #define WRITER_NON_RECLAIMABLE_SECTION_GUARD(index)       \
@@ -44,7 +44,6 @@ RowTypePtr getNonPartitionTypes(
     childNames.push_back(inputType->nameOf(dataCol));
     childTypes.push_back(inputType->childAt(dataCol));
   }
-
   return ROW(std::move(childNames), std::move(childTypes));
 }
 
@@ -91,12 +90,15 @@ FileSystemDataSink::FileSystemDataSink(
       dataChannels_(
           getNonPartitionChannels(partitionChannels_, inputType_->size())),
       writerFactory_(dwio::common::getWriterFactory(writeConfig_->getFormat())),
-      fileNameGenerator_(std::make_shared<const FsFileNameGenerator>(
-          queryCtx_->sessionProperties()->get<std::string>("query_uuid", ""),
-          "",
-          queryCtx_->sessionProperties()->get<std::string>(
-              "task_index",
-              "0"))) {}
+      fileNameGenerator_(
+          std::make_shared<const FsFileNameGenerator>(
+              queryCtx_->sessionProperties()->get<std::string>(
+                  "query_uuid",
+                  ""),
+              "",
+              queryCtx_->sessionProperties()->get<std::string>(
+                  "task_index",
+                  "0"))) {}
 
 const std::unique_ptr<dwio::common::Writer> FileSystemDataSink::createWriter(
     const std::string& writePath,
@@ -111,6 +113,10 @@ const std::unique_ptr<dwio::common::Writer> FileSystemDataSink::createWriter(
   }
   if (options->memoryPool == nullptr) {
     options->memoryPool = writerInfo->writerPool.get();
+  }
+
+  if (!options->compressionKind) {
+    options->compressionKind = writeConfig_->getFileCompressionType();
   }
 
   if (options->nonReclaimableSection == nullptr) {
@@ -146,14 +152,34 @@ FileSystemDataSink::getWriterFileNames() const {
   return fileNameGenerator_->gen();
 }
 
+namespace {
+bool isRemoteUri(const std::string& path) {
+  // TODO: add other remote filesystems support.
+  return path.find("hdfs://") == 0;
+}
+
+std::string joinUriPath(const std::string& directory, const std::string& name) {
+  if (directory.empty()) {
+    return name;
+  }
+  if (directory.back() == '/') {
+    return directory + name;
+  }
+  return directory + "/" + name;
+}
+
 std::string makePartitionDirectory(
     const std::string& tableDirectory,
     const std::optional<std::string>& partitionSubdirectory) {
-  if (partitionSubdirectory.has_value()) {
-    return fs::path(tableDirectory) / partitionSubdirectory.value();
+  if (!partitionSubdirectory.has_value()) {
+    return tableDirectory;
   }
-  return tableDirectory;
+  if (isRemoteUri(tableDirectory)) {
+    return joinUriPath(tableDirectory, partitionSubdirectory.value());
+  }
+  return (fs::path(tableDirectory) / partitionSubdirectory.value()).string();
 }
+} // namespace
 
 FsWriterParameters FileSystemDataSink::getWriterParameters(
     const std::optional<std::string>& partition) const {
@@ -178,6 +204,26 @@ std::shared_ptr<memory::MemoryPool> createSinkPool(
   return writerPool->addLeafChild(fmt::format("{}.sink", writerPool->name()));
 }
 
+void FileSystemDataSink::addPendingWriter(const FsWriterInfoPtr& writerInfo) {
+  if (writerInfo->isCommitted()) {
+    return;
+  }
+  if (std::find(
+          pendingWriterInfo_.begin(), pendingWriterInfo_.end(), writerInfo) !=
+      pendingWriterInfo_.end()) {
+    return;
+  }
+  for (const auto& [_, checkpointWriterInfo] : checkpointWriterInfo_) {
+    if (std::find(
+            checkpointWriterInfo.begin(),
+            checkpointWriterInfo.end(),
+            writerInfo) != checkpointWriterInfo.end()) {
+      return;
+    }
+  }
+  pendingWriterInfo_.emplace_back(writerInfo);
+}
+
 uint32_t FileSystemDataSink::appendWriter(const FsWriterId& id) {
   // Check max open writers.
   VELOX_USER_CHECK_LE(
@@ -189,23 +235,33 @@ uint32_t FileSystemDataSink::appendWriter(const FsWriterId& id) {
   if (isPartitioned()) {
     partitionName =
         partitionIdGenerator_->fsPartitionName(id.partitionId.value());
+    partitionCreateTimeMs_.try_emplace(
+        partitionName.value(), static_cast<int64_t>(std::time(nullptr)) * 1000);
   }
 
   // Without explicitly setting flush policy, the default memory based flush
   // policy is used.
   auto writerParameters = getWriterParameters(partitionName);
-  const auto writePath = fs::path(writerParameters.writeDirectory()) /
-      writerParameters.writeFileName();
+  if (!fs_) {
+    fs_ = filesystems::getFileSystem(
+        writerParameters.writeDirectory(), writeConfig_->config());
+  }
+  // hdfsCreateDirectory uses mkdirs and creates missing parent directories.
+  fs_->mkdir(writerParameters.writeDirectory());
+  const auto writeFilePath = joinUriPath(
+      writerParameters.writeDirectory(), writerParameters.writeFileName());
   auto writerPool = createWriterPool(id);
   auto sinkPool = createSinkPool(writerPool);
-  writerInfo_.emplace_back(std::make_shared<FsWriterInfo>(
-      std::move(writerParameters),
-      std::move(writerPool),
-      std::move(sinkPool),
-      std::time(nullptr)));
+  writerInfo_.emplace_back(
+      std::make_shared<FsWriterInfo>(
+          std::move(writerParameters),
+          std::move(writerPool),
+          std::move(sinkPool),
+          std::time(nullptr)));
   ioStats_.emplace_back(std::make_shared<io::IoStatistics>());
   // setMemoryReclaimers(writerInfo_.back().get(), ioStats_.back().get());
-  auto writer = createWriter(writePath, writerInfo_.back(), ioStats_.back());
+  auto writer =
+      createWriter(writeFilePath, writerInfo_.back(), ioStats_.back());
   writers_.emplace_back(std::move(writer));
   // Extends the buffer used for partition rows calculations.
   partitionSizes_.emplace_back(0);
@@ -228,16 +284,14 @@ uint32_t FileSystemDataSink::updateWriter(const FsWriterId& id) {
   const std::optional<std::string> partitionName =
       writerInfo->writerParameters.partitionName();
   auto writerParameters = getWriterParameters(partitionName);
-  if (!writerInfo_[index]->isCommitted()) {
-    pendingWriterInfo_.emplace_back(writerInfo_[index]);
-  }
+  addPendingWriter(writerInfo_[index]);
   writerInfo_[index] = std::make_shared<FsWriterInfo>(
       std::move(writerParameters),
       writerInfo_[index]->writerPool,
       writerInfo_[index]->sinkPool,
       std::time(nullptr));
-  const auto writePath = fs::path(writerParameters.writeDirectory()) /
-      writerParameters.writeFileName();
+  const auto writePath = joinUriPath(
+      writerParameters.writeDirectory(), writerParameters.writeFileName());
   auto writer = createWriter(writePath, writerInfo_[index], ioStats_[index]);
   writers_[index] = std::move(writer);
   return index;
@@ -248,14 +302,18 @@ uint32_t FileSystemDataSink::ensureWriter(const FsWriterId& id) {
   if (it != writerIndexMap_.end()) {
     uint32_t index = it->second;
     if (writerInfo_[index]->shouldUpdateWriter(writeConfig_)) {
-      if (!writeConfig_->flushOnWrite()) {
+      if (!writerInfo_[index]->isCommitted() && writers_[index] != nullptr) {
         writers_[index]->flush();
+        writers_[index]->close();
       }
-      writers_[index]->close();
       return updateWriter(id);
-    } else {
-      return index;
     }
+    if (writers_[index] == nullptr) {
+      // Recover if the writer was closed (e.g. after commit) but rolling was
+      // not triggered.
+      return updateWriter(id);
+    }
+    return index;
   }
   return appendWriter(id);
 }
@@ -281,6 +339,8 @@ RowVectorPtr makeDataInput(
 void FileSystemDataSink::write(size_t index, RowVectorPtr input) {
   WRITER_NON_RECLAIMABLE_SECTION_GUARD(index);
   auto dataInput = makeDataInput(dataChannels_, input);
+  VELOX_CHECK_NOT_NULL(
+      writers_[index], "Writer is null at index {} after ensureWriter", index);
   writers_[index]->write(dataInput);
   if (writeConfig_->flushOnWrite()) {
     writers_[index]->flush();
@@ -310,6 +370,8 @@ void FileSystemDataSink::computePartitionIds(const RowVectorPtr& input) {
         }
       }
     }
+    // partitionIds_ is a vector of uint64_t, each element is the partition id
+    // of the input row.
     partitionIdGenerator_->run(input, partitionIds_);
   }
 }
@@ -343,6 +405,7 @@ void FileSystemDataSink::splitInputRowsAndEnsureWriters() {
           partitionRows_[index]->asMutable<vector_size_t>();
     }
     rawPartitionRows_[index][partitionSizes_[index]] = row;
+    // partitionSizes_[index] is the number of rows in the partition.
     ++partitionSizes_[index];
   }
 
@@ -426,6 +489,12 @@ void FileSystemDataSink::checkStateTransition(State oldState, State newState) {
 bool FileSystemDataSink::finish() {
   // Flush is reentry state.
   setState(State::kFinishing);
+  for (int i = 0; i < writers_.size(); ++i) {
+    WRITER_NON_RECLAIMABLE_SECTION_GUARD(i);
+    if (writers_[i] != nullptr && !writers_[i]->finish()) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -441,62 +510,150 @@ void FileSystemDataSink::closeInternal() {
   if (state_ == State::kClosed) {
     for (int i = 0; i < writers_.size(); ++i) {
       WRITER_NON_RECLAIMABLE_SECTION_GUARD(i);
-      writers_[i]->close();
+      if (writers_[i] != nullptr) {
+        writers_[i]->close();
+        writers_[i] = nullptr;
+      }
     }
   } else {
     for (int i = 0; i < writers_.size(); ++i) {
       WRITER_NON_RECLAIMABLE_SECTION_GUARD(i);
-      writers_[i]->abort();
+      if (writers_[i] != nullptr) {
+        writers_[i]->abort();
+        writers_[i] = nullptr;
+      }
     }
   }
 }
 
-std::vector<std::string> FileSystemDataSink::commit(int64_t id) {
-  for (const auto& writerInfo : writerInfo_) {
-    if (!writerInfo->isCommitted()) {
-      pendingWriterInfo_.emplace_back(writerInfo);
-    }
+void FileSystemDataSink::setWatermark(int64_t watermark) {
+  if (watermark > watermark_) {
+    watermark_ = watermark;
   }
-  std::vector<std::string> committed;
-  for (const auto& writerInfo : pendingWriterInfo_) {
-    if (writerInfo->isCommitted()) {
+}
+
+std::vector<std::string> FileSystemDataSink::snapshot(int64_t checkpointId) {
+  for (uint32_t index = 0; index < writers_.size(); ++index) {
+    VELOX_CHECK_LT(index, writerInfo_.size());
+    if (writers_[index] == nullptr || writerInfo_[index]->isCommitted()) {
       continue;
     }
-    const auto writerParams = writerInfo->writerParameters;
-    const auto writeFileName =
-        writerParams.writeDirectory() + "/" + writerParams.writeFileName();
-    const auto targetFileName =
-        writerParams.targetDirectory() + "/" + writerParams.targetFileName();
-    if (!fs_) {
-      fs_ = filesystems::getFileSystem(writeFileName, writeConfig_->config());
+    if (!writeConfig_->flushOnWrite()) {
+      writers_[index]->flush();
     }
-    try {
-      fs_->rename(writeFileName, targetFileName);
-    } catch (const std::exception& e) {
-      VELOX_FAIL(
-          "Failed to rename file {} to target {}, exception: {}",
-          writeFileName,
-          targetFileName,
-          e.what());
-    }
-    std::optional<std::string> partitionName = writerParams.partitionName();
-    int64_t partitionTimestamp = 0;
-    if (partitionName.has_value() &&
-        writeConfig_->getPartitionCommitTrigger() == "partition-time") {
-      partitionTimestamp =
-          extractTimestampFromPartitionName(partitionName.value());
-    }
-    int64_t commitDelaySeconds =
-        writeConfig_->getPartitionCommitDelayMinutes() * 60;
-    if (partitionTimestamp != 0 &&
-        watermark_ > partitionTimestamp + commitDelaySeconds) {
-      committed.emplace_back(partitionName.value());
-    } else {
-      committed.emplace_back(partitionName.value());
-    }
-    writerInfo->setCommitted(true);
+    writers_[index]->close();
+    writers_[index] = nullptr;
+    addPendingWriter(writerInfo_[index]);
   }
-  pendingWriterInfo_.clear();
+
+  if (!pendingWriterInfo_.empty()) {
+    auto& checkpointWriterInfo = checkpointWriterInfo_[checkpointId];
+    checkpointWriterInfo.insert(
+        checkpointWriterInfo.end(),
+        pendingWriterInfo_.begin(),
+        pendingWriterInfo_.end());
+    pendingWriterInfo_.clear();
+  }
+  return {};
+}
+
+// Renames in-progress files and returns paths ready for Flink-side partition
+// commit. Policy (metastore / success-file) is not applied here.
+std::vector<std::string> FileSystemDataSink::commit(int64_t checkpointId) {
+  std::vector<std::string> committed;
+  std::map<int64_t, std::vector<FsWriterInfoPtr>> remainingPending;
+
+  auto checkpointIt = checkpointWriterInfo_.begin();
+  while (checkpointIt != checkpointWriterInfo_.end() &&
+         checkpointIt->first <= checkpointId) {
+    const auto currentCheckpointId = checkpointIt->first;
+    auto& checkpointPendingWriterInfo = checkpointIt->second;
+
+    for (const auto& writerInfo : checkpointPendingWriterInfo) {
+      if (writerInfo->isCommitted()) {
+        continue;
+      }
+      const auto writerParams = writerInfo->writerParameters;
+      std::optional<std::string> partitionName = writerParams.partitionName();
+      bool readyToCommitPartition = true;
+      if (partitionName.has_value()) {
+        const auto& trigger = writeConfig_->getPartitionCommitTrigger();
+        const int64_t commitDelayMillis =
+            writeConfig_->getPartitionCommitDelayMillis();
+        if (trigger == "partition-time") {
+          const int64_t partitionTimestamp =
+              extractTimestampFromPartitionName(partitionName.value());
+          readyToCommitPartition =
+              watermark_ >= partitionTimestamp * 1000 + commitDelayMillis;
+        } else if (trigger == "process-time") {
+          const auto it = partitionCreateTimeMs_.find(partitionName.value());
+          VELOX_CHECK(
+              it != partitionCreateTimeMs_.end(),
+              "Missing partition creation time for '{}'",
+              partitionName.value());
+          const int64_t currentTimeMs =
+              static_cast<int64_t>(std::time(nullptr)) * 1000;
+          readyToCommitPartition =
+              currentTimeMs >= it->second + commitDelayMillis;
+        }
+      }
+
+      const bool shouldRollFile = !writerInfo->isFileRolled();
+      if (!shouldRollFile && !readyToCommitPartition) {
+        remainingPending[currentCheckpointId].emplace_back(writerInfo);
+        continue;
+      }
+
+      if (shouldRollFile) {
+        const auto writeFileName = joinUriPath(
+            writerParams.writeDirectory(), writerParams.writeFileName());
+        const auto targetFileName = joinUriPath(
+            writerParams.targetDirectory(), writerParams.targetFileName());
+        if (!fs_) {
+          fs_ =
+              filesystems::getFileSystem(writeFileName, writeConfig_->config());
+        }
+        try {
+          fs_->rename(writeFileName, targetFileName);
+          writerInfo->setFileRolled(true);
+        } catch (const std::exception& e) {
+          VELOX_FAIL(
+              "Failed to rename file {} to target {}, exception: {}",
+              writeFileName,
+              targetFileName,
+              e.what());
+        }
+      }
+
+      if (readyToCommitPartition) {
+        writerInfo->setCommitted(true);
+        if (partitionName.has_value()) {
+          if (std::find(
+                  committed.begin(), committed.end(), partitionName.value()) ==
+              committed.end()) {
+            committed.emplace_back(partitionName.value());
+          }
+        } else {
+          const std::string commitPath = joinUriPath(
+              writerParams.targetDirectory(), writerParams.targetFileName());
+          if (std::find(committed.begin(), committed.end(), commitPath) ==
+              committed.end()) {
+            committed.emplace_back(commitPath);
+          }
+        }
+      } else {
+        remainingPending[currentCheckpointId].emplace_back(writerInfo);
+      }
+    }
+    checkpointIt = checkpointWriterInfo_.erase(checkpointIt);
+  }
+
+  while (checkpointIt != checkpointWriterInfo_.end()) {
+    remainingPending.emplace(
+        checkpointIt->first, std::move(checkpointIt->second));
+    checkpointIt = checkpointWriterInfo_.erase(checkpointIt);
+  }
+  checkpointWriterInfo_ = std::move(remainingPending);
   return committed;
 }
 
@@ -541,51 +698,67 @@ const int64_t FileSystemDataSink::extractTimestampFromPartitionName(
     const std::string& partitionName) {
   std::string extractPattern = writeConfig_->getPartitionTimeExtractPattern();
   if (extractPattern.empty()) {
-    return 0;
+    VELOX_USER_FAIL(
+        "partition.time-extractor.timestamp-pattern is not configured but "
+        "sink.partition-commit.trigger is set to 'partition-time'");
   }
-  std::string pName = partitionName;
-  std::regex urlEncodedPattern("%[0-9A-Fa-f]{2}");
-  if (std::regex_search(pName, urlEncodedPattern)) {
-    std::string result;
-    for (size_t i = 0; i < pName.size(); ++i) {
-      if (pName[i] == '%') {
-        if (i + 2 < pName.size()) {
-          int hexValue;
-          std::istringstream hexStream(pName.substr(i + 1, 2));
-          if (hexStream >> std::hex >> hexValue) {
-            result += static_cast<char>(hexValue);
-            i += 2;
-          } else {
-            result += pName[i];
-          }
-        } else {
-          result += pName[i];
-        }
-      } else if (pName[i] == '+') {
-        result += ' ';
-      } else {
-        result += pName[i];
-      }
-    }
-    pName = result;
-  }
-  std::vector<std::string> partitionKVs;
-  boost::algorithm::split(
-      partitionKVs, pName, boost::algorithm::is_any_of("/"));
-  VELOX_CHECK(partitionKVs.size() == partitionKeys_.size());
+
+  const auto partitionKVs =
+      dwio::catalog::fbhive::FileUtils::parsePartKeyValues(partitionName);
+  VELOX_USER_CHECK_EQ(
+      partitionKVs.size(),
+      partitionKeys_.size(),
+      "Partition name '{}' has {} levels, expected {}",
+      partitionName,
+      partitionKVs.size(),
+      partitionKeys_.size());
   for (size_t i = 0; i < partitionKVs.size(); ++i) {
-    boost::algorithm::replace_all(partitionKVs[i], partitionKeys_[i] + "=", "");
-    boost::algorithm::replace_all(
-        extractPattern, "$" + partitionKeys_[i], partitionKVs[i]);
+    VELOX_USER_CHECK_EQ(
+        partitionKVs[i].first,
+        partitionKeys_[i],
+        "Partition key mismatch at level {} in '{}': expected {}, got {}",
+        i,
+        partitionName,
+        partitionKeys_[i],
+        partitionKVs[i].first);
   }
-  const auto timestamp =
+
+  auto sortedKvs = partitionKVs;
+  // Replace longer keys first to avoid prefix ambiguity (e.g. 'h' vs 'hm').
+  std::sort(
+      sortedKvs.begin(), sortedKvs.end(), [](const auto& a, const auto& b) {
+        return a.first.size() > b.first.size();
+      });
+  for (const auto& [key, value] : sortedKvs) {
+    boost::algorithm::replace_all(extractPattern, "$" + key, value);
+  }
+
+  auto timestamp =
       util::fromTimestampString(
           extractPattern.data(),
           extractPattern.size(),
           util::TimestampParseMode::kLegacyCast)
           .thenOrThrow(folly::identity, [&](const Status& status) {
-            VELOX_FAIL("error while parse timestamp: {}", status.message());
+            VELOX_USER_FAIL(
+                "Failed to parse partition timestamp '{}' from partition '{}': {}",
+                extractPattern,
+                partitionName,
+                status.message());
           });
+
+  // When enabled, interpret the extracted pattern in session timezone before
+  // converting to UTC epoch seconds for watermark comparison.
+  const tz::TimeZone* sessionTimeZone = nullptr;
+  if (queryCtx_->adjustTimestampToTimezone() &&
+      !queryCtx_->sessionTimezone().empty()) {
+    sessionTimeZone = tz::locateZone(queryCtx_->sessionTimezone());
+  }
+  if (sessionTimeZone != nullptr) {
+    timestamp = util::fromParsedTimestampWithTimeZone(
+        util::ParsedTimestampWithTimeZone{timestamp, nullptr, std::nullopt},
+        sessionTimeZone);
+  }
+
   return timestamp.getSeconds();
 }
 
