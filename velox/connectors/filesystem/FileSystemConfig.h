@@ -37,12 +37,19 @@ class FileSystemWriteConfig {
       "sink.rolling-policy.file-size";
   static constexpr const char* kPartitionCommitTrigger =
       "sink.partition-commit.trigger";
+  /// Partition commit policy (e.g. "metastore", "success-file"). Passed through
+  /// from Flink for configuration parity; Velox does not act on this value.
+  /// Writing _SUCCESS markers and metastore updates are handled by Flink after
+  /// it consumes commit() return values.
   static constexpr const char* kPartitionCommitPolicy =
       "sink.partition-commit.policy.kind";
   static constexpr const char* kPartitionCommitDelay =
       "sink.partition-commit.delay";
   static constexpr const char* kPartitionTimeExtractPattern =
       "partition.time-extractor.timestamp-pattern";
+  static constexpr const char* kFileCompression = "sink.file.compression";
+  static constexpr const char* kParquetCompressionCodec =
+      "parquet.compression-codec";
   /// The default value of max partitions per writer.
   static constexpr const int32_t defaultMaxPartitionsPerWriter = 65535;
   /// The supported file format to write
@@ -63,14 +70,14 @@ class FileSystemWriteConfig {
   const bool isPartitionPathAsLowerCase() {
     return true;
   }
-  const int32_t getFileRollingIntervalMinutes();
-  const int32_t getFileRollingSize();
+  const int32_t getFileRollingIntervalMillis();
+  const int64_t getFileRollingSize();
   const std::string getPartitionCommitTrigger();
-  const int32_t getPartitionCommitDelayMinutes();
+  /// Returns sink.partition-commit.policy.kind for Flink-side use only.
+  const std::string getPartitionCommitPolicy();
+  const int32_t getPartitionCommitDelayMillis();
   const std::string getPartitionTimeExtractPattern();
-  const common::CompressionKind getFileCompressionType() {
-    return common::CompressionKind_NONE;
-  }
+  const common::CompressionKind getFileCompressionType();
   const bool flushOnWrite() {
     return true;
   }

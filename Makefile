@@ -185,33 +185,36 @@ fuzzertest: debug
 			--logtostderr=1 \
 			--minloglevel=0
 
-format-fix: 			#: Fix formatting issues in the main branch
+CHECK_BASE ?= main
+CHECK_TARGET = $(if $(filter main master commit,$(CHECK_BASE)),$(CHECK_BASE),branch $(CHECK_BASE))
+
+format-fix: 			#: Fix formatting issues in the base branch
 ifneq ("$(wildcard ${PYTHON_VENV}/pyvenv.cfg)","")
-	source ${PYTHON_VENV}/bin/activate; scripts/check.py format main --fix
+	source ${PYTHON_VENV}/bin/activate; scripts/check.py format ${CHECK_TARGET} --fix
 else
-	scripts/check.py format main --fix
+	scripts/check.py format ${CHECK_TARGET} --fix
 endif
 
-format-check: 			#: Check for formatting issues on the main branch
+format-check: 			#: Check for formatting issues on the base branch
 	clang-format --version
 ifneq ("$(wildcard ${PYTHON_VENV}/pyvenv.cfg)","")
-	source ${PYTHON_VENV}/bin/activate; scripts/check.py format main
+	source ${PYTHON_VENV}/bin/activate; scripts/check.py format ${CHECK_TARGET}
 else
-	scripts/check.py format main
+	scripts/check.py format ${CHECK_TARGET}
 endif
 
 header-fix:			#: Fix license header issues in the current branch
 ifneq ("$(wildcard ${PYTHON_VENV}/pyvenv.cfg)","")
-	source ${PYTHON_VENV}/bin/activate; scripts/check.py header main --fix
+	source ${PYTHON_VENV}/bin/activate; scripts/check.py header ${CHECK_TARGET} --fix
 else
-	scripts/check.py header main --fix
+	scripts/check.py header ${CHECK_TARGET} --fix
 endif
 
-header-check:			#: Check for license header issues on the main branch
+header-check:			#: Check for license header issues on the base branch
 ifneq ("$(wildcard ${PYTHON_VENV}/pyvenv.cfg)","")
-	source ${PYTHON_VENV}/bin/activate; scripts/check.py header main
+	source ${PYTHON_VENV}/bin/activate; scripts/check.py header ${CHECK_TARGET}
 else
-	scripts/check.py header main
+	scripts/check.py header ${CHECK_TARGET}
 endif
 
 circleci-container:			#: Build the linux container for CircleCi

@@ -17,7 +17,8 @@
 
 velox_add_library(velox_connector_util OBJECT StringFormatter.cpp)
 
-velox_link_libraries(velox_connector_util velox_common_io velox_connector)
+velox_link_libraries(velox_connector_util velox_common_io velox_connector
+                     velox_expression)
 
 if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)

@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-add_executable(velox_filesystem_connector_test FileSystemConnectorTest.cpp)
+add_executable(
+  velox_filesystem_connector_test
+  FileSystemConnectorTest.cpp
+  ${CMAKE_SOURCE_DIR}/velox/connectors/hive/storage_adapters/hdfs/tests/HdfsMiniCluster.cpp
+)
 
 add_test(
   velox_filesystem_connector_test
@@ -22,6 +26,7 @@ add_test(
 target_link_libraries(
   velox_filesystem_connector_test
   velox_filesystem_connector
+  velox_hdfs
   velox_dwio_text_writer_register
   velox_vector_test_lib
   velox_exec
@@ -31,3 +36,11 @@ target_link_libraries(
   -Wl,--whole-archive
   velox_caching
   -Wl,--no-whole-archive)
+
+if(VELOX_ENABLE_PARQUET)
+  target_link_libraries(velox_filesystem_connector_test
+                        velox_dwio_parquet_writer)
+endif()
+
+target_compile_options(velox_filesystem_connector_test
+                       PRIVATE -Wno-deprecated-declarations)

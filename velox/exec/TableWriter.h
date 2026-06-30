@@ -112,11 +112,24 @@ class TableWriter : public Operator {
 
   void noMoreInput() override;
 
+  std::vector<std::string> snapshotState(int64_t checkpointId) override {
+    if (dataSink_) {
+      return dataSink_->snapshot(checkpointId);
+    }
+    return {};
+  }
+
   std::vector<std::string> commit(int64_t id) override {
     if (dataSink_) {
       return dataSink_->commit(id);
     }
     return {};
+  }
+
+  void setWatermark(int64_t watermark) override {
+    if (dataSink_) {
+      dataSink_->setWatermark(watermark);
+    }
   }
 
   virtual bool needsInput() const override {

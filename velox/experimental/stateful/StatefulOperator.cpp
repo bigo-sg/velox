@@ -168,6 +168,7 @@ void StatefulOperator::processWatermark(int64_t timestamp, int index) {
 }
 
 void StatefulOperator::processWatermark(int64_t timestamp) {
+  operator_->setWatermark(timestamp);
   emitWatermark(timestamp);
 }
 

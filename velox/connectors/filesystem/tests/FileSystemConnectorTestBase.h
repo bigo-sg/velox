@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include "velox/common/memory/Memory.h"
 #include "velox/connectors/filesystem/FileSystemConnector.h"
 #include "velox/connectors/filesystem/FileSystemDataSink.h"
@@ -84,6 +85,7 @@ class FileSystemConnectorTestBase : public exec::test::OperatorTestBase {
   }
 
   void TearDown() override {
+    cleanupDataDirectory();
     connector::unregisterConnector(fileSystemConnectorId);
     connector::unregisterConnectorFactory(
         connector::filesystem::FileSystemConnectorFactory::
@@ -104,7 +106,23 @@ class FileSystemConnectorTestBase : public exec::test::OperatorTestBase {
         std::string(writePath, strlen(currentPath) + writeDir.size() + 8);
   }
 
-  const std::shared_ptr<connector::ConnectorQueryCtx> createQueryCtx() {
+  void cleanupDataDirectory() const {
+    if (dataPath.empty() || dataPath.rfind("file://", 0) != 0) {
+      return;
+    }
+    const std::string localDataPath = dataPath.substr(7);
+    if (!std::filesystem::exists(localDataPath)) {
+      return;
+    }
+    for (const auto& entry :
+         std::filesystem::directory_iterator(localDataPath)) {
+      std::filesystem::remove_all(entry.path());
+    }
+  }
+
+  const std::shared_ptr<connector::ConnectorQueryCtx> createQueryCtx(
+      const std::string& sessionTimezone = "UTC",
+      bool adjustTimestampToTimezone = false) {
     const auto filesystemConnector = getConnector(fileSystemConnectorId);
     const auto connectorConfig = filesystemConnector->connectorConfig();
     std::shared_ptr<connector::ConnectorQueryCtx> connectorQueryCtx =
@@ -120,7 +138,8 @@ class FileSystemConnectorTestBase : public exec::test::OperatorTestBase {
             "task.filesystem",
             "planNodeId.filesystem",
             0,
-            "UTC");
+            sessionTimezone,
+            adjustTimestampToTimezone);
     return connectorQueryCtx;
   }
 

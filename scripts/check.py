@@ -185,12 +185,22 @@ def tidy_command(commit, files, fix):
     return status
 
 
-def get_commit(files):
+def get_commit(files, path):
     if files == "commit":
         return "HEAD^"
 
     if files == "main" or files == "master":
         return util.run(f"git merge-base origin/{files} HEAD")[1]
+
+    if files == "branch":
+        candidates = [path] if "/" in path else [f"origin/{path}", path]
+        for ref in candidates:
+            if util.run(f"git rev-parse --verify --quiet {ref}")[0] == 0:
+                status, stdout, stderr = util.run(f"git merge-base {ref} HEAD")
+                if status == 0:
+                    return stdout
+                raise SystemExit(stderr)
+        raise SystemExit(f"Could not find branch ref for {path}")
 
     return ""
 
@@ -243,6 +253,8 @@ def add_options(parser):
 
     branch_parser = add_check_options(files, "main")
     branch_parser = add_check_options(files, "master")
+    branch_parser = add_check_options(files, "branch")
+    branch_parser.add_argument("path", default="")
     commit_parser = add_check_options(files, "commit")
 
 
@@ -277,7 +289,7 @@ def parse_args():
 
 
 def run_command(args, command):
-    commit = get_commit(args.files)
+    commit = get_commit(args.files, args.path)
     files = get_files(commit, args.path)
 
     return command(commit, files, args.fix)
