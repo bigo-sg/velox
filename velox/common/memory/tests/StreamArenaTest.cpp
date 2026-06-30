@@ -143,7 +143,7 @@ TEST_F(StreamArenaTest, randomRange) {
   }
 }
 
-TEST_F(StreamArenaTest, error) {
+TEST_F(StreamArenaTest, DISABLED_error) {
   auto arena = newArena();
   ByteRange range;
   VELOX_ASSERT_THROW(

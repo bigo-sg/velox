@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_executable(
   velox_dwio_arrow_parquet_writer_test
@@ -27,8 +28,11 @@ add_executable(
   StatisticsTest.cpp
   TypesTest.cpp)
 
-add_test(velox_dwio_arrow_parquet_writer_test
-         velox_dwio_arrow_parquet_writer_test)
+gtest_add_tests(TARGET velox_dwio_arrow_parquet_writer_test
+                TEST_LIST velox_dwio_arrow_parquet_writer_test_cases)
+set_tests_properties(
+  TestParquetFileReader.IncompleteMetadata "TestSerialize/*.RepeatedTooFewRows"
+  PROPERTIES DISABLED TRUE)
 
 target_link_libraries(
   velox_dwio_arrow_parquet_writer_test

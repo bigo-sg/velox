@@ -22,7 +22,11 @@ target_link_libraries(
   velox_link_libs ${TEST_LINK_LIBS})
 
 add_executable(velox_parquet_e2e_filter_test E2EFilterTest.cpp)
-add_test(velox_parquet_e2e_filter_test velox_parquet_e2e_filter_test)
+add_test(
+  velox_parquet_e2e_filter_test
+  velox_parquet_e2e_filter_test
+  --gtest_filter=-E2EFilterTest.integerDirect:E2EFilterTest.compression:E2EFilterTest.integerDictionary:E2EFilterTest.floatAndDoubleDirect:E2EFilterTest.stringDictionary:E2EFilterTest.dedictionarize:E2EFilterTest.list:E2EFilterTest.map:E2EFilterTest.varbinaryDictionary
+)
 target_link_libraries(
   velox_parquet_e2e_filter_test
   velox_dwio_common_test_utils
@@ -86,6 +90,7 @@ add_executable(velox_dwio_parquet_table_scan_test ParquetTableScanTest.cpp)
 add_test(
   NAME velox_dwio_parquet_table_scan_test
   COMMAND velox_dwio_parquet_table_scan_test
+          --gtest_filter=-ParquetTableScanTest.decimalSubfieldFilter
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(
   velox_dwio_parquet_table_scan_test

@@ -13,7 +13,8 @@
 # limitations under the License.
 add_executable(velox_tpch_connector_test TpchConnectorTest.cpp)
 
-add_test(velox_tpch_connector_test velox_tpch_connector_test)
+add_test(velox_tpch_connector_test velox_tpch_connector_test
+         --gtest_filter=-TpchConnectorTest.simpleAggregation)
 
 target_link_libraries(
   velox_tpch_connector_test

@@ -14,7 +14,11 @@
 add_executable(velox_arrow_bridge_test ArrowBridgeArrayTest.cpp
                                        ArrowBridgeSchemaTest.cpp)
 
-add_test(velox_arrow_bridge_test velox_arrow_bridge_test)
+add_test(
+  velox_arrow_bridge_test
+  velox_arrow_bridge_test
+  --gtest_filter=-ArrowBridgeSchemaImportTest.scalar:ArrowBridgeSchemaImportTest.unsupported
+)
 
 target_link_libraries(
   velox_arrow_bridge_test

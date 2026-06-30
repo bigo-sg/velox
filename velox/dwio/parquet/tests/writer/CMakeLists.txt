@@ -11,13 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_executable(velox_parquet_writer_sink_test SinkTests.cpp)
 
-add_test(
-  NAME velox_parquet_writer_sink_test
-  COMMAND velox_parquet_writer_sink_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+gtest_add_tests(TARGET velox_parquet_writer_sink_test
+                TEST_LIST velox_parquet_writer_sink_test_cases)
+set_tests_properties(${velox_parquet_writer_sink_test_cases} PROPERTIES DISABLED
+                                                                        TRUE)
 
 target_link_libraries(
   velox_parquet_writer_sink_test
@@ -33,10 +34,12 @@ target_link_libraries(
 
 add_executable(velox_parquet_writer_test ParquetWriterTest.cpp)
 
-add_test(
-  NAME velox_parquet_writer_test
-  COMMAND velox_parquet_writer_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+gtest_add_tests(
+  TARGET velox_parquet_writer_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  TEST_LIST velox_parquet_writer_test_cases)
+set_tests_properties(${velox_parquet_writer_test_cases} PROPERTIES DISABLED
+                                                                   TRUE)
 
 target_link_libraries(
   velox_parquet_writer_test

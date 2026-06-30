@@ -22,9 +22,6 @@ add_executable(
 
 add_test(velox_pulsar_connector_test velox_pulsar_connector_test)
 
-target_include_directories(velox_pulsar_connector_test
-                           PRIVATE ${PulsarClient_INCLUDE_DIR})
-
 target_link_libraries(
   velox_pulsar_connector_test
   velox_connector

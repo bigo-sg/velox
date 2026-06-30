@@ -20,6 +20,7 @@
 
 namespace facebook::velox::stateful {
 
+// LocalWindowAggregator
 LocalWindowAggregator::LocalWindowAggregator(
     std::unique_ptr<exec::Operator> op,
     std::vector<std::unique_ptr<StatefulOperator>> targets,

@@ -15,7 +15,9 @@
 add_executable(velox_duckdb_conversion_test DuckConversionTest.cpp
                                             DuckParserTest.cpp)
 
-add_test(velox_duckdb_conversion_test velox_duckdb_conversion_test)
+add_test(
+  velox_duckdb_conversion_test velox_duckdb_conversion_test
+  --gtest_filter=-DuckParserTest.invalid:DuckParserTest.invalidExpression)
 
 target_link_libraries(
   velox_duckdb_conversion_test

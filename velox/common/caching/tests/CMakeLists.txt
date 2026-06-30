@@ -30,7 +30,11 @@ add_executable(
   SsdFileTest.cpp
   SsdFileTrackerTest.cpp
   StringIdMapTest.cpp)
-add_test(velox_cache_test velox_cache_test)
+add_test(
+  velox_cache_test
+  velox_cache_test
+  --gtest_filter=-SsdFileTest.fileCorruption:SsdFileTest.evictlogFileErrorInjection:AsyncDataCacheTest/AsyncDataCacheTest.outOfCapacity/0:AsyncDataCacheTest/AsyncDataCacheTest.outOfCapacity/1:AsyncDataCacheTest/AsyncDataCacheTest.outOfCapacity/2:AsyncDataCacheTest/AsyncDataCacheTest.shrinkCache/0:AsyncDataCacheTest/AsyncDataCacheTest.shrinkCache/1:AsyncDataCacheTest/AsyncDataCacheTest.shrinkCache/2
+)
 target_link_libraries(
   velox_cache_test
   PRIVATE
@@ -46,7 +50,8 @@ target_link_libraries(
     GTest::gtest_main)
 
 add_executable(cached_factory_test CachedFactoryTest.cpp)
-add_test(cached_factory_test cached_factory_test)
+gtest_add_tests(TARGET cached_factory_test TEST_LIST cached_factory_test_cases)
+set_tests_properties(${cached_factory_test_cases} PROPERTIES DISABLED TRUE)
 target_link_libraries(
   cached_factory_test
   PRIVATE

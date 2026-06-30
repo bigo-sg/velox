@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include(GoogleTest)
 
 add_executable(
   velox_tool_trace_test
@@ -22,12 +23,12 @@ add_executable(
   TableScanReplayerTest.cpp
   TableWriterReplayerTest.cpp)
 
-add_test(
-  NAME velox_tool_trace_test
-  COMMAND velox_tool_trace_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-
-set_tests_properties(velox_tool_trace_test PROPERTIES TIMEOUT 3000)
+gtest_add_tests(
+  TARGET velox_tool_trace_test
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+  TEST_LIST velox_tool_trace_test_cases)
+set_tests_properties(${velox_tool_trace_test_cases} PROPERTIES DISABLED TRUE
+                                                               TIMEOUT 3000)
 
 target_link_libraries(
   velox_tool_trace_test

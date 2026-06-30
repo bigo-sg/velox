@@ -50,18 +50,21 @@ jobs:
   linux-gluten:
     name: Build Velox for Gluten
     runs-on: ubuntu-latest
-    container: ghcr.io/lgbo-ustc/velox4j:latest
+    container: ghcr.io/lgbo-ustc/velox4j:sse-v1
     defaults:
       run:
         shell: bash
     env:
       CCACHE_DIR: "${{ github.workspace }}/ccache"
       VELOX_DEPENDENCY_SOURCE: SYSTEM
+      CPU_TARGET: sse
       GTest_SOURCE: BUNDLED
       simdjson_SOURCE: BUNDLED
       xsimd_SOURCE: BUNDLED
       folly_SOURCE: BUNDLED
       geos_SOURCE: BUNDLED
+      absl_SOURCE: BUNDLED
+      gRPC_SOURCE: BUNDLED
       PulsarClient_SOURCE: BUNDLED
       USE_CLANG: "false"
     steps:
@@ -79,13 +82,19 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-
-            ccache-linux-gluten-${{ runner.os }}-
+            ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-
+            ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-
 
       - name: Zero Ccache Statistics
         run: ccache -sz
+
+      - name: CPU info
+        run: |
+          nproc
+          lscpu
+          grep -m1 '^flags' /proc/cpuinfo
 
       - name: Configure Build
         run: |
@@ -96,11 +105,13 @@ jobs:
             "-DVELOX_MONO_LIBRARY=ON"
             "-DVELOX_BUILD_SHARED=ON"
             "-DVELOX_BUILD_STATIC=OFF"
-            "-DVELOX_BUILD_TESTING=OFF"
+            "-DVELOX_BUILD_TESTING=ON"
             "-DVELOX_ENABLE_ARROW=ON"
             "-DVELOX_ENABLE_KAFKA_CONNECTOR=ON"
             "-DVELOX_ENABLE_PULSAR_CONNECTOR=ON"
             "-DVELOX_ENABLE_CCACHE=ON"
+            "-DVELOX_CPR_USE_SYSTEM_CURL=ON"
+            "-Dc-ares_SOURCE=BUNDLED"
           )
 
           cmake -S . -B _build/velox4j-like -GNinja "${EXTRA_CMAKE_FLAGS[@]}"
@@ -108,12 +119,24 @@ jobs:
       - name: Build Velox
         run: cmake --build _build/velox4j-like --target velox -j$(nproc)
 
-      - name: Ccache after
+      - name: Ccache after build velox
+        run: ccache -s
+
+      - name: Build Tests
+        run: cmake --build _build/velox4j-like -j$(nproc)
+
+      - name: Ccache after build tests
         run: ccache -s
 
       - name: Save ccache
         uses: actions/cache/save@v4
-        if: always()
+        if: success()
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Run Tests
+        timeout-minutes: 60
+        run: >-
+          ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
+          --timeout 300

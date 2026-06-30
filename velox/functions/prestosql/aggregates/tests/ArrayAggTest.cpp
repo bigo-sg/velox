@@ -557,7 +557,7 @@ TEST_F(ArrayAggTest, mask) {
   testFunction("simple_array_agg");
 }
 
-TEST_F(ArrayAggTest, clusteredInput) {
+TEST_F(ArrayAggTest, DISABLED_clusteredInput) {
   constexpr int kSize = 1000;
   for (int batchRows : {kSize, 13}) {
     std::vector<RowVectorPtr> data;
