@@ -51,10 +51,10 @@ apt-get install -y libssl-dev libcurl4-openssl-dev libicu-dev libbz2-dev
 apt-get install -y liblz4-dev libzstd-dev libsnappy-dev libsodium-dev liblzo2-dev
 apt-get install -y libgoogle-glog-dev libgflags-dev libgmock-dev libevent-dev
 apt-get install -y libelf-dev libdwarf-dev bison flex libfl-dev
-apt-get install -y libunwind-dev clang-format cmake-format
+apt-get install -y libunwind-dev clang-format
 
 # CMake >= 3.28 via pip.
-pip3 install cmake==3.28.3
+pip3 install cmake==3.28.3 cmake-format
 
 # LLVM 14 (for clang-format, used by Velox's format checks).
 wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
