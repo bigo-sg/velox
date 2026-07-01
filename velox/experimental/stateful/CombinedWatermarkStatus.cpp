@@ -22,16 +22,22 @@ bool CombinedWatermarkStatus::updateWatermark(int index, int64_t timestamp) {
   VELOX_CHECK(index < partialWatermarks_.size(), "Index out of range");
   auto& watermark = partialWatermarks_[index];
 
-  if (!watermark.setWatermark(timestamp)) {
-    return false;
-  }
+  watermark.setWatermark(timestamp);
+  return updateCombinedWatermark();
+}
 
-  // If the watermark is already set, we do not update it.
+bool CombinedWatermarkStatus::updateStatus(int index, bool idle) {
+  VELOX_CHECK(index < partialWatermarks_.size(), "Index out of range");
+  partialWatermarks_[index].setIdle(idle);
   return updateCombinedWatermark();
 }
 
 int64_t CombinedWatermarkStatus::getCombinedWatermark() {
   return combinedWatermark_;
+}
+
+bool CombinedWatermarkStatus::isIdle() const {
+  return idle_;
 }
 
 bool CombinedWatermarkStatus::updateCombinedWatermark() {

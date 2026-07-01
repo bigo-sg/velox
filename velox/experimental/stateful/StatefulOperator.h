@@ -70,6 +70,10 @@ class StatefulOperator {
 
   virtual void processWatermark(int64_t timestamp);
 
+  virtual void processWatermarkStatus(bool idle, int index);
+
+  virtual void processWatermarkStatus(bool idle);
+
   virtual void initializeState();
 
   void initializeStateBackend(StateBackend* stateBackend);
@@ -130,6 +134,7 @@ class StatefulOperator {
 
   void pushOutput(StreamElementPtr output);
   void emitWatermark(int64_t timestamp);
+  void emitWatermarkStatus(bool idle);
   void setSourceEmpty(bool sourceEmpty) {
     sourceEmpty_ = sourceEmpty;
   }
