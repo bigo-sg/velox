@@ -190,7 +190,7 @@ void StatefulTask::notifyWatermark(int64_t watermark, int index) {
 }
 
 void StatefulTask::notifyWatermark(int64_t watermark) {
-  operatorChain_->processWatermark(watermark);
+  operatorChain_->processWatermark(watermark, 0);
 }
 
 void StatefulTask::notifyWatermarkStatus(bool idle, int index) {

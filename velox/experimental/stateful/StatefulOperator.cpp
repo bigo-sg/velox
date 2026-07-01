@@ -175,11 +175,18 @@ void StatefulOperator::emitWatermarkStatus(bool idle) {
 }
 
 void StatefulOperator::processWatermark(int64_t timestamp, int index) {
-  if (combinedWatermarkStatus_->updateWatermark(index, timestamp)) {
+  const bool wasIdle = combinedWatermarkStatus_->isIdle();
+  const bool watermarkUpdated =
+      combinedWatermarkStatus_->updateWatermark(index, timestamp);
+  const bool isIdle = combinedWatermarkStatus_->isIdle();
+  if (wasIdle != isIdle) {
+    emitWatermarkStatus(isIdle);
+  }
+  if (watermarkUpdated) {
     // If the watermark is updated, we need to advance the timer service.
     int64_t combinedWatermark =
         combinedWatermarkStatus_->getCombinedWatermark();
-    processWatermark(combinedWatermark);
+    emitWatermark(combinedWatermark);
   }
 }
 
@@ -190,7 +197,7 @@ void StatefulOperator::processWatermark(int64_t timestamp) {
 void StatefulOperator::processWatermarkStatus(bool idle, int index) {
   const bool wasIdle = combinedWatermarkStatus_->isIdle();
   if (combinedWatermarkStatus_->updateStatus(index, idle)) {
-    processWatermark(combinedWatermarkStatus_->getCombinedWatermark());
+    emitWatermark(combinedWatermarkStatus_->getCombinedWatermark());
   }
   const bool isIdle = combinedWatermarkStatus_->isIdle();
   if (wasIdle != isIdle) {
