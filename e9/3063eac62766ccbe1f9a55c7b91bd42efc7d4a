@@ -1,0 +1,25 @@
+velox/experimental/stateful/StatefulTask.cpp
+  s_740041a40dfcba::t_35798d5d0538b4 193
+velox/experimental/stateful/StatefulOperator.cpp
+  s_740041a40dfcba::t_0792006d4ba30d 189
+  s_740041a40dfcba::t_23d1de3e762e7b 178
+  s_740041a40dfcba::t_4be77b7d2525de 179-185
+  s_740041a40dfcba::t_35798d5d0538b4 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "e93063eac62766ccbe1f9a55c7b91bd42efc7d4a",
+  "prompts": {},
+  "logical_commit_id": "e93063eac62766ccbe1f9a55c7b91bd42efc7d4a",
+  "sessions": {
+    "s_740041a40dfcba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0e9942bd9ffeKbvUZ4oXaz8Nkc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
