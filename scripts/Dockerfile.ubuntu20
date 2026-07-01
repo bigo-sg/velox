@@ -1,0 +1,38 @@
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Docker image with ALL Velox C++ dependencies pre-installed as SYSTEM
+# libraries in /usr/local.  Velox4j, Gluten, and other downstream projects
+# can FROM this image and only compile Velox + their own code.
+#
+# When a dependency is upgraded in Velox, rebuild this image:
+#   docker build -t bigo/velox-deps:ubuntu20 \
+#     -f scripts/Dockerfile.ubuntu20 .
+
+FROM ubuntu:20.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY scripts/setup-helper-functions.sh /tmp/scripts/setup-helper-functions.sh
+COPY scripts/setup-ubuntu.sh /tmp/scripts/setup-ubuntu.sh
+COPY scripts/setup-deps-ubuntu20.sh /tmp/scripts/setup-deps-ubuntu20.sh
+
+RUN bash /tmp/scripts/setup-deps-ubuntu20.sh \
+  && rm -rf /tmp/scripts
+
+ENV CC=/usr/bin/gcc-11
+ENV CXX=/usr/bin/g++-11
+ENV LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:${LD_LIBRARY_PATH}"
+
+WORKDIR /velox
