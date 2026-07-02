@@ -1,16 +1,6 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# GitHub Actions CI for bigo-sg/velox.
+# Mirrors the GitLab CI pipeline: uses the velox-deps Docker image with all
+# C++ dependencies pre-installed, builds with GCC-11 + Ninja, then runs ctest.
 
 name: Linux Gluten Build
 
@@ -25,6 +15,7 @@ on:
       - "CMake/**"
       - "third_party/**"
       - ".github/workflows/linux-gluten-build.yml"
+      - ".gitlab-ci.yml"
 
   pull_request:
     types:
@@ -38,6 +29,7 @@ on:
       - "CMake/**"
       - "third_party/**"
       - ".github/workflows/linux-gluten-build.yml"
+      - ".gitlab-ci.yml"
 
 permissions:
   contents: read
@@ -47,32 +39,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux-gluten:
-    name: Build Velox for Gluten
+  velox-build:
+    name: Build Velox
     runs-on: ubuntu-latest
-    container: ghcr.io/lgbo-ustc/velox4j:sse-v1
+    container: listar1111/velox-deps:ubuntu20
     defaults:
       run:
         shell: bash
     env:
+      CC: /usr/bin/gcc-11
+      CXX: /usr/bin/g++-11
       CCACHE_DIR: "${{ github.workspace }}/ccache"
-      VELOX_DEPENDENCY_SOURCE: SYSTEM
-      CPU_TARGET: sse
-      GTest_SOURCE: BUNDLED
-      simdjson_SOURCE: BUNDLED
-      xsimd_SOURCE: BUNDLED
-      folly_SOURCE: BUNDLED
-      geos_SOURCE: BUNDLED
-      absl_SOURCE: BUNDLED
-      gRPC_SOURCE: BUNDLED
-      PulsarClient_SOURCE: BUNDLED
-      USE_CLANG: "false"
     steps:
       - uses: actions/checkout@v4
 
       - name: Fix git permissions
-        # Usually actions/checkout does this but as we run in a container
-        # it doesn't work
         run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
 
       - name: Ensure ccache directory exists
@@ -82,48 +63,37 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-gluten-build-${{ github.ref_name }}-${{ github.sha }}
           restore-keys: |
-            ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-
-            ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-
+            ccache-gluten-build-${{ github.ref_name }}-
+            ccache-gluten-build-
 
       - name: Zero Ccache Statistics
         run: ccache -sz
 
-      - name: CPU info
+      - name: Configure
         run: |
-          nproc
-          lscpu
-          grep -m1 '^flags' /proc/cpuinfo
-
-      - name: Configure Build
-        run: |
-          EXTRA_CMAKE_FLAGS=(
-            "-DCMAKE_BUILD_TYPE=Release"
-            "-DCMAKE_PREFIX_PATH=/usr/local"
-            "-DBoost_DIR=/usr/local/lib/cmake/Boost-1.84.0"
-            "-DVELOX_MONO_LIBRARY=ON"
-            "-DVELOX_BUILD_SHARED=ON"
-            "-DVELOX_BUILD_STATIC=OFF"
-            "-DVELOX_BUILD_TESTING=ON"
-            "-DVELOX_ENABLE_ARROW=ON"
-            "-DVELOX_ENABLE_KAFKA_CONNECTOR=ON"
-            "-DVELOX_ENABLE_PULSAR_CONNECTOR=ON"
-            "-DVELOX_ENABLE_CCACHE=ON"
-            "-DVELOX_CPR_USE_SYSTEM_CURL=ON"
-            "-Dc-ares_SOURCE=BUNDLED"
-          )
-
-          cmake -S . -B _build/velox4j-like -GNinja "${EXTRA_CMAKE_FLAGS[@]}"
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/usr/local \
+            -DVELOX_ENABLE_CCACHE=ON \
+            -DVELOX_BUILD_SHARED=ON \
+            -DVELOX_MONO_LIBRARY=ON \
+            -DVELOX_BUILD_TESTING=ON \
+            -DVELOX_ENABLE_KAFKA_CONNECTOR=ON \
+            -DVELOX_ENABLE_PULSAR_CONNECTOR=ON \
+            -DVELOX_CPR_USE_SYSTEM_CURL=ON \
+            -DTREAT_WARNINGS_AS_ERRORS=0 \
+            -S . -B _build/release
 
       - name: Build Velox
-        run: cmake --build _build/velox4j-like --target velox -j$(nproc)
+        run: cmake --build _build/release --target velox -j $(nproc)
 
       - name: Ccache after build velox
         run: ccache -s
 
       - name: Build Tests
-        run: cmake --build _build/velox4j-like -j$(nproc)
+        run: cmake --build _build/release --target all -j $(nproc)
 
       - name: Ccache after build tests
         run: ccache -s
@@ -133,10 +103,56 @@ jobs:
         if: success()
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-linux-gluten-v2-${{ runner.os }}-${{ env.CPU_TARGET }}-${{ github.ref_name }}-${{ github.sha }}
+          key: ccache-gluten-build-${{ github.ref_name }}-${{ github.sha }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: velox-build
+          path: _build/release/lib/libvelox.so
+          retention-days: 1
+
+  velox-unit-tests:
+    name: Unit Tests
+    needs: velox-build
+    runs-on: ubuntu-latest
+    container: listar1111/velox-deps:ubuntu20
+    defaults:
+      run:
+        shell: bash
+    env:
+      CC: /usr/bin/gcc-11
+      CXX: /usr/bin/g++-11
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fix git permissions
+        run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: velox-build
+          path: _build/release/lib/
+
+      - name: Configure (reuse cache)
+        run: |
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/usr/local \
+            -DVELOX_ENABLE_CCACHE=ON \
+            -DVELOX_BUILD_SHARED=ON \
+            -DVELOX_MONO_LIBRARY=ON \
+            -DVELOX_BUILD_TESTING=ON \
+            -DVELOX_ENABLE_KAFKA_CONNECTOR=ON \
+            -DVELOX_ENABLE_PULSAR_CONNECTOR=ON \
+            -DVELOX_CPR_USE_SYSTEM_CURL=ON \
+            -DTREAT_WARNINGS_AS_ERRORS=0 \
+            -S . -B _build/release
+
+      - name: Build test binaries
+        run: cmake --build _build/release --target all -j $(nproc)
 
       - name: Run Tests
         timeout-minutes: 60
-        run: >-
-          ctest --test-dir _build/velox4j-like -j$(nproc) --output-on-failure
-          --timeout 300
+        run: ctest --test-dir _build/release --output-on-failure -j $(nproc) --timeout 300
