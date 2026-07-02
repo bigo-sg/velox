@@ -1,0 +1,30 @@
+velox/experimental/stateful/StatefulTask.h
+  s_c5014b558cca9b::t_2132fc8a91b5fd 66,71
+velox/experimental/stateful/StatefulOperator.h
+  s_c5014b558cca9b::t_2132fc8a91b5fd 69,73
+velox/experimental/stateful/StatefulOperator.cpp
+  s_c5014b558cca9b::t_2132fc8a91b5fd 177,198
+velox/experimental/stateful/CombinedWatermarkStatus.cpp
+  s_c5014b558cca9b::t_2132fc8a91b5fd 21,29
+velox/experimental/stateful/CombinedWatermarkStatus.h
+  s_c5014b558cca9b::t_2132fc8a91b5fd 58,63,66
+velox/experimental/stateful/StatefulTask.cpp
+  s_c5014b558cca9b::t_2132fc8a91b5fd 188,196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "bb191027c5588ae82175ef6158389b7b0f48dc72",
+  "prompts": {},
+  "logical_commit_id": "bb191027c5588ae82175ef6158389b7b0f48dc72",
+  "sessions": {
+    "s_c5014b558cca9b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0dd5fcf6fffeXVyABRIVSBfQMk",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
