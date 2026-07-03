@@ -1,0 +1,20 @@
+velox/experimental/stateful/CombinedWatermarkStatus.cpp
+  s_caf53120de217c::t_9c05ea55f9f153 21-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "d267ca9bf825ed8b366d9c2e90eb50f719d6479c",
+  "prompts": {},
+  "logical_commit_id": "7a312db290535f422b22ff081f9030dc487a94a2",
+  "sessions": {
+    "s_caf53120de217c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0dd4f21b2ffekjBrjmo43M72LT",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
