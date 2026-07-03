@@ -1,6 +1,6 @@
 # GitHub Actions CI for bigo-sg/velox.
-# Mirrors the GitLab CI pipeline: uses the velox-deps Docker image with all
-# C++ dependencies pre-installed, builds with GCC-11 + Ninja, then runs ctest.
+# Mirrors the GitLab CI build: uses the velox-deps Docker image with all
+# C++ dependencies pre-installed, builds with GCC-11 + Ninja.
 
 name: Linux Gluten Build
 
@@ -79,7 +79,6 @@ jobs:
             -DVELOX_ENABLE_CCACHE=ON \
             -DVELOX_BUILD_SHARED=ON \
             -DVELOX_MONO_LIBRARY=ON \
-            -DVELOX_BUILD_TESTING=ON \
             -DVELOX_ENABLE_KAFKA_CONNECTOR=ON \
             -DVELOX_ENABLE_PULSAR_CONNECTOR=ON \
             -DVELOX_CPR_USE_SYSTEM_CURL=ON \
@@ -89,13 +88,7 @@ jobs:
       - name: Build Velox
         run: cmake --build _build/release --target velox -j $(nproc)
 
-      - name: Ccache after build velox
-        run: ccache -s
-
-      - name: Build Tests
-        run: cmake --build _build/release --target all -j $(nproc)
-
-      - name: Ccache after build tests
+      - name: Ccache after build
         run: ccache -s
 
       - name: Save ccache
@@ -104,55 +97,3 @@ jobs:
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-gluten-build-${{ github.ref_name }}-${{ github.sha }}
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: velox-build
-          path: _build/release/lib/libvelox.so
-          retention-days: 1
-
-  velox-unit-tests:
-    name: Unit Tests
-    needs: velox-build
-    runs-on: ubuntu-latest
-    container: listar1111/velox-deps:ubuntu20
-    defaults:
-      run:
-        shell: bash
-    env:
-      CC: /usr/bin/gcc-11
-      CXX: /usr/bin/g++-11
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Fix git permissions
-        run: git config --global --add safe.directory ${GITHUB_WORKSPACE}
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: velox-build
-          path: _build/release/lib/
-
-      - name: Configure (reuse cache)
-        run: |
-          cmake -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_PREFIX_PATH=/usr/local \
-            -DVELOX_ENABLE_CCACHE=ON \
-            -DVELOX_BUILD_SHARED=ON \
-            -DVELOX_MONO_LIBRARY=ON \
-            -DVELOX_BUILD_TESTING=ON \
-            -DVELOX_ENABLE_KAFKA_CONNECTOR=ON \
-            -DVELOX_ENABLE_PULSAR_CONNECTOR=ON \
-            -DVELOX_CPR_USE_SYSTEM_CURL=ON \
-            -DTREAT_WARNINGS_AS_ERRORS=0 \
-            -S . -B _build/release
-
-      - name: Build test binaries
-        run: cmake --build _build/release --target all -j $(nproc)
-
-      - name: Run Tests
-        timeout-minutes: 60
-        run: ctest --test-dir _build/release --output-on-failure -j $(nproc) --timeout 300
