@@ -34,7 +34,6 @@ std::shared_ptr<StatefulTask> StatefulTask::create(
   auto task = std::shared_ptr<StatefulTask>(
       new StatefulTask(taskId, std::move(planFragment), std::move(queryCtx)));
   task->initTaskPool();
-  task->addToTaskList();
   return task;
 }
 
@@ -223,10 +222,31 @@ StreamElementPtr StatefulTask::popOutput() {
   return out;
 }
 
+void StatefulTask::close() {
+  try {
+    if (isRunning()) {
+      finish();
+    }
+  } catch (...) {
+    try {
+      requestCancel().wait();
+    } catch (...) {
+    }
+  }
+  {
+    std::lock_guard<std::mutex> lock(nativeCallbackBridgeMutex_);
+    nativeCallbackBridge_.reset();
+  }
+  pendings_.clear();
+  operatorChain_.reset();
+  driver.reset();
+  statebackend_.reset();
+}
+
 void StatefulTask::finish() {
   VELOX_CHECK(
       pendings_.empty(),
-      "Outputs have {} not been consumed before finishing the task. {} {}",
+      "Outputs have {} not been consumed before finishing the task. {}",
       pendings_.size(),
       operatorChain_->detail());
   operatorChain_->close();

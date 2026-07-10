@@ -82,6 +82,9 @@ class StatefulTask : public exec::Task {
   // The task is finished, close all operators and reset driver
   void finish();
 
+  // Closes the task and releases native operator resources.
+  void close();
+
   // get stats for stateful task.
   exec::TaskStats statefulTaskStats();
 
