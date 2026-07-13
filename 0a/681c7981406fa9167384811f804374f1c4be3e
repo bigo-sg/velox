@@ -1,0 +1,24 @@
+velox/experimental/stateful/WatermarkAssigner.cpp
+  s_23651fc93834ee::t_e15a6d1c7f21e8 101-102
+velox/experimental/stateful/WatermarkAssigner.h
+  s_23651fc93834ee::t_e6b51fd3ab5942 86-87
+velox/experimental/stateful/WatermarkSource.cpp
+  s_23651fc93834ee::t_8edbd375cae51e 74-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "0a681c7981406fa9167384811f804374f1c4be3e",
+  "prompts": {},
+  "logical_commit_id": "3e22ec948c6056a85c38ee969e6c11227588f204",
+  "sessions": {
+    "s_23651fc93834ee": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0d944f4e6ffeWmKFgw1SHWXBka",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
