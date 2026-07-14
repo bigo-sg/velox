@@ -1,0 +1,26 @@
+velox/connectors/kafka/KafkaDataSource.h
+  s_2546288b270139::t_bc2f8769c91b1f 19,21,47-48,105-107,161-163
+  s_2546288b270139::t_4fe9c51807656a 164
+velox/connectors/kafka/KafkaDataSource.cpp
+  s_2546288b270139::t_ce8104c2f68bd8 262
+  s_2546288b270139::t_bc2f8769c91b1f 33,62,85-89,238-257,272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "2ae6d4c026491c9a585beb11e5e065ff8dae932b",
+  "prompts": {},
+  "logical_commit_id": "2ae6d4c026491c9a585beb11e5e065ff8dae932b",
+  "sessions": {
+    "s_2546288b270139": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a0a2d37fffe8uwBOxWcW5ryVe",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>",
+      "total_additions": 42,
+      "total_deletions": 4
+    }
+  }
+}
