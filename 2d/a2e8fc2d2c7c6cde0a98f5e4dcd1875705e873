@@ -1,0 +1,32 @@
+velox/experimental/stateful/WatermarkAssigner.h
+  s_23651fc93834ee::t_53ed8c6b7c96d7 88-91
+velox/experimental/stateful/WatermarkAssigner.cpp
+  s_23651fc93834ee::t_98b656bc692b79 128-130
+  s_23651fc93834ee::t_17eda767c549cb 114
+  s_23651fc93834ee::t_1ffaf6c298b449 107
+  s_23651fc93834ee::t_13e02d06c5075f 108
+velox/experimental/stateful/WatermarkSource.h
+  s_23651fc93834ee::t_309dfea501ba84 64
+velox/experimental/stateful/WatermarkSource.cpp
+  s_23651fc93834ee::t_38727a85b15684 100
+  s_23651fc93834ee::t_5af80017509255 86-88
+  s_23651fc93834ee::t_b1cf98c0b9ca4e 80
+  s_23651fc93834ee::t_c6e81b56f31db3 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "2da2e8fc2d2c7c6cde0a98f5e4dcd1875705e873",
+  "prompts": {},
+  "logical_commit_id": "97722ae8afd782923d800029200e1da888a2ba8e",
+  "sessions": {
+    "s_23651fc93834ee": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0d944f4e6ffeWmKFgw1SHWXBka",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}

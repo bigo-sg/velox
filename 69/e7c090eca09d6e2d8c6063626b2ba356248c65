@@ -1,0 +1,27 @@
+velox/experimental/stateful/WatermarkIdleTracker.h
+  s_23651fc93834ee::t_3f4e79b7e2b54e 58
+velox/experimental/stateful/WatermarkAssigner.h
+  s_23651fc93834ee::t_44bffe6e26aad8 86
+velox/experimental/stateful/WatermarkIdleTracker.cpp
+  s_23651fc93834ee::t_dd5bfab88e8215 40,44
+  s_23651fc93834ee::t_49c525631e064d 28
+velox/experimental/stateful/tests/WatermarkIdleTrackerTest.cpp
+  s_23651fc93834ee::t_d6632236ea330b 77-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "69e7c090eca09d6e2d8c6063626b2ba356248c65",
+  "prompts": {},
+  "logical_commit_id": "0d901a850ee4b938210d4017d0540750d50d9f4d",
+  "sessions": {
+    "s_23651fc93834ee": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0d944f4e6ffeWmKFgw1SHWXBka",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>"
+    }
+  }
+}
