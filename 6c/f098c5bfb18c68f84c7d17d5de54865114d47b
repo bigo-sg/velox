@@ -1,0 +1,35 @@
+velox/experimental/stateful/tests/IdleTimerManagerTest.cpp
+  s_a20f46ee58911e::t_fcf5409492324a 1-104
+velox/experimental/stateful/tests/WatermarkGeneratorTest.cpp
+  s_a20f46ee58911e::t_fcf5409492324a 211-213,215,228-231,241,511-525,528,530,532-533,535-540,543,545-546,548-565,567-569,571,573-574,576-582,584-585,587-588
+  s_a20f46ee58911e::t_a46715d071e3f0 529,531,534,544,547,566,570,572,575,583,586
+  s_a20f46ee58911e::t_9ebb3ea057cd43 119-120,122-126,129-136,140-155,157-159,209,589-597,600-606,609-615,617
+  s_a20f46ee58911e::t_9c8b79cffe0d67 526-527,541-542
+  s_a20f46ee58911e::t_3e714c3ec8bc35 121,127-128,137-139,156,607-608,616
+  s_a20f46ee58911e::t_9ebc4f7fd3650e 598-599
+  s_a20f46ee58911e::t_20d54632bf5ff7 210
+velox/experimental/stateful/IdleTimerManager.h
+  s_a20f46ee58911e::t_fcf5409492324a 36-39
+velox/experimental/stateful/tests/CMakeLists.txt
+  s_a20f46ee58911e::t_fcf5409492324a 24-25,34-37,44-45
+  s_a20f46ee58911e::t_9c8b79cffe0d67 46-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "6cf098c5bfb18c68f84c7d17d5de54865114d47b",
+  "prompts": {},
+  "logical_commit_id": "6cf098c5bfb18c68f84c7d17d5de54865114d47b",
+  "sessions": {
+    "s_a20f46ee58911e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a010e942ffeLrVo7ecIRbvkFY",
+        "model": "gpt-5.5"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>",
+      "total_additions": 294,
+      "total_deletions": 19
+    }
+  }
+}
