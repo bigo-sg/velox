@@ -1,0 +1,42 @@
+velox/experimental/stateful/IdleTimerManager.h
+  s_2546288b270139::t_98338c1a2a9e2f 1-27,32-35,40-76
+  s_2546288b270139::t_9f6095fe215851 28-31
+  s_2546288b270139::t_f1131e6ac65cbe 36-39
+velox/experimental/stateful/WatermarkGenerator.h
+  s_2546288b270139::t_a2ff1439a498c6 98-101
+velox/experimental/stateful/WatermarkSource.cpp
+  s_2546288b270139::t_d912855fd3e386 84-94,98
+velox/experimental/stateful/WatermarkAssigner.cpp
+  s_2546288b270139::t_d912855fd3e386 111-121,125
+velox/experimental/stateful/WatermarkIdleTracker.cpp
+  s_2546288b270139::t_a2ff1439a498c6 62-65
+velox/experimental/stateful/WatermarkIdleTracker.h
+  s_2546288b270139::t_a2ff1439a498c6 52-53
+velox/experimental/stateful/WatermarkAssigner.h
+  s_2546288b270139::t_98338c1a2a9e2f 20,74
+  s_2546288b270139::t_59e81b8a8c4323 60-62
+velox/experimental/stateful/StatefulTask.cpp
+  s_2546288b270139::t_fbf77e6992b1d0 149-166
+velox/experimental/stateful/WatermarkSource.h
+  s_2546288b270139::t_9f6095fe215851 56-59
+  s_2546288b270139::t_98338c1a2a9e2f 20,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "4b7d8a635092324978b2d8539377a556a7b535a7",
+  "prompts": {},
+  "logical_commit_id": "4b7d8a635092324978b2d8539377a556a7b535a7",
+  "sessions": {
+    "s_2546288b270139": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a0a2d37fffe8uwBOxWcW5ryVe",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>",
+      "total_additions": 148,
+      "total_deletions": 95
+    }
+  }
+}
