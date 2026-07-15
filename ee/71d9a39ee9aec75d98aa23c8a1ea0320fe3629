@@ -1,0 +1,22 @@
+velox/experimental/stateful/tests/IdleTimerManagerTest.cpp
+  s_c6f131a590bd51::t_73942ee1267e19 53-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "ee71d9a39ee9aec75d98aa23c8a1ea0320fe3629",
+  "prompts": {},
+  "logical_commit_id": "ee71d9a39ee9aec75d98aa23c8a1ea0320fe3629",
+  "sessions": {
+    "s_c6f131a590bd51": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a6d06d4cffeYJBeS1oC4YZoA9",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>",
+      "total_additions": 47,
+      "total_deletions": 50
+    }
+  }
+}
