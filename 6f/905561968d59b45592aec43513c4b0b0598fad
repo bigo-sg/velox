@@ -1,0 +1,22 @@
+velox/experimental/stateful/StatefulOperator.cpp
+  s_c6f131a590bd51::t_6249ec6a53cc2b 30-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "6f905561968d59b45592aec43513c4b0b0598fad",
+  "prompts": {},
+  "logical_commit_id": "6f905561968d59b45592aec43513c4b0b0598fad",
+  "sessions": {
+    "s_c6f131a590bd51": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0a6d06d4cffeYJBeS1oC4YZoA9",
+        "model": "glm-5.2"
+      },
+      "human_author": "lgbo-ustc <lgbo.ustc@gmail.com>",
+      "total_additions": 3,
+      "total_deletions": 1
+    }
+  }
+}
