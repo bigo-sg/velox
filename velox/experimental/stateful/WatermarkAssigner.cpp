@@ -37,6 +37,7 @@ WatermarkAssigner::~WatermarkAssigner() {
 
 void WatermarkAssigner::addInput(StreamElementPtr input) {
   auto record = std::static_pointer_cast<StreamRecord>(input);
+  // TODO: preserve rowKind across this operator.
   input_ = record->record();
   op()->addInput(input_);
 

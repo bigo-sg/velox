@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "velox/core/PlanNode.h"
+#include "velox/vector/SimpleVector.h"
 
 namespace facebook::velox::stateful {
 
@@ -82,31 +83,74 @@ class WatermarkStatus : public StreamElement {
   const bool idle_;
 };
 
+// StreamRecord carries a RowVector of user columns together with an optional
+// per-row RowKind vector (TINYINT, byte ordinals matching Flink RowKind:
+// 0=INSERT, 1=UPDATE_BEFORE, 2=UPDATE_AFTER, 3=DELETE). When rowKind is null
+// the record is appendOnly (all INSERT) and toMergedRowVector() returns the
+// user RowVector without a trailing $row_kind column.
 class StreamRecord : public StreamElement {
  public:
-  StreamRecord(std::string nodeId, RowVectorPtr record)
+  // Primary constructors: user RowVector + optional per-row RowKind vector.
+  // rowKind == nullptr means appendOnly.
+  StreamRecord(
+      std::string nodeId,
+      RowVectorPtr record,
+      SimpleVectorPtr<int8_t> rowKind = nullptr)
       : StreamElement(nodeId),
         record_(std::move(record)),
+        rowKind_(std::move(rowKind)),
         timestamp_(-1),
         hasTimestamp_(false),
         key_(-1) {}
 
-  StreamRecord(std::string nodeId, RowVectorPtr record, int64_t timestamp)
+  StreamRecord(
+      std::string nodeId,
+      RowVectorPtr record,
+      SimpleVectorPtr<int8_t> rowKind,
+      int64_t timestamp)
       : StreamElement(nodeId),
         record_(std::move(record)),
+        rowKind_(std::move(rowKind)),
         timestamp_(timestamp),
         hasTimestamp_(true),
         key_(-1) {}
 
-  StreamRecord(std::string nodeId, int key, RowVectorPtr record)
+  // Convenience constructor for appendOnly records carrying a timestamp.
+  StreamRecord(std::string nodeId, RowVectorPtr record, int64_t timestamp)
       : StreamElement(nodeId),
         record_(std::move(record)),
+        rowKind_(nullptr),
+        timestamp_(timestamp),
+        hasTimestamp_(true),
+        key_(-1) {}
+
+  StreamRecord(
+      std::string nodeId,
+      int key,
+      RowVectorPtr record,
+      SimpleVectorPtr<int8_t> rowKind = nullptr)
+      : StreamElement(nodeId),
+        record_(std::move(record)),
+        rowKind_(std::move(rowKind)),
         timestamp_(-1),
         hasTimestamp_(false),
         key_(key) {}
 
   const RowVectorPtr& record() const {
     return record_;
+  }
+
+  // May be null when appendOnly.
+  const SimpleVectorPtr<int8_t>& rowKind() const {
+    return rowKind_;
+  }
+
+  bool appendOnly() const {
+    return !rowKind_;
+  }
+
+  vector_size_t size() const {
+    return record_->size();
   }
 
   int64_t timestamp() const {
@@ -125,10 +169,30 @@ class StreamRecord : public StreamElement {
     return hasTimestamp_;
   }
 
+  // Merges record_ + rowKind_ into a single RowVector. By default an appendOnly
+  // record returns record_ as-is (no trailing $row_kind column). When
+  // alwaysAppendRowKind is true, the trailing $row_kind column is always
+  // present: rowKind_ for changelog records, or a ConstantVector<int8_t>
+  // (INSERT) for appendOnly records. Used by callers (e.g. JNI boundary,
+  // StatefulCalcOperator) that need a RowVector schema matching an
+  // N+1-column output type regardless of appendOnly state.
+  RowVectorPtr toMergedRowVector(bool alwaysAppendRowKind = false) const;
+
+  // Splits a merged RowVector (user columns + optional trailing $row_kind)
+  // back into a StreamRecord. If the trailing column is absent or is a
+  // ConstantVector<int8_t>(INSERT), the result is appendOnly (rowKind=null).
+  static std::shared_ptr<StreamRecord> create(
+      std::string nodeId,
+      RowVectorPtr merged);
+
  private:
   const RowVectorPtr record_;
+  const SimpleVectorPtr<int8_t> rowKind_;
   const int64_t timestamp_;
   bool hasTimestamp_ = false;
   const int key_;
 };
+
+using StreamRecordPtr = std::shared_ptr<StreamRecord>;
+
 } // namespace facebook::velox::stateful

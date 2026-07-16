@@ -45,6 +45,7 @@
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StatefulSourceOperator.h"
 #include "velox/experimental/stateful/StreamJoin.h"
 #include "velox/experimental/stateful/StreamKeyedOperator.h"
 #include "velox/experimental/stateful/StreamPartition.h"
@@ -420,6 +421,10 @@ StatefulOperatorPtr StatefulPlanner::transformGenericOperator(
         std::move(op), std::move(targets), std::move(watermarkGenerator));
   }
   std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
+  if (std::dynamic_pointer_cast<const core::TableScanNode>(planNode.node())) {
+    return std::make_unique<StatefulSourceOperator>(
+        std::move(op), std::move(targets));
+  }
   return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
 }
 

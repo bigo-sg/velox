@@ -65,6 +65,7 @@ void WindowAggregator::initializeState() {
 void WindowAggregator::addInput(StreamElementPtr input) {
   VELOX_CHECK(!input_, "Last input has not been processed");
   auto record = std::static_pointer_cast<StreamRecord>(input);
+  // TODO: preserve rowKind across this operator.
   input_ = record->record();
 }
 
