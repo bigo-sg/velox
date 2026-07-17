@@ -44,6 +44,7 @@
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
+#include "velox/experimental/stateful/StatefulCalcOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StatefulSourceOperator.h"
 #include "velox/experimental/stateful/StreamJoin.h"
@@ -420,8 +421,38 @@ StatefulOperatorPtr StatefulPlanner::transformGenericOperator(
     return std::make_unique<WatermarkSource>(
         std::move(op), std::move(targets), std::move(watermarkGenerator));
   }
-  std::unique_ptr<exec::Operator> op = transformOperator(planNode.node());
-  if (std::dynamic_pointer_cast<const core::TableScanNode>(planNode.node())) {
+
+  // Calc path: route FilterNode and ProjectNode (and the Filter+Project /
+  // Project+Filter pairs) through StatefulCalcOperator, which augments the
+  // project internally to keep $row_kind as a trailing column.
+  auto node = planNode.node();
+  std::shared_ptr<const core::FilterNode> filterNode = nullptr;
+  std::shared_ptr<const core::ProjectNode> projectNode = nullptr;
+  if (auto filter = std::dynamic_pointer_cast<const core::FilterNode>(node)) {
+    filterNode = filter;
+    if (node->sources().size() == 1) {
+      projectNode = std::dynamic_pointer_cast<const core::ProjectNode>(
+          node->sources()[0]);
+    }
+  } else if (
+      auto project = std::dynamic_pointer_cast<const core::ProjectNode>(node)) {
+    projectNode = project;
+    if (project->sources().size() == 1) {
+      filterNode = std::dynamic_pointer_cast<const core::FilterNode>(
+          project->sources()[0]);
+    }
+  }
+  if (filterNode || projectNode) {
+    return std::make_unique<StatefulCalcOperator>(
+        nextOperatorId(),
+        ctx_,
+        std::move(filterNode),
+        std::move(projectNode),
+        std::move(targets));
+  }
+
+  std::unique_ptr<exec::Operator> op = transformOperator(node);
+  if (std::dynamic_pointer_cast<const core::TableScanNode>(node)) {
     return std::make_unique<StatefulSourceOperator>(
         std::move(op), std::move(targets));
   }
