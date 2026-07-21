@@ -54,7 +54,11 @@ bool StatefulOperator::isFinished() {
 
 void StatefulOperator::addInput(StreamElementPtr input) {
   auto record = std::static_pointer_cast<StreamRecord>(input);
-  const auto& rowVector = record->record();
+  // Base implementation drops rowKind: it feeds only the record value to the
+  // underlying velox operator, which is correct for stateless passthrough. The
+  // sink path (StatefulSinkOperator) and retract-aware operators override this
+  // to thread rowKind through.
+  RowVectorPtr rowVector = record->record();
   operator_->traceInput(rowVector);
   operator_->addInput(rowVector);
 }

@@ -22,6 +22,7 @@ target_link_libraries(
   velox_print_sink_test
   velox_print_connector
   velox_connector_util
+  velox_memory
   GTest::gtest
   GTest::gtest_main)
 
