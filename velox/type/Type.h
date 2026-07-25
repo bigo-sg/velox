@@ -1254,6 +1254,43 @@ using TimestampType = ScalarType<TypeKind::TIMESTAMP>;
 using VarcharType = ScalarType<TypeKind::VARCHAR>;
 using VarbinaryType = ScalarType<TypeKind::VARBINARY>;
 
+class FlinkTimestampType : public TimestampType {
+ public:
+  explicit FlinkTimestampType(int precision, bool localZoned = false);
+
+  uint8_t precision() const {
+    return parameters_[0].longLiteral.value();
+  }
+
+  bool localZoned() const {
+    return localZoned_;
+  }
+
+  const char* name() const override {
+    return localZoned_ ? "FLINK_TIMESTAMP_LTZ" : "FLINK_TIMESTAMP";
+  }
+
+  std::string toString() const override {
+    return fmt::format(
+        "{}({})", localZoned_ ? "TIMESTAMP_LTZ" : "TIMESTAMP", precision());
+  }
+
+  bool equivalent(const Type& other) const override;
+
+  folly::dynamic serialize() const override;
+
+  const std::vector<TypeParameter>& parameters() const override {
+    return parameters_;
+  }
+
+ private:
+  const bool localZoned_;
+  const std::vector<TypeParameter> parameters_;
+};
+
+std::shared_ptr<const FlinkTimestampType> FLINK_TIMESTAMP(int precision);
+std::shared_ptr<const FlinkTimestampType> FLINK_TIMESTAMP_LTZ(int precision);
+
 constexpr long kMillisInSecond = 1000;
 constexpr long kMillisInMinute = 60 * kMillisInSecond;
 constexpr long kMillisInHour = 60 * kMillisInMinute;
