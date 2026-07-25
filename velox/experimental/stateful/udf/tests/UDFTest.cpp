@@ -87,8 +87,9 @@ TEST_F(UDFTest, extractAllFields) {
       {"hour", "HOUR", "Hour", 9},
       {"minute", "MINUTE", "Minute", 40},
       {"second", "SECOND", "Second", 30},
-      {"day_of_week", "DAY_OF_WEEK", "Day_Of_Week", 1},
-      {"dow", "DOW", "Dow", 1},
+      {"day_of_week", "DAY_OF_WEEK", "Day_Of_Week", 2},
+      {"dow", "DOW", "Dow", 2},
+      {"isodow", "ISODOW", "IsoDow", 1},
       {"day_of_year", "DAY_OF_YEAR", "Day_Of_Year", 159},
       {"doy", "DOY", "Doy", 159},
   };
@@ -102,10 +103,12 @@ TEST_F(UDFTest, extractAllFields) {
         << "field: " << f.mixed;
   }
 
-  // Sunday: tm_wday=0 returns 7
   auto sunday = Timestamp(kSundayTs, 0);
   for (const auto& name :
        {"day_of_week", "DAY_OF_WEEK", "Day_Of_Week", "dow", "DOW", "Dow"}) {
+    EXPECT_EQ(1, extractField(name, sunday).value()) << "field: " << name;
+  }
+  for (const auto& name : {"isodow", "ISODOW", "IsoDow"}) {
     EXPECT_EQ(7, extractField(name, sunday).value()) << "field: " << name;
   }
 }
@@ -116,6 +119,40 @@ TEST_F(UDFTest, extractUnknownFieldReturnsNull) {
 
   EXPECT_FALSE(extractField("unknown_field", ts).has_value());
   EXPECT_FALSE(extractField("UNKNOWN", ts).has_value());
+}
+
+TEST_F(UDFTest, extractFromDate) {
+  stateful::udf::registerFunctions("");
+
+  const int32_t kMondayDate = kMondayTs / 86400;
+
+  // (size, valueAt, ...) overload: ({n}, type) hits the size_t overload via
+  // standard conversion and ends up allocating n uninitialized slots.
+  auto rowVector = makeRowVector({makeFlatVector<int32_t>(
+      1,
+      [kMondayDate](vector_size_t) { return kMondayDate; },
+      nullptr,
+      DATE())});
+
+  const std::vector<std::pair<std::string, int64_t>> fields = {
+      {"year", 2026},
+      {"month", 6},
+      {"quarter", 2},
+      {"day", 8},
+      {"day_of_month", 8},
+      {"day_of_week", 2},
+      {"dow", 2},
+      {"isodow", 1},
+      {"day_of_year", 159},
+      {"doy", 159},
+  };
+
+  for (const auto& [field, expected] : fields) {
+    auto expr = makeExtractExpr(field, DATE());
+    auto result = evaluate(expr, rowVector);
+    EXPECT_EQ(expected, result->asFlatVector<int64_t>()->valueAt(0))
+        << "field: " << field;
+  }
 }
 
 TEST_F(UDFTest, splitIndex) {

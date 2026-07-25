@@ -27,6 +27,8 @@ void registerFunctions(const std::string& prefix) {
       {prefix + "count_char"});
   registerFunction<ExtractFunction, int64_t, Varchar, Timestamp>(
       {prefix + "extract"});
+  registerFunction<ExtractFunction, int64_t, Varchar, Date>(
+      {prefix + "extract"});
   registerFunction<SplitIndexFunction, Varchar, Varchar, Varchar, int64_t>(
       {prefix + "split_index"});
 }
