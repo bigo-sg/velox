@@ -16,6 +16,7 @@
 #include "velox/experimental/stateful/StreamPartition.h"
 #include <cstdint>
 #include "velox/experimental/stateful/StatefulTask.h"
+#include "velox/vector/VectorEncoding.h"
 
 namespace facebook::velox::stateful {
 
@@ -25,7 +26,7 @@ StreamPartition::StreamPartition(
     int numPartitions)
     : StatefulOperator(std::move(op), {}),
       partitionFunction_(std::move(partitionFunctionSpec.create(
-          numPartitions_,
+          numPartitions,
           /*localExchange=*/false))),
       numPartitions_(numPartitions) {
   indexBuffers_.resize(numPartitions_);
@@ -148,6 +149,12 @@ StreamPartition::wrapForPartition(
   auto wrapped = BaseVector::wrapInDictionary(nullptr, indices, size, rowKind);
   auto wrappedRowKind =
       std::dynamic_pointer_cast<SimpleVector<int8_t>>(wrapped);
+  VELOX_CHECK_NOT_NULL(
+      wrappedRowKind,
+      "wrapInDictionary unexpectedly returned a non-SimpleVector encoding for the rowKind column: {}",
+      wrapped == nullptr
+          ? std::string{"null"}
+          : VectorEncoding::mapSimpleToName(wrapped->encoding()));
   return {std::move(wrappedValue), std::move(wrappedRowKind)};
 }
 

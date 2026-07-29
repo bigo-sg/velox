@@ -45,8 +45,7 @@ void WatermarkSource::advance() {
   }
 
   setSourceEmpty(false);
-  pushOutput(
-      std::make_shared<StreamRecord>(getPlanNodeId(), intermediateResult));
+  pushOutput(StreamRecord::create(getPlanNodeId(), intermediateResult));
 
   if (intermediateResult->size() == 0) {
     return;

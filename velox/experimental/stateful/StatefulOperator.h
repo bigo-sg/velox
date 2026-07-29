@@ -56,10 +56,10 @@ class StatefulOperator {
 
   virtual bool isFinished();
 
-  // Receives a StreamRecord and feeds value() to the underlying velox operator.
-  // The base implementation drops rowKind, which is correct for stateless
-  // passthrough. Operators with retract semantics (group aggregation, stream
-  // join, etc.) must override this and advance() to act on rowKind.
+  // Receives a StreamRecord and feeds record() to the underlying velox
+  // operator. The base implementation drops rowKind, which is correct for
+  // stateless passthrough. Operators with retract semantics (group aggregation,
+  // stream join, etc.) must override this and advance() to act on rowKind.
   virtual void addInput(StreamElementPtr input);
 
   // Pulls the next output batch from the underlying velox operator and wraps it

@@ -53,7 +53,11 @@ RowVectorPtr StreamRecord::toMergedRowVector(bool alwaysAppendRowKind) const {
   }
   auto mergedType = ROW(std::move(names), std::move(types));
   return std::make_shared<RowVector>(
-      record_->pool(), mergedType, nullptr, size(), std::move(children));
+      record_->pool(),
+      mergedType,
+      record_->nulls(),
+      size(),
+      std::move(children));
 }
 
 std::shared_ptr<StreamRecord> StreamRecord::create(
@@ -67,11 +71,24 @@ std::shared_ptr<StreamRecord> StreamRecord::create(
   }
   auto lastIdx = rowType->size() - 1;
   auto kindVector = merged->childAt(lastIdx);
+  VELOX_USER_CHECK_EQ(
+      kindVector->type()->kind(),
+      TypeKind::TINYINT,
+      "$row_kind column must be TINYINT, got {}",
+      kindVector->type()->toString());
   auto simpleKind = std::dynamic_pointer_cast<SimpleVector<int8_t>>(kindVector);
   VELOX_USER_CHECK_NOT_NULL(
       simpleKind,
       "$row_kind column must be a SimpleVector<int8_t>, got encoding: {}",
       kindVector->encoding());
+  VELOX_USER_CHECK_EQ(
+      simpleKind->size(),
+      merged->size(),
+      "$row_kind column length {} does not match merged RowVector length {}",
+      simpleKind->size(),
+      merged->size());
+  VELOX_USER_CHECK(
+      !simpleKind->mayHaveNulls(), "$row_kind column must not contain nulls");
   std::vector<std::string> names;
   std::vector<TypePtr> types;
   std::vector<VectorPtr> children;
@@ -85,9 +102,20 @@ std::shared_ptr<StreamRecord> StreamRecord::create(
   }
   auto valueType = ROW(std::move(names), std::move(types));
   auto value = std::make_shared<RowVector>(
-      merged->pool(), valueType, nullptr, merged->size(), std::move(children));
+      merged->pool(),
+      valueType,
+      merged->nulls(),
+      merged->size(),
+      std::move(children));
   // Normalize a constant INSERT row kind back to appendOnly (rowKind=null) so
   // downstream code can rely on appendOnly() without re-checking the encoding.
+  // Only ConstantVector is normalized here: its single shared value is O(1)
+  // to inspect. Every other SimpleVector<int8_t> encoding (FlatVector,
+  // DictionaryVector, SequenceVector, ...) would require an O(n) scan over
+  // per-row kind bytes to detect all-INSERT, which is too expensive on the
+  // create() hot path. Such records keep a non-null rowKind_ and appendOnly()
+  // returns false; downstream consumers must walk per-row kinds themselves
+  // (semantically correct, just on the slow path).
   if (simpleKind->isConstantEncoding() &&
       simpleKind->as<ConstantVector<int8_t>>()->valueAt(0) ==
           static_cast<int8_t>(RowKind::INSERT)) {

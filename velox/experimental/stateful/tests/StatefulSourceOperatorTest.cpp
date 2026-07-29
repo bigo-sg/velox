@@ -21,12 +21,13 @@
 
 #include "velox/common/base/tests/GTestUtils.h"
 #include "velox/core/PlanFragment.h"
+#include "velox/core/PlanNode.h"
 #include "velox/exec/Driver.h"
-#include "velox/exec/Task.h"
 #include "velox/exec/Values.h"
 #include "velox/exec/tests/utils/OperatorTestBase.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 
 namespace facebook::velox::stateful::test {
@@ -133,12 +134,10 @@ class StatefulSourceOperatorTest : public exec::test::OperatorTestBase {
     planFragment.planNode = std::make_shared<core::ValuesNode>(
         core::PlanNodeId{"values"}, std::vector<RowVectorPtr>{plainBatch()});
     executor_ = std::make_shared<folly::CPUThreadPoolExecutor>(1);
-    task_ = exec::Task::create(
+    task_ = StatefulTask::create(
         "StatefulSourceOperatorTest_task",
         std::move(planFragment),
-        0,
-        core::QueryCtx::create(executor_.get()),
-        exec::Task::ExecutionMode::kParallel);
+        core::QueryCtx::create(executor_.get()));
     driver_ = exec::Driver::testingCreate();
     driverCtx_ = std::make_unique<exec::DriverCtx>(task_, 0, 0, 0, 0);
     driverCtx_->driver = driver_.get();
@@ -163,7 +162,7 @@ class StatefulSourceOperatorTest : public exec::test::OperatorTestBase {
   }
 
   std::shared_ptr<folly::CPUThreadPoolExecutor> executor_;
-  std::shared_ptr<exec::Task> task_;
+  std::shared_ptr<StatefulTask> task_;
   std::shared_ptr<exec::Driver> driver_;
   std::unique_ptr<exec::DriverCtx> driverCtx_;
 };
