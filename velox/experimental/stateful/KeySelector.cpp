@@ -14,9 +14,172 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/KeySelector.h"
+
+#include <optional>
+
+#include "velox/exec/HashTable.h"
+#include "velox/exec/VectorHasher.h"
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 
 namespace facebook::velox::stateful {
+
+KeySelector::~KeySelector() = default;
+
+KeySelector::KeySelector(
+    std::vector<column_index_t> keyChannels,
+    uint32_t maxParallelism,
+    memory::MemoryPool* pool)
+    : pool_(pool),
+      keyChannels_(std::move(keyChannels)),
+      maxParallelism_(maxParallelism),
+      stableHashes_(pool) {
+  VELOX_CHECK(!keyChannels_.empty(), "KeySelector requires a key channel");
+  VELOX_CHECK_GT(maxParallelism_, 0, "maxParallelism must be positive");
+}
+
+void KeySelector::createInternal(const RowVectorPtr& input) {
+  auto rowType = asRowType(input->type());
+  VELOX_CHECK_NOT_NULL(
+      rowType.get(), "KeySelector probe input must be a row vector");
+  keyTypes_.reserve(keyChannels_.size());
+  for (auto channel : keyChannels_) {
+    VELOX_CHECK_LT(
+        channel, rowType->size(), "Key channel {} out of range", channel);
+    keyTypes_.push_back(rowType->childAt(channel));
+  }
+
+  // The probe hashers are handed to the table and follow its internal hash
+  // mode evolution (kArray / kNormalizedKey / kHash).
+  std::vector<std::unique_ptr<exec::VectorHasher>> probeHashers;
+  probeHashers.reserve(keyChannels_.size());
+  for (auto i = 0; i < keyChannels_.size(); ++i) {
+    probeHashers.push_back(
+        exec::VectorHasher::create(keyTypes_[i], keyChannels_[i]));
+  }
+  hashTable_ = exec::HashTable<false>::createForAggregation(
+      std::move(probeHashers), {}, pool_);
+  // The lookup references the table's hashers (the GroupingSet wiring), so
+  // 'hashTable_' must outlive 'lookup_'.
+  lookup_ = std::make_unique<exec::HashLookup>(hashTable_->hashers(), pool_);
+
+  for (auto i = 0; i < keyChannels_.size(); ++i) {
+    stableHashers_.push_back(
+        exec::VectorHasher::create(keyTypes_[i], keyChannels_[i]));
+  }
+  schema_ = std::make_unique<RowContainerKeySchema>(hashTable_->rows(), keyTypes_);
+}
+
+void KeySelector::probe(const RowVectorPtr& input) {
+  if (FOLLY_UNLIKELY(!hashTable_)) {
+    createInternal(input);
+  }
+  const auto numInput = input->size();
+  lastNumInput_ = numInput;
+  distinctValid_ = false;
+
+  if (numInput == 0) {
+    stableHashes_.resize(0);
+    keys_.clear();
+    probed_ = true;
+    return;
+  }
+  activeRows_ = SelectivityVector(numInput);
+  stableHashes_.resize(numInput);
+
+  // Stable hash chain, independent of the table's hash mode: identical to
+  // the chain recomputed on restore (RowContainerStateKeySerializer), so
+  // hash and keyGroup agree bit for bit between probe time and restore
+  // time. This is deliberately a second hasher set; the table's hash
+  // values cannot be reused because their meaning changes with the table's
+  // hash mode.
+  for (auto i = 0; i < stableHashers_.size(); ++i) {
+    auto& hasher = *stableHashers_[i];
+    auto key = input->childAt(hasher.channel())->loadedVector();
+    hasher.decode(*key, activeRows_);
+    hasher.hash(activeRows_, i > 0, stableHashes_);
+  }
+
+  hashTable_->prepareForGroupProbe(
+      *lookup_,
+      input,
+      activeRows_,
+      exec::BaseHashTable::kNoSpillInputStartPartitionBit);
+  // Null keys probe like any other key and form their own group
+  // (HashTable<false>), so lookup_->rows is never empty here for non-empty
+  // input.
+  hashTable_->groupProbe(
+      *lookup_, exec::BaseHashTable::kNoSpillInputStartPartitionBit);
+
+  keys_.clear();
+  keys_.reserve(numInput);
+  for (vector_size_t row = 0; row < numInput; ++row) {
+    keys_.emplace_back(
+        schema_.get(), lookup_->hits[row], stableHashes_[row], maxParallelism_);
+  }
+  probed_ = true;
+}
+
+folly::Range<const RowContainerStateKey*> KeySelector::keys() const {
+  VELOX_CHECK(probed_, "probe() must be called before keys()");
+  return folly::Range<const RowContainerStateKey*>(
+      keys_.data(), keys_.size());
+}
+
+folly::Range<const RowContainerStateKey*> KeySelector::distinctKeys() const {
+  ensureDistinct();
+  return folly::Range<const RowContainerStateKey*>(
+      distinctKeys_.data(), distinctKeys_.size());
+}
+
+const std::vector<SelectivityVector>& KeySelector::groupRows() const {
+  ensureDistinct();
+  return groupRows_;
+}
+
+folly::Range<const vector_size_t*> KeySelector::newGroups() const {
+  VELOX_CHECK(probed_, "probe() must be called before newGroups()");
+  return folly::Range<const vector_size_t*>(
+      lookup_->newGroups.data(), lookup_->newGroups.size());
+}
+
+exec::RowContainer* KeySelector::keyRowContainer() const {
+  VELOX_CHECK_NOT_NULL(
+      hashTable_, "probe() must be called before keyRowContainer()");
+  return hashTable_->rows();
+}
+
+void KeySelector::ensureDistinct() const {
+  VELOX_CHECK(probed_, "probe() must be called before distinctKeys()");
+  if (distinctValid_) {
+    return;
+  }
+  distinctKeys_.clear();
+  groupRows_.clear();
+  rowToDistinct_.clear();
+  for (vector_size_t row = 0; row < lastNumInput_; ++row) {
+    // Rows with equal user keys share one group row in the key RowContainer
+    // (allowDuplicates is false and row pointers are stable), so the row
+    // pointer is a faithful identity for deduplication.
+    char* groupRow = lookup_->hits[row];
+    auto [iter, inserted] = rowToDistinct_.emplace(
+        groupRow, static_cast<vector_size_t>(distinctKeys_.size()));
+    if (inserted) {
+      distinctKeys_.emplace_back(
+          schema_.get(), groupRow, stableHashes_[row], maxParallelism_);
+      groupRows_.emplace_back(lastNumInput_, false);
+    }
+    groupRows_[iter->second].setValid(row, true);
+  }
+  for (auto& rows : groupRows_) {
+    rows.updateBounds();
+  }
+  distinctValid_ = true;
+}
+
+// -----------------------------------------------------------------------------
+// Deprecated partition(): hash-derived partition id as key identity. Removed
+// once the stateful operators migrate to probe().
+// -----------------------------------------------------------------------------
 
 KeySelector::KeySelector(
     std::unique_ptr<core::PartitionFunction> partitionFunction,
@@ -24,7 +187,8 @@ KeySelector::KeySelector(
     int numPartitions)
     : partitionFunction_(std::move(partitionFunction)),
       pool_(pool),
-      numPartitions_(numPartitions) {}
+      numPartitions_(numPartitions),
+      stableHashes_(pool) {}
 
 std::map<int64_t, RowVectorPtr> KeySelector::partition(
     const RowVectorPtr& input) {
