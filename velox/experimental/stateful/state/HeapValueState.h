@@ -15,19 +15,26 @@
  */
 #pragma once
 
+#include <memory>
+#include <utility>
+
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateTable.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to Flink HeapMapState.
+/// ValueState on the heap storage. The value V is stored directly in the
+/// state table, so V must be a nullable pointer type (raw or smart): the
+/// state table signals a miss with nullptr. Relevant to Flink
+/// HeapValueState.
+/// @param <K> type of key, a StateKey subclass
+/// @param <N> type of namespace, a Namespace subclass
+/// @param <V> type of value, a nullable pointer type
 template <typename K, typename N, typename V>
 class HeapValueState : public ValueState<K, N, V> {
  public:
-  HeapValueState(int keyGroupNumber) {
-    VELOX_CHECK(keyGroupNumber > 0, "keyGroupNumber must be greater than 0");
-    stateTable_ = std::make_unique<StateTable<K, N, V>>(keyGroupNumber);
-  }
+  HeapValueState(std::shared_ptr<StateTable<K, N, V>> stateTable)
+      : stateTable_(std::move(stateTable)) {}
 
   V value(const K& key, const N& ns) override {
     return stateTable_->get(key, ns);
@@ -46,6 +53,6 @@ class HeapValueState : public ValueState<K, N, V> {
   }
 
  private:
-  std::unique_ptr<StateTable<K, N, V>> stateTable_;
+  std::shared_ptr<StateTable<K, N, V>> stateTable_;
 };
 } // namespace facebook::velox::stateful

@@ -90,12 +90,12 @@ class MapState : public State {
 };
 
 // This class is relevant to Flink org.apache.flink.api.common.ListState.
-template <typename K, typename N, typename S>
+template <typename K, typename N, typename T>
 class ListState : public State {
  public:
-  virtual std::vector<S> get(const K& key, const N& ns) = 0;
+  virtual std::vector<T> get(const K& key, const N& ns) = 0;
 
-  virtual void add(const K& key, const N& ns, const S& value) = 0;
+  virtual void add(const K& key, const N& ns, const T& value) = 0;
 
   virtual void remove(const K& key, const N& ns) = 0;
 
@@ -110,7 +110,7 @@ class ListState : public State {
   }
 };
 
-// This class is relevant to Flink org.apache.flink.api.common.ListState.
+// This class is relevant to Flink org.apache.flink.api.common.ValueState.
 template <typename K, typename N, typename V>
 class ValueState : public State {
  public:
