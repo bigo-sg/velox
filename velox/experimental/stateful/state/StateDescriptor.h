@@ -38,15 +38,11 @@ class StateDescriptor {
     return name_;
   }
 
-  int32_t keyGroupNumber() const {
-    return keyGroupNumber_;
-  }
-
   const std::string operatorId() const {
     return operatorId_;
   }
 
-  memory::MemoryPool* memoryPool() {
+  memory::MemoryPool* memoryPool() const {
     return pool_;
   }
 
@@ -55,7 +51,6 @@ class StateDescriptor {
   const std::string name_;
   const std::string operatorId_;
   memory::MemoryPool* pool_;
-  int32_t keyGroupNumber_ = 1024;
 };
 
 // Descriptor of an AccState: pure description of the acc value — the value

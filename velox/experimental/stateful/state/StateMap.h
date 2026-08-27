@@ -16,10 +16,10 @@
 #pragma once
 
 #include "velox/common/base/BitUtil.h"
-#include "velox/experimental/stateful/window/Window.h"
 
 #include <climits>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <set>
 #include <vector>
@@ -38,6 +38,9 @@ int32_t roundUpToPowerOfTwo(int32_t x) {
 }
 } // namespace
 
+/// One entry of the (K, N) -> S map. K and N are StateKey / Namespace
+/// subclasses held by value (both are cheap immutable views), compared and
+/// hashed through the interface contracts.
 template <typename K, typename N, typename S>
 struct StateMapEntry {
   K key_;
@@ -49,11 +52,11 @@ struct StateMapEntry {
   int32_t stateVersion_;
 
   StateMapEntry(
-      K key,
-      N ns,
+      const K& key,
+      const N& ns,
       S state,
       uint64_t hash,
-      std::shared_ptr<StateMapEntry<K, N, S>>& next,
+      const std::shared_ptr<StateMapEntry<K, N, S>>& next,
       int32_t entryVersion,
       int32_t stateVersion)
       : key_(key),
@@ -64,7 +67,9 @@ struct StateMapEntry {
         entryVersion_(entryVersion),
         stateVersion_(stateVersion) {}
 
-  StateMapEntry(StateMapEntry<K, N, S> other, int entryVersion)
+  /// Copy-on-write copy: a fresh entry with the bumped version, taken when a
+  /// snapshot still references the old entry.
+  StateMapEntry(const StateMapEntry<K, N, S>& other, int entryVersion)
       : StateMapEntry(
             other.key_,
             other.namespace_,
@@ -75,22 +80,27 @@ struct StateMapEntry {
             other.stateVersion_) {}
 
   bool operator==(const StateMapEntry<K, N, S>& entry) const {
-    return entry.key_ == key_ && entry.namespace_ == namespace_ &&
-        entry.state_ == state_;
+    return key_.equals(entry.key_) && namespace_.equals(entry.namespace_) &&
+        state_ == entry.state_;
   }
 
-  uint64_t hashCode() {
-    return bits::hashMix(bits::hashMix(key_, namespace_), state_);
+  uint64_t hashCode() const {
+    return bits::hashMix(
+        bits::hashMix(key_.hash(), namespace_.hash()),
+        static_cast<uint64_t>(std::hash<S>{}(state_)));
   }
 };
 
 /**
- * This class is relevant to Flink org.apache.flink.runtime.state.heap.StateMap.
- * remove namespace first.
- * TODO: It is a simplified implementation, not equal to Flink.
- * @param <K> type of key
- * @param <N> type of namespace
- * @param <S> type of state
+ * This class is relevant to Flink
+ * org.apache.flink.runtime.state.heap.CopyOnWriteStateMap: single-level map
+ * keyed by the composite (K, N), with entry copy-on-write under snapshot
+ * versions, incremental rehash and doubling. K and N go through the
+ * StateKey / Namespace contracts (equals / hash), so the map never depends
+ * on a concrete key or namespace type.
+ * @param <K> type of key, a StateKey subclass
+ * @param <N> type of namespace, a Namespace subclass
+ * @param <S> type of state, a nullable pointer type (miss is nullptr)
  */
 template <typename K, typename N, typename S>
 class StateMap {
@@ -111,7 +121,6 @@ class StateMap {
     primaryTableSize_ = 0;
     incrementalRehashTableSize_ = 0;
     modCount_ = 0;
-    lastNamespace_ = N{};
 
     if (capacity < 0) {
       threshold_ = -1;
@@ -129,14 +138,15 @@ class StateMap {
     primaryTable_ = makeTable(capacity);
   }
 
-  S get(K key, N ns) {
+  /// Returns the state for (key, ns) or nullptr on a miss.
+  S get(const K& key, const N& ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
     int32_t requiredVersion = highestRequiredSnapshotVersion_;
     std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
         selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
     for (auto e = tab[index]; e != nullptr; e = e->next_) {
-      if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
+      if (e->hash_ == hash && e->key_.equals(key) && e->namespace_.equals(ns)) {
         if (e->stateVersion_ < requiredVersion) {
           if (e->entryVersion_ < requiredVersion) {
             e = handleChainedEntryCopyOnWrite(tab, hash & (tab.size() - 1), e);
@@ -151,30 +161,30 @@ class StateMap {
     return nullptr;
   }
 
-  void put(K key, N ns, S state) {
+  void put(const K& key, const N& ns, S state) {
     std::shared_ptr<StateMapEntry<K, N, S>> e = putEntry(key, ns);
     e->state_ = state;
     e->stateVersion_ = stateMapVersion_;
   }
 
-  bool containsKey(K key, N ns) {
+  bool containsKey(const K& key, const N& ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
     std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
         selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
     for (auto e = tab[index]; e != nullptr; e = e->next_) {
-      if (e->hash_ == hash && e->namespace_ == ns && e->key_ == key) {
+      if (e->hash_ == hash && e->namespace_.equals(ns) && e->key_.equals(key)) {
         return true;
       }
     }
     return false;
   }
 
-  void remove(K key, N ns) {
+  void remove(const K& key, const N& ns) {
     removeEntry(key, ns);
   }
 
-  size_t size() {
+  size_t size() const {
     return primaryTableSize_ + incrementalRehashTableSize_;
   }
 
@@ -191,16 +201,15 @@ class StateMap {
   uint64_t incrementalRehashTableSize_{0};
   uint64_t modCount_{0};
   uint64_t threshold_{0};
-  N lastNamespace_{};
   std::set<int32_t> snapshotVersions_;
 
-  std::shared_ptr<StateMapEntry<K, N, S>> putEntry(K key, N ns) {
+  std::shared_ptr<StateMapEntry<K, N, S>> putEntry(const K& key, const N& ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
     std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
         selectActiveTable(hash);
     uint64_t index = hash & (tab.size() - 1);
     for (auto e = tab[index]; e != nullptr; e = e->next_) {
-      if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
+      if (e->hash_ == hash && e->key_.equals(key) && e->namespace_.equals(ns)) {
         if (e->entryVersion_ < highestRequiredSnapshotVersion_) {
           e = handleChainedEntryCopyOnWrite(tab, index, e);
         }
@@ -214,7 +223,9 @@ class StateMap {
     return addNewStateMapEntry(tab, key, ns, hash);
   }
 
-  std::shared_ptr<StateMapEntry<K, N, S>> removeEntry(K key, N ns) {
+  std::shared_ptr<StateMapEntry<K, N, S>> removeEntry(
+      const K& key,
+      const N& ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
     std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& tab =
         selectActiveTable(hash);
@@ -222,7 +233,7 @@ class StateMap {
     for (std::shared_ptr<StateMapEntry<K, N, S>> e = tab[index], prev = nullptr;
          e != nullptr;
          prev = e, e = e->next_) {
-      if (e->hash_ == hash && e->key_ == key && e->namespace_ == ns) {
+      if (e->hash_ == hash && e->key_.equals(key) && e->namespace_.equals(ns)) {
         if (prev == nullptr) {
           tab[index] = e->next_;
         } else {
@@ -245,15 +256,9 @@ class StateMap {
 
   std::shared_ptr<StateMapEntry<K, N, S>> addNewStateMapEntry(
       std::vector<std::shared_ptr<StateMapEntry<K, N, S>>>& table,
-      K key,
-      N& ns,
+      const K& key,
+      const N& ns,
       uint64_t hash) {
-    if (ns == lastNamespace_) {
-      ns = lastNamespace_;
-    } else {
-      lastNamespace_ = ns;
-    }
-
     uint64_t index = hash & (table.size() - 1);
     std::shared_ptr<StateMapEntry<K, N, S>> newEntry =
         std::make_shared<StateMapEntry<K, N, S>>(
@@ -308,12 +313,8 @@ class StateMap {
         : incrementalRehashTable_;
   }
 
-  uint64_t compositeHash(K key, N ns) {
-    if constexpr (std::is_same<N, TimeWindow>::value) {
-      return bits::hashMix(key, ns.hashCode());
-    } else {
-      return bits::hashMix(key, ns);
-    }
+  uint64_t compositeHash(const K& key, const N& ns) const {
+    return bits::hashMix(key.hash(), ns.hash());
   }
 
   void incrementalRehash() {
@@ -362,7 +363,9 @@ class StateMap {
     return empty_ != incrementalRehashTable_;
   }
 
-  uint64_t computeHashForOperationAndDoIncrementalRehash(K key, N ns) {
+  uint64_t computeHashForOperationAndDoIncrementalRehash(
+      const K& key,
+      const N& ns) {
     if (isRehashing()) {
       incrementalRehash();
     }

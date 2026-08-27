@@ -15,62 +15,56 @@
  */
 #pragma once
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateTable.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to Flink HeapMapState.
-template <typename K, typename N, typename V>
-class HeapListState : public ListState<K, N, V> {
+/// ListState on the heap storage: the value is a shared vector, created on
+/// the first add and removed state reads as an empty list, as in Flink
+/// HeapListState.
+/// @param <K> type of key, a StateKey subclass
+/// @param <N> type of namespace, a Namespace subclass
+/// @param <T> type of the list elements
+template <typename K, typename N, typename T>
+class HeapListState : public ListState<K, N, T> {
  public:
-  HeapListState(int keyGroupNumber) {
-    stateTable_ =
-        std::make_unique<StateTable<K, N, std::shared_ptr<std::vector<V>>>>(
-            keyGroupNumber);
-  }
+  HeapListState(
+      std::shared_ptr<StateTable<K, N, std::shared_ptr<std::vector<T>>>>
+          stateTable)
+      : stateTable_(std::move(stateTable)) {}
 
-  std::vector<V> get(const K& key, const N& ns) override {
+  std::vector<T> get(const K& key, const N& ns) override {
     auto currentList = stateTable_->get(key, ns);
-    return *currentList.get();
+    return currentList == nullptr ? std::vector<T>{} : *currentList;
   }
 
-  void add(const K& key, const N& ns, const V& value) override {
-    auto currentList = getOrCreate(key, ns);
-    currentList->push_back(value);
-  }
-
-  /**
-  void addAll(int keyGroupIndex, std::list<T>& values) override {
-    std::shared_ptr<std::list<T>> currentList = getOrCreate(keyGroupIndex);
-    currentList->insert(currentList->end(), values.begin(), values.end());
-  }
-
-  void update(int keyGroupIndex, std::list<T>& values) override {
-    std::shared_ptr<std::list<T>> currentList = getOrCreate(keyGroupIndex);
-    *currentList = values; // Replace the current list with the new values
-  }
-  */
-
-  void clear() override {
-    stateTable_->clear();
+  void add(const K& key, const N& ns, const T& value) override {
+    getOrCreate(key, ns)->push_back(value);
   }
 
   void remove(const K& key, const N& ns) override {
     stateTable_->remove(key, ns);
   }
 
- private:
-  std::shared_ptr<std::vector<V>> getOrCreate(const K& key, const N& ns) {
-    std::shared_ptr<std::vector<V>> currentList = stateTable_->get(key, ns);
-    if (currentList == nullptr) {
-      currentList = std::make_shared<std::vector<V>>();
-      stateTable_->put(key, ns, currentList);
-    }
-    return currentList;
+  void clear() override {
+    stateTable_->clear();
   }
 
-  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::vector<V>>>>
-      stateTable_;
+ private:
+  std::shared_ptr<std::vector<T>> getOrCreate(const K& key, const N& ns) {
+    if (auto currentList = stateTable_->get(key, ns)) {
+      return currentList;
+    }
+    auto freshList = std::make_shared<std::vector<T>>();
+    stateTable_->put(key, ns, freshList);
+    return freshList;
+  }
+
+  std::shared_ptr<StateTable<K, N, std::shared_ptr<std::vector<T>>>> stateTable_;
 };
 } // namespace facebook::velox::stateful
