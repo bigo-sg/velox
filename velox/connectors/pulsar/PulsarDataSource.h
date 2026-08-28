@@ -17,11 +17,13 @@
 
 #include <folly/experimental/FunctionScheduler.h>
 #include <atomic>
+#include <unordered_map>
 #include "velox/common/base/RuntimeMetrics.h"
 #include "velox/common/future/VeloxPromise.h"
 #include "velox/connectors/Connector.h"
 #include "velox/connectors/kafka/format/KafkaRecordDeserializer.h"
 #include "velox/connectors/pulsar/PulsarConfig.h"
+#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include "velox/connectors/pulsar/PulsarConsumer.h"
 #include "velox/type/Filter.h"
 #include "velox/type/Type.h"
@@ -62,6 +64,8 @@ class PulsarDataSource : public DataSource {
 
   std::vector<std::string> snapshotState(int64_t checkpointId) override;
 
+  void restoreState(const std::vector<std::string>& checkpointRecords) override;
+
   std::vector<std::string> commit(int64_t id) override;
 
   std::unordered_map<std::string, RuntimeCounter> runtimeStats() override;
@@ -76,7 +80,6 @@ class PulsarDataSource : public DataSource {
 
  private:
   const ConnectorQueryCtx* queryCtx_;
-  ConnectionConfigPtr baseConfig_;
   ConnectionConfigPtr config_;
   RowTypePtr outputType_;
   std::string connectorId_;
@@ -85,37 +88,41 @@ class PulsarDataSource : public DataSource {
   folly::FunctionScheduler scheduler_;
   std::optional<ContinuePromise> blockingPromise_;
   uint64_t blockingSequence_{0};
-  std::atomic_bool canceled_{false};
+  std::atomic_bool cancelled_{false};
   uint64_t completedRows_ = 0;
   uint64_t completedBytes_ = 0;
   VectorPtr outRow_;
-  uint64_t batchSize_;
   std::vector<PulsarMessage> queue_;
   size_t consumePos_ = 0;
-  uint64_t receivedMessages_ = 0;
-  uint64_t receivedBytes_ = 0;
-  uint64_t receiveTimeouts_ = 0;
   uint64_t acknowledgedMessages_ = 0;
-  uint64_t negativelyAcknowledgedMessages_ = 0;
-  uint64_t deserializeFailures_ = 0;
-  uint64_t skippedMessagesAfterEnd_ = 0;
-  std::string checkpointStartMessageId_;
   std::string checkpointStateToCommit_;
-  std::vector<::pulsar::Message> pendingAckMessages_;
-  std::vector<::pulsar::Message> checkpointAckMessages_;
+  std::unordered_map<std::string, TopicPartitionOffset> checkpointAckOffsets_;
+  std::vector<std::string> restoredCheckpointRecords_;
+  std::unordered_map<std::string, TopicPartitionOffset> topicPartitionOffsets_;
 
   bool consumerCanbeCreated() const;
-  void createConsumer();
+  void createConsumerForPartitions();
   void resetSplitState();
   bool cumulativeAck() const;
   void completeBlockingFuture();
   std::optional<RowVectorPtr> blockOnReceiveTimeout(
       velox::ContinueFuture& future);
-  void refreshConsumerStats();
   void createCachedQueue(uint32_t size);
   void createRecordDeserializer(
       const std::string& format,
       const RowTypePtr& outputType);
+  std::unordered_map<std::string, TopicPartitionOffset> getSplitPartitions(
+      const PulsarConnectorSplit& split) const;
+  std::unordered_map<std::string, TopicPartitionOffset>
+  offsetsFromCheckpointRecords(
+      const std::vector<std::string>& checkpointRecords) const;
+  std::string snapshotToJson(
+      int64_t checkpointId,
+      const PulsarConnectorSplit& split) const;
+  std::vector<int32_t> selectPartitionsForTask(
+      const std::vector<int32_t>& partitionIndexes) const;
+  int32_t getTaskIndex() const;
+  int32_t getTaskParallelism() const;
 };
 
 } // namespace facebook::velox::connector::pulsar

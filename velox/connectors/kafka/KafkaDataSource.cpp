@@ -170,6 +170,16 @@ void KafkaDataSource::addSplit(ConnectorSplitPtr split) {
       topicPartitions, config_->getStartupMode());
   applyRestoredOffsets(topicPartitions);
   updateNextOffsets(topicPartitions);
+  for (const auto& topicPartition : topicPartitions) {
+    const auto startOffset = topicPartition.get_offset() >= 0
+        ? fmt::format("{}", topicPartition.get_offset())
+        : config_->getStartupMode();
+    LOG(INFO) << fmt::format(
+        "Creating Kafka consumer for topic {} partition {} from start offset {}",
+        topicPartition.get_topic(),
+        topicPartition.get_partition(),
+        startOffset);
+  }
   consumer_->assign(topicPartitions);
 }
 

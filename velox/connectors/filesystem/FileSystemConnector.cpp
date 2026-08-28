@@ -39,9 +39,6 @@ std::unique_ptr<DataSink> FileSystemConnector::createDataSink(
   std::shared_ptr<FileSystemInsertTableHandle> insertTableHandle =
       std::dynamic_pointer_cast<FileSystemInsertTableHandle>(
           connectorInsertTableHandle);
-  VELOX_CHECK_NOT_NULL(
-      insertTableHandle,
-      "Failed to create filesystem data sink because insert table handle is not a FileSystemInsertTableHandle.");
   const std::unordered_map<std::string, std::string>& tableParams =
       insertTableHandle->tableParameters();
   std::shared_ptr<FileSystemWriteConfig> newWriteConfig =

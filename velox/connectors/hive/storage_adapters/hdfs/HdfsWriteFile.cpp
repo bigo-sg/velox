@@ -48,15 +48,7 @@ HdfsWriteFile::HdfsWriteFile(
 
 HdfsWriteFile::~HdfsWriteFile() {
   if (hdfsFile_) {
-    try {
-      close();
-    } catch (const std::exception& e) {
-      LOG(ERROR) << "Failed to close HDFS file in destructor: " << filePath_
-                 << ", error: " << e.what();
-    } catch (...) {
-      LOG(ERROR) << "Failed to close HDFS file in destructor: " << filePath_
-                 << ", unknown error";
-    }
+    close();
   }
 }
 

@@ -21,7 +21,10 @@
 #include <pulsar/MessageId.h>
 #include <atomic>
 #include <optional>
+#include <unordered_map>
+#include <vector>
 #include "velox/connectors/pulsar/PulsarConfig.h"
+#include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 
 namespace facebook::velox::connector::pulsar {
 
@@ -35,16 +38,13 @@ struct PulsarConsumerStats {
   uint64_t receivedBytes{0};
   uint64_t receiveTimeouts{0};
   uint64_t acknowledgedMessages{0};
-  uint64_t negativelyAcknowledgedMessages{0};
-  uint64_t skippedMessagesAfterEnd{0};
 };
 
 class PulsarConsumer {
  public:
   PulsarConsumer(
       const ConnectionConfigPtr& config,
-      uint32_t receiveTimeoutMillis,
-      uint32_t batchSize);
+      std::vector<TopicPartitionOffset> topicPartitionOffsets);
 
   ~PulsarConsumer();
 
@@ -54,11 +54,16 @@ class PulsarConsumer {
 
   void acknowledge(const ::pulsar::Message& message, bool cumulative);
 
-  void negativeAcknowledge(const ::pulsar::Message& message);
+  void acknowledge(
+      const TopicPartitionOffset& topicPartitionOffset,
+      bool cumulative);
 
   const std::string& topic() const {
     return topic_;
   }
+
+  TopicPartitionOffset topicPartitionOffset(
+      const ::pulsar::Message& message) const;
 
   const std::string& subscriptionName() const {
     return subscriptionName_;
@@ -66,10 +71,6 @@ class PulsarConsumer {
 
   const PulsarConsumerStats& stats() const {
     return stats_;
-  }
-
-  bool reachedEnd() const {
-    return reachedEnd_;
   }
 
   bool closed() const {
@@ -81,14 +82,26 @@ class PulsarConsumer {
       const std::string& value,
       int32_t partitionIndex);
 
+  struct TopicPartitionConsumer {
+    TopicPartitionOffset topicPartitionOffset;
+    std::string topic;
+    ::pulsar::Consumer consumer;
+  };
+
+  bool advanceConsumer();
+  TopicPartitionConsumer& currentConsumer();
+  TopicPartitionConsumer& consumerForMessage(const ::pulsar::Message& message);
+  TopicPartitionConsumer& consumerForPartitionedTopic(
+      const std::string& partitionedTopic);
+
   ::pulsar::Client client_;
-  ::pulsar::Consumer consumer_;
+  std::unordered_map<std::string, TopicPartitionConsumer> consumers_;
+  std::vector<std::string> partitionedTopics_;
+  size_t currentConsumerIndex_{0};
   std::chrono::milliseconds receiveTimeoutMillis_;
   uint32_t batchSize_;
   std::string topic_;
   std::string subscriptionName_;
-  std::optional<::pulsar::MessageId> endMessageId_;
-  bool reachedEnd_{false};
   std::atomic_bool closed_{false};
   PulsarConsumerStats stats_;
 };

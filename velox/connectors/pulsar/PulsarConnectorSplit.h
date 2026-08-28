@@ -16,19 +16,31 @@
 #pragma once
 
 #include <folly/dynamic.h>
+#include <vector>
 #include "velox/connectors/Connector.h"
 
 namespace facebook::velox::connector::pulsar {
+
+struct TopicPartitionOffset {
+  std::string partitionedTopic;
+  std::string messageId;
+  bool startMessageIdInclusive;
+
+  TopicPartitionOffset(
+      std::string partitionedTopic,
+      std::string messageId = "",
+      bool startMessageIdInclusive = true)
+      : partitionedTopic(std::move(partitionedTopic)),
+        messageId(std::move(messageId)),
+        startMessageIdInclusive(startMessageIdInclusive) {}
+};
 
 struct PulsarConnectorSplit : public ConnectorSplit {
   std::string serviceUrl_;
   std::string topic_;
   std::string subscriptionName_;
   std::string format_;
-  int32_t partitionIndex_;
-  std::string startMessageId_;
-  std::string endMessageId_;
-  bool startMessageIdInclusive_;
+  std::vector<TopicPartitionOffset> topicPartitions_;
 
   explicit PulsarConnectorSplit(
       const std::string& connectorId,
@@ -36,19 +48,13 @@ struct PulsarConnectorSplit : public ConnectorSplit {
       std::string topic,
       std::string subscriptionName,
       std::string format,
-      int32_t partitionIndex = -1,
-      std::string startMessageId = "",
-      std::string endMessageId = "",
-      bool startMessageIdInclusive = true)
+      std::vector<TopicPartitionOffset> topicPartitions = {})
       : ConnectorSplit(connectorId),
         serviceUrl_(std::move(serviceUrl)),
         topic_(std::move(topic)),
         subscriptionName_(std::move(subscriptionName)),
         format_(std::move(format)),
-        partitionIndex_(partitionIndex),
-        startMessageId_(std::move(startMessageId)),
-        endMessageId_(std::move(endMessageId)),
-        startMessageIdInclusive_(startMessageIdInclusive) {}
+        topicPartitions_(std::move(topicPartitions)) {}
 
   std::string toString() const override;
 

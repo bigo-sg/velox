@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+find_package(CURL REQUIRED)
+include_directories(${CURL_INCLUDE_DIRS})
+
 velox_add_library(
   velox_pulsar_connector
   OBJECT
@@ -29,7 +32,8 @@ velox_link_libraries(
   velox_common_io
   velox_connector
   Folly::folly
-  PulsarClient::pulsar)
+  PulsarClient::pulsar
+  ${CURL_LIBRARIES})
 
 if(${VELOX_BUILD_TESTING})
   add_subdirectory(tests)

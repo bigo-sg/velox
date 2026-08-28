@@ -59,6 +59,10 @@ std::string ConnectionConfig::getServiceUrl() const {
   return checkAndGetConfigValue<std::string, true>(kServiceUrl, "");
 }
 
+std::string ConnectionConfig::getAdminUrl() const {
+  return checkAndGetConfigValue<std::string, false>(kAdminUrl, defaultAdminUrl);
+}
+
 std::string ConnectionConfig::getTopic() const {
   return checkAndGetConfigValue<std::string, true>(kTopic, "");
 }
@@ -89,25 +93,12 @@ std::string ConnectionConfig::getAckMode() const {
   return checkAndGetConfigValue<std::string, false>(kAckMode, defaultAckMode);
 }
 
-std::string ConnectionConfig::getStartMessageId() const {
-  return checkAndGetConfigValue<std::string, false>(kStartMessageId, "");
-}
-
-std::string ConnectionConfig::getEndMessageId() const {
-  return checkAndGetConfigValue<std::string, false>(kEndMessageId, "");
-}
-
 std::string ConnectionConfig::getAuthToken() const {
   return checkAndGetConfigValue<std::string, false>(kAuthToken, "");
 }
 
 std::string ConnectionConfig::getAuthTokenFile() const {
   return checkAndGetConfigValue<std::string, false>(kAuthTokenFile, "");
-}
-
-int32_t ConnectionConfig::getPartitionIndex() const {
-  return checkAndGetConfigValue<int32_t, false>(
-      kPartitionIndex, defaultPartitionIndex);
 }
 
 uint32_t ConnectionConfig::getReceiverQueueSize() const {
@@ -135,12 +126,6 @@ bool ConnectionConfig::getCheckpointEnabled() const {
   const auto value =
       checkAndGetConfigValue<std::string, false>(kCheckpointEnabled, "false");
   return parseBooleanConfig("checkpoint enabled", value);
-}
-
-bool ConnectionConfig::getStartMessageIdInclusive() const {
-  const auto value = checkAndGetConfigValue<std::string, false>(
-      kStartMessageIdInclusive, "true");
-  return parseBooleanConfig("start message id inclusive", value);
 }
 
 } // namespace facebook::velox::connector::pulsar

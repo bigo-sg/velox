@@ -16,19 +16,40 @@
 
 #include "velox/connectors/pulsar/PulsarConnectorSplit.h"
 #include <folly/dynamic.h>
+#include <sstream>
 
 namespace facebook::velox::connector::pulsar {
 
+namespace {
+
+std::string topicPartitionsToString(
+    const std::vector<TopicPartitionOffset>& topicPartitions) {
+  if (topicPartitions.empty()) {
+    return "";
+  }
+  std::stringstream out;
+  bool first = true;
+  for (const auto& topicPartition : topicPartitions) {
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << "[" << topicPartition.partitionedTopic << ","
+        << topicPartition.messageId << "]";
+  }
+  return out.str();
+}
+
+} // namespace
+
 std::string PulsarConnectorSplit::toString() const {
   return fmt::format(
-      "Pulsar connector split, connectorId: {}, service url: {}, topic: {}, subscription: {}, partition: {}, start message id: {}, end message id: {}",
+      "Pulsar connector split, connectorId: {}, service url: {}, topic: {}, subscription: {}, topic partitions: {}",
       connectorId,
       serviceUrl_,
       topic_,
       subscriptionName_,
-      partitionIndex_,
-      startMessageId_,
-      endMessageId_);
+      topicPartitionsToString(topicPartitions_));
 }
 
 folly::dynamic PulsarConnectorSplit::serialize() const {
@@ -39,25 +60,40 @@ folly::dynamic PulsarConnectorSplit::serialize() const {
   obj["topic"] = topic_;
   obj["subscriptionName"] = subscriptionName_;
   obj["format"] = format_;
-  obj["partitionIndex"] = partitionIndex_;
-  obj["startMessageId"] = startMessageId_;
-  obj["endMessageId"] = endMessageId_;
-  obj["startMessageIdInclusive"] = startMessageIdInclusive_;
+  folly::dynamic topicPartitions = folly::dynamic::array;
+  for (const auto& topicPartitionOffset : topicPartitions_) {
+    folly::dynamic topicPartition = folly::dynamic::object;
+    topicPartition["partitionedTopic"] = topicPartitionOffset.partitionedTopic;
+    topicPartition["messageId"] = topicPartitionOffset.messageId;
+    topicPartition["startMessageIdInclusive"] =
+        topicPartitionOffset.startMessageIdInclusive;
+    topicPartitions.push_back(topicPartition);
+  }
+  obj["topicPartitions"] = topicPartitions;
   return obj;
 }
 
 std::shared_ptr<PulsarConnectorSplit> PulsarConnectorSplit::create(
     const folly::dynamic& obj) {
+  std::vector<TopicPartitionOffset> topicPartitions;
+  if (obj.count("topicPartitions") && obj["topicPartitions"].isArray()) {
+    for (const auto& topicPartition : obj["topicPartitions"]) {
+      if (topicPartition.isObject()) {
+        topicPartitions.emplace_back(
+            topicPartition["partitionedTopic"].asString(),
+            topicPartition.getDefault("messageId", "").asString(),
+            topicPartition.getDefault("startMessageIdInclusive", true)
+                .asBool());
+      }
+    }
+  }
   return std::make_shared<PulsarConnectorSplit>(
       obj["connectorId"].asString(),
       obj["serviceUrl"].asString(),
       obj["topic"].asString(),
       obj["subscriptionName"].asString(),
       obj["format"].asString(),
-      obj.getDefault("partitionIndex", -1).asInt(),
-      obj.getDefault("startMessageId", "").asString(),
-      obj.getDefault("endMessageId", "").asString(),
-      obj.getDefault("startMessageIdInclusive", true).asBool());
+      std::move(topicPartitions));
 }
 
 void PulsarConnectorSplit::registerSerDe() {

@@ -17,6 +17,7 @@
 #include <folly/FileUtil.h>
 #include <folly/String.h>
 #include <pulsar/Authentication.h>
+#include <pulsar/BatchReceivePolicy.h>
 #include <pulsar/ConsumerType.h>
 #include <pulsar/InitialPosition.h>
 #include "velox/common/base/Exceptions.h"
@@ -68,7 +69,8 @@ ConnectionConfig::getPulsarConsumerConfiguration() const {
   }
 
   conf.setReceiverQueueSize(getReceiverQueueSize());
-  conf.setStartMessageIdInclusive(getStartMessageIdInclusive());
+  conf.setBatchReceivePolicy(::pulsar::BatchReceivePolicy(
+      getDataBatchSize(), 0, getReceiveTimeoutMills()));
   if (!getConsumerName().empty()) {
     conf.setConsumerName(getConsumerName());
   }

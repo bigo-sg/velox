@@ -89,7 +89,7 @@ class StatefulTask : public exec::Task {
   void init();
 
   // The task is finished, close all operators and reset driver
-  void finish(bool throwException = true);
+  void finish();
 
   // get stats for stateful task.
   exec::TaskStats statefulTaskStats();

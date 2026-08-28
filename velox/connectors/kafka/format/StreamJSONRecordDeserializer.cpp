@@ -51,8 +51,11 @@ const void KafkaStreamJSONRecordDeserializer::deserialize(
     const size_t index,
     VectorPtr& vec) {
   try {
-    simdjson::padded_string jsonPadded(message);
-    simdjson::ondemand::document doc = parser_->iterate(jsonPadded);
+    simdjson::padded_string_view json_padded(
+        message.data(),
+        message.size(),
+        message.size() + simdjson::SIMDJSON_PADDING);
+    simdjson::ondemand::document doc = parser_->iterate(json_padded);
     JSONValue value = doc.get_value();
     deserializer_->deserialize(value, index, vec);
   } catch (const std::exception& e) {

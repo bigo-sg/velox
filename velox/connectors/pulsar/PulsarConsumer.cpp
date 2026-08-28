@@ -15,6 +15,7 @@
  */
 
 #include "velox/connectors/pulsar/PulsarConsumer.h"
+#include <fmt/format.h>
 #include <folly/String.h>
 #include <pulsar/Message.h>
 #include <pulsar/MessageIdBuilder.h>
@@ -23,6 +24,19 @@
 #include "velox/connectors/pulsar/PulsarPartitionUtils.h"
 
 namespace facebook::velox::connector::pulsar {
+
+namespace {
+
+std::string messageIdString(const ::pulsar::MessageId& messageId) {
+  return fmt::format(
+      "{}:{}:{}:{}",
+      messageId.ledgerId(),
+      messageId.entryId(),
+      messageId.batchIndex(),
+      messageId.partition());
+}
+
+} // namespace
 
 std::optional<::pulsar::MessageId> PulsarConsumer::parseMessageId(
     const std::string& value,
@@ -60,43 +74,60 @@ std::optional<::pulsar::MessageId> PulsarConsumer::parseMessageId(
 
 PulsarConsumer::PulsarConsumer(
     const ConnectionConfigPtr& config,
-    uint32_t receiveTimeoutMillis,
-    uint32_t batchSize)
+    std::vector<TopicPartitionOffset> topicPartitionOffsets)
     : client_(config->getServiceUrl(), config->getPulsarClientConfiguration()),
-      receiveTimeoutMillis_(receiveTimeoutMillis),
-      batchSize_(batchSize),
-      topic_(partitionedTopicName(
-          config->getTopic(),
-          config->getPartitionIndex())),
-      subscriptionName_(config->getSubscriptionName()),
-      endMessageId_(parseMessageId(
-          config->getEndMessageId(),
-          config->getPartitionIndex())) {
-  auto result = client_.subscribe(
-      topic_,
-      subscriptionName_,
-      config->getPulsarConsumerConfiguration(),
-      consumer_);
-  VELOX_CHECK(
-      result == ::pulsar::ResultOk,
-      "Failed to subscribe Pulsar topic {} with subscription {}: {}",
-      topic_,
-      subscriptionName_,
-      ::pulsar::strResult(result));
+      receiveTimeoutMillis_(config->getReceiveTimeoutMills()),
+      batchSize_(config->getDataBatchSize()),
+      subscriptionName_(config->getSubscriptionName()) {
+  VELOX_CHECK_GT(
+      topicPartitionOffsets.size(),
+      0,
+      "Pulsar consumer requires at least one topic partition offset.");
+  consumers_.reserve(topicPartitionOffsets.size());
+  partitionedTopics_.reserve(topicPartitionOffsets.size());
+  for (auto& topicPartitionOffset : topicPartitionOffsets) {
+    auto consumerConfig = config->getPulsarConsumerConfiguration();
+    consumerConfig.setStartMessageIdInclusive(
+        topicPartitionOffset.startMessageIdInclusive);
 
-  const auto startMessageId =
-      parseMessageId(config->getStartMessageId(), config->getPartitionIndex());
-  if (startMessageId.has_value()) {
-    // start.message.id.inclusive is applied via ConsumerConfiguration before
-    // subscribe because Pulsar C++ client 3.3 has no seek(id, inclusive) API.
-    auto seekResult = consumer_.seek(startMessageId.value());
+    TopicPartitionConsumer topicPartitionConsumer{
+        std::move(topicPartitionOffset), "", ::pulsar::Consumer()};
+    topicPartitionConsumer.topic =
+        topicPartitionConsumer.topicPartitionOffset.partitionedTopic;
+    auto result = client_.subscribe(
+        topicPartitionConsumer.topic,
+        subscriptionName_,
+        consumerConfig,
+        topicPartitionConsumer.consumer);
     VELOX_CHECK(
-        seekResult == ::pulsar::ResultOk,
-        "Failed to seek Pulsar topic {} to start message id {}: {}",
-        topic_,
-        config->getStartMessageId(),
-        ::pulsar::strResult(seekResult));
+        result == ::pulsar::ResultOk,
+        "Failed to subscribe Pulsar topic {} with subscription {}: {}",
+        topicPartitionConsumer.topic,
+        subscriptionName_,
+        ::pulsar::strResult(result));
+
+    const auto parsedMessageId = parseMessageId(
+        topicPartitionConsumer.topicPartitionOffset.messageId, -1);
+    if (parsedMessageId.has_value()) {
+      // startMessageIdInclusive is applied via ConsumerConfiguration before
+      // subscribe because Pulsar C++ client 3.3 has no seek(id, inclusive) API.
+      auto seekResult =
+          topicPartitionConsumer.consumer.seek(parsedMessageId.value());
+      VELOX_CHECK(
+          seekResult == ::pulsar::ResultOk,
+          "Failed to seek Pulsar topic {} to start message id {}: {}",
+          topicPartitionConsumer.topic,
+          topicPartitionConsumer.topicPartitionOffset.messageId,
+          ::pulsar::strResult(seekResult));
+    }
+    const auto partitionedTopic = topicPartitionConsumer.topic;
+    partitionedTopics_.push_back(partitionedTopic);
+    auto [_, inserted] =
+        consumers_.emplace(partitionedTopic, std::move(topicPartitionConsumer));
+    VELOX_CHECK(
+        inserted, "Duplicate Pulsar partitioned topic {}.", partitionedTopic);
   }
+  topic_ = currentConsumer().topic;
 }
 
 PulsarConsumer::~PulsarConsumer() {
@@ -114,50 +145,98 @@ void PulsarConsumer::close() {
   if (closed_.exchange(true)) {
     return;
   }
-  consumer_.close();
+  for (auto& [_, consumer] : consumers_) {
+    consumer.consumer.close();
+  }
   client_.close();
 }
 
 void PulsarConsumer::consumeBatch(
     std::vector<PulsarMessage>& messages,
     size_t& messageBytes) {
-  for (uint32_t i = 0; i < batchSize_; ++i) {
-    ::pulsar::Message message;
-    auto result = consumer_.receive(message, receiveTimeoutMillis_.count());
-    if (result == ::pulsar::ResultTimeout) {
-      ++stats_.receiveTimeouts;
-      break;
-    }
+  size_t consecutiveTimeouts = 0;
+  while (messages.size() < batchSize_ && !closed_.load()) {
+    auto& topicPartitionConsumer = currentConsumer();
+    ::pulsar::Messages batch;
+    auto result = topicPartitionConsumer.consumer.batchReceive(batch);
     if (closed_.load() &&
         (result == ::pulsar::ResultAlreadyClosed ||
          result == ::pulsar::ResultInterrupted)) {
-      reachedEnd_ = true;
       break;
     }
+    if (result == ::pulsar::ResultTimeout || batch.empty()) {
+      ++stats_.receiveTimeouts;
+      if (!messages.empty()) {
+        advanceConsumer();
+        break;
+      }
+      if (!advanceConsumer() ||
+          ++consecutiveTimeouts >= partitionedTopics_.size()) {
+        break;
+      }
+      continue;
+    }
+    consecutiveTimeouts = 0;
     VELOX_CHECK(
         result == ::pulsar::ResultOk,
-        "Failed to receive Pulsar message from topic {}: {}",
-        topic_,
+        "Failed to batch receive Pulsar messages from topic {}: {}",
+        topicPartitionConsumer.topic,
         ::pulsar::strResult(result));
 
-    if (endMessageId_.has_value() &&
-        message.getMessageId() > endMessageId_.value()) {
-      // This message belongs to a later split. Nack it so Pulsar can redeliver
-      // it to that split's consumer; bounded split readers should expect the
-      // first message after endMessageId to be negatively acknowledged.
-      consumer_.negativeAcknowledge(message.getMessageId());
-      reachedEnd_ = true;
-      ++stats_.negativelyAcknowledgedMessages;
-      ++stats_.skippedMessagesAfterEnd;
-      break;
+    bool receivedMessageInBatch = false;
+    for (auto& message : batch) {
+      std::string payload = message.getDataAsString();
+      messageBytes += payload.size();
+      stats_.receivedBytes += payload.size();
+      ++stats_.receivedMessages;
+      messages.push_back({std::move(payload), std::move(message)});
+      receivedMessageInBatch = true;
     }
 
-    std::string payload = message.getDataAsString();
-    messageBytes += payload.size();
-    stats_.receivedBytes += payload.size();
-    ++stats_.receivedMessages;
-    messages.push_back({std::move(payload), std::move(message)});
+    if (receivedMessageInBatch) {
+      break;
+    }
   }
+}
+
+bool PulsarConsumer::advanceConsumer() {
+  if (partitionedTopics_.empty()) {
+    return false;
+  }
+  currentConsumerIndex_ =
+      (currentConsumerIndex_ + 1) % partitionedTopics_.size();
+  topic_ = currentConsumer().topic;
+  return true;
+}
+
+PulsarConsumer::TopicPartitionConsumer& PulsarConsumer::currentConsumer() {
+  VELOX_CHECK_LT(
+      currentConsumerIndex_,
+      partitionedTopics_.size(),
+      "Pulsar consumer has no active topic partition consumer.");
+  return consumerForPartitionedTopic(partitionedTopics_[currentConsumerIndex_]);
+}
+
+PulsarConsumer::TopicPartitionConsumer& PulsarConsumer::consumerForMessage(
+    const ::pulsar::Message& message) {
+  return consumerForPartitionedTopic(message.getTopicName());
+}
+
+PulsarConsumer::TopicPartitionConsumer&
+PulsarConsumer::consumerForPartitionedTopic(
+    const std::string& partitionedTopic) {
+  auto it = consumers_.find(partitionedTopic);
+  VELOX_CHECK(
+      it != consumers_.end(),
+      "Failed to find Pulsar consumer for partitioned topic {}",
+      partitionedTopic);
+  return it->second;
+}
+
+TopicPartitionOffset PulsarConsumer::topicPartitionOffset(
+    const ::pulsar::Message& message) const {
+  return {
+      message.getTopicName(), messageIdString(message.getMessageId()), false};
 }
 
 void PulsarConsumer::acknowledge(
@@ -166,9 +245,10 @@ void PulsarConsumer::acknowledge(
   if (closed_.load()) {
     return;
   }
+  auto& consumer = consumerForMessage(message);
   const auto result = cumulative
-      ? consumer_.acknowledgeCumulative(message.getMessageId())
-      : consumer_.acknowledge(message);
+      ? consumer.consumer.acknowledgeCumulative(message.getMessageId())
+      : consumer.consumer.acknowledge(message);
   if (closed_.load() &&
       (result == ::pulsar::ResultAlreadyClosed ||
        result == ::pulsar::ResultInterrupted)) {
@@ -177,17 +257,38 @@ void PulsarConsumer::acknowledge(
   VELOX_CHECK(
       result == ::pulsar::ResultOk,
       "Failed to acknowledge Pulsar message from topic {}: {}",
-      topic_,
+      consumer.topic,
       ::pulsar::strResult(result));
   ++stats_.acknowledgedMessages;
 }
 
-void PulsarConsumer::negativeAcknowledge(const ::pulsar::Message& message) {
+void PulsarConsumer::acknowledge(
+    const TopicPartitionOffset& topicPartitionOffset,
+    bool cumulative) {
   if (closed_.load()) {
     return;
   }
-  consumer_.negativeAcknowledge(message.getMessageId());
-  ++stats_.negativelyAcknowledgedMessages;
+  const auto messageId = parseMessageId(topicPartitionOffset.messageId, -1);
+  VELOX_CHECK(
+      messageId.has_value(),
+      "Cannot acknowledge Pulsar message for partitioned topic {} without message id.",
+      topicPartitionOffset.partitionedTopic);
+  auto& consumer =
+      consumerForPartitionedTopic(topicPartitionOffset.partitionedTopic);
+  const auto result = cumulative
+      ? consumer.consumer.acknowledgeCumulative(messageId.value())
+      : consumer.consumer.acknowledge(messageId.value());
+  if (closed_.load() &&
+      (result == ::pulsar::ResultAlreadyClosed ||
+       result == ::pulsar::ResultInterrupted)) {
+    return;
+  }
+  VELOX_CHECK(
+      result == ::pulsar::ResultOk,
+      "Failed to acknowledge Pulsar message from topic {}: {}",
+      consumer.topic,
+      ::pulsar::strResult(result));
+  ++stats_.acknowledgedMessages;
 }
 
 } // namespace facebook::velox::connector::pulsar

@@ -60,6 +60,7 @@ class ConnectionConfig : public PulsarConfig {
   explicit ConnectionConfig(const ConfigPtr& config) : PulsarConfig(config) {}
 
   static constexpr const char* kServiceUrl = "service.url";
+  static constexpr const char* kAdminUrl = "admin.url";
   static constexpr const char* kTopic = "topic";
   static constexpr const char* kSubscriptionName = "subscription.name";
   static constexpr const char* kConsumerName = "consumer.name";
@@ -72,25 +73,21 @@ class ConnectionConfig : public PulsarConfig {
   static constexpr const char* kAcknowledgeMessages = "acknowledge.messages";
   static constexpr const char* kCheckpointEnabled = "checkpoint.enabled";
   static constexpr const char* kAckMode = "ack.mode";
-  static constexpr const char* kPartitionIndex = "partition.index";
-  static constexpr const char* kStartMessageId = "start.message.id";
-  static constexpr const char* kEndMessageId = "end.message.id";
-  static constexpr const char* kStartMessageIdInclusive =
-      "start.message.id.inclusive";
   static constexpr const char* kAuthToken = "auth.token";
   static constexpr const char* kAuthTokenFile = "auth.token.file";
 
   // Shared subscription is the safest default for parallel source readers.
   // Use exclusive only when a single active consumer is guaranteed.
+  static constexpr const char* defaultAdminUrl = "http://localhost:8080";
   static constexpr const char* defaultSubscriptionType = "shared";
   static constexpr const char* defaultInitialPosition = "latest";
   static constexpr const char* defaultAckMode = "individual";
   static constexpr const uint32_t defaultReceiverQueueSize = 1000;
   static constexpr const uint32_t defaultDataBatchSize = 500;
   static constexpr const uint32_t defaultReceiveTimeoutMills = 100;
-  static constexpr const int32_t defaultPartitionIndex = -1;
 
   std::string getServiceUrl() const;
+  std::string getAdminUrl() const;
   std::string getTopic() const;
   std::string getSubscriptionName() const;
   std::string getConsumerName() const;
@@ -98,17 +95,13 @@ class ConnectionConfig : public PulsarConfig {
   std::string getSubscriptionType() const;
   std::string getInitialPosition() const;
   std::string getAckMode() const;
-  std::string getStartMessageId() const;
-  std::string getEndMessageId() const;
   std::string getAuthToken() const;
   std::string getAuthTokenFile() const;
-  int32_t getPartitionIndex() const;
   uint32_t getReceiverQueueSize() const;
   uint32_t getDataBatchSize() const;
   uint32_t getReceiveTimeoutMills() const;
   bool getAcknowledgeMessages() const;
   bool getCheckpointEnabled() const;
-  bool getStartMessageIdInclusive() const;
 
   ::pulsar::ClientConfiguration getPulsarClientConfiguration() const;
   ::pulsar::ConsumerConfiguration getPulsarConsumerConfiguration() const;
