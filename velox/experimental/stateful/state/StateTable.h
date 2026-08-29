@@ -23,15 +23,6 @@
 
 namespace facebook::velox::stateful {
 
-/// Erased base so that the backend's by-name registry can hold state tables
-/// of any (K, N, S) instantiation. Relevant to Flink's registeredKVStates
-/// (Map<String, StateTable<K, ?, ?>>). Snapshot / restore entry points are
-/// added to this base together with the snapshot stage.
-class StateTableBase {
- public:
-  virtual ~StateTableBase() = default;
-};
-
 /// Two-layer (key, namespace) -> state storage for one state name. Layer 1
 /// buckets by key group: bucket count is the backend's key-group sub-range
 /// and the bucket index is key.keyGroup() - startKeyGroup, so the bucket
@@ -43,7 +34,7 @@ class StateTableBase {
 /// @param <N> type of namespace, a Namespace subclass
 /// @param <S> type of state, a nullable pointer type (miss is nullptr)
 template <typename K, typename N, typename S>
-class StateTable : public StateTableBase {
+class StateTable {
  public:
   StateTable(uint32_t startKeyGroup, uint32_t numKeyGroups)
       : startKeyGroup_(startKeyGroup), buckets_(numKeyGroups) {
@@ -85,16 +76,22 @@ class StateTable : public StateTableBase {
     return buckets_.size();
   }
 
- private:
-  StateMap<K, N, S>& bucket(const K& key) {
-    const uint64_t keyGroup = key.keyGroup();
+  /// Returns the StateMap of one key group; the snapshot path streams
+  /// bucket by bucket. 'keyGroup' must be inside the sub-range.
+  StateMap<K, N, S>& stateMapForKeyGroup(uint32_t keyGroup) {
     VELOX_CHECK(
-        keyGroup >= startKeyGroup_ && keyGroup < startKeyGroup_ + buckets_.size(),
+        keyGroup >= startKeyGroup_ &&
+            keyGroup < startKeyGroup_ + buckets_.size(),
         "Key group {} is outside the state table range [{}, {})",
         keyGroup,
         startKeyGroup_,
         startKeyGroup_ + buckets_.size());
     return buckets_[keyGroup - startKeyGroup_];
+  }
+
+ private:
+  StateMap<K, N, S>& bucket(const K& key) {
+    return stateMapForKeyGroup(static_cast<uint32_t>(key.keyGroup()));
   }
 
   const uint32_t startKeyGroup_;
