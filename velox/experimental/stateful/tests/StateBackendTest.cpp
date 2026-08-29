@@ -18,8 +18,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <vector>
 
 #include <folly/dynamic.h>
@@ -28,7 +30,9 @@
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/TypeSerializer.h"
 #include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
+#include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StateKey.h"
@@ -89,10 +93,19 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
       const auto column = container.columnAt(0);
       *(row + column.nullByte()) &= ~column.nullMask();
       *reinterpret_cast<int64_t*>(row + column.offset()) = value;
-      return RowContainerStateKey(
-          &schema, row, hash(value), kMaxParallelism);
+      return RowContainerStateKey(&schema, row, hash(value), kMaxParallelism);
     }
   };
+
+  // Descriptor serializers of the value types used across the tests.
+  TypeSerializerPtr int64Serializer() {
+    return std::make_shared<ValueSerializer<int64_t>>();
+  }
+
+  TypeSerializerPtr sharedInt64Serializer() {
+    return std::make_shared<SharedPtrSerializer<int64_t>>(
+        std::make_shared<ValueSerializer<int64_t>>());
+  }
 };
 
 // Basics of the (K, N) -> S map: miss is nullptr, put / get / containsKey /
@@ -168,6 +181,88 @@ TEST_F(StateBackendTest, stateMapGrowsAndRehashes) {
   EXPECT_EQ(&values[8], map.get(keys[8], ns));
 }
 
+// An open StateMap snapshot keeps seeing the entries as they were: later
+// puts prepend entries the captured heads cannot reach, and removals and
+// overwrites copy-on-write the touched entries. After release, the live
+// view reflects the mutations.
+TEST_F(StateBackendTest, stateMapSnapshotIsolation) {
+  KeyLab lab(pool());
+  auto key1 = lab.key(1);
+  auto key2 = lab.key(2);
+  auto key3 = lab.key(3);
+  const VoidNamespace ns;
+  StateMap<RowContainerStateKey, VoidNamespace, char*> map(8);
+  char a{'a'}, b{'b'}, x{'x'}, c{'c'};
+  map.put(key1, ns, &a);
+  map.put(key2, ns, &b);
+
+  auto snapshot = map.createSnapshot();
+  map.put(key1, ns, &x);
+  map.remove(key2, ns);
+  map.put(key3, ns, &c);
+
+  std::map<const char*, char*> observed;
+  for (const auto& head : snapshot.heads) {
+    for (auto entry = head; entry != nullptr; entry = entry->next_) {
+      observed[entry->key_.row()] = entry->state_;
+    }
+  }
+  EXPECT_EQ(2, observed.size());
+  EXPECT_EQ(&a, observed[key1.row()]);
+  EXPECT_EQ(&b, observed[key2.row()]);
+  EXPECT_EQ(observed.end(), observed.find(key3.row()));
+
+  map.releaseSnapshot(snapshot.version);
+  EXPECT_EQ(&x, map.get(key1, ns));
+  EXPECT_EQ(nullptr, map.get(key2, ns));
+  EXPECT_EQ(&c, map.get(key3, ns));
+  EXPECT_EQ(2, map.size());
+}
+
+// A snapshot taken while an incremental rehash is in flight captures the
+// split layout (primary tail plus both incremental segments) and still
+// observes every entry exactly once; the live map stays consistent.
+TEST_F(StateBackendTest, stateMapSnapshotDuringIncrementalRehash) {
+  KeyLab lab(pool());
+  const VoidNamespace ns;
+  StateMap<RowContainerStateKey, VoidNamespace, char*> map(8);
+
+  std::vector<RowContainerStateKey> keys;
+  std::vector<char> values;
+  keys.reserve(64);
+  values.reserve(64);
+  std::set<const char*> rows;
+  bool caughtMidRehash = false;
+  for (int64_t value = 0; value < 64 && !caughtMidRehash; ++value) {
+    keys.push_back(lab.key(value));
+    values.push_back(static_cast<char>('a' + value % 26));
+    map.put(keys.back(), ns, &values.back());
+    rows.insert(keys.back().row());
+    auto snapshot = map.createSnapshot();
+    // Mid-rehash capture: the old capacity plus rehashIndex, never a
+    // power of two (steady and fully-rehashed tables are).
+    const size_t numHeads = snapshot.heads.size();
+    if (numHeads > 8 && (numHeads & (numHeads - 1)) != 0) {
+      caughtMidRehash = true;
+      size_t entryCount = 0;
+      std::set<const char*> observed;
+      for (const auto& head : snapshot.heads) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          ++entryCount;
+          observed.insert(entry->key_.row());
+        }
+      }
+      EXPECT_EQ(map.size(), entryCount);
+      EXPECT_EQ(rows, observed);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        ASSERT_EQ(&values[i], map.get(keys[i], ns)) << "lost key " << i;
+      }
+    }
+    map.releaseSnapshot(snapshot.version);
+  }
+  ASSERT_TRUE(caughtMidRehash);
+}
+
 // The table buckets by key group over its sub-range; the bucket index is
 // keyGroup - startKeyGroup, keys outside the range are rejected.
 TEST_F(StateBackendTest, stateTableBucketsBySubRange) {
@@ -210,8 +305,7 @@ TEST_F(StateBackendTest, stateTableBucketsBySubRange) {
     // unreachable with 128 key groups and 900 candidates
     return lab.key(0);
   }();
-  ASSERT_TRUE(
-      outside.keyGroup() < minGroup || outside.keyGroup() > maxGroup);
+  ASSERT_TRUE(outside.keyGroup() < minGroup || outside.keyGroup() > maxGroup);
   EXPECT_THROW(table.put(outside, ns, nullptr), VeloxException);
 
   // Two keys in the same key group stay separate entries; clearing drops
@@ -222,13 +316,14 @@ TEST_F(StateBackendTest, stateTableBucketsBySubRange) {
 
 // Storage-level regression for the collision pair through the state table.
 TEST_F(StateBackendTest, stateTableCollisionPairStaysApart) {
-  KeySelector selector({0}, kMaxParallelism, pool());
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   auto keys =
       probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
   ASSERT_EQ(3, keys.size());
 
   const VoidNamespace ns;
-  StateTable<RowContainerStateKey, VoidNamespace, char*> table(0, kMaxParallelism);
+  StateTable<RowContainerStateKey, VoidNamespace, char*> table(
+      0, kMaxParallelism);
   char valueA{'a'};
   char valueB{'b'};
   table.put(keys[0], ns, &valueA);
@@ -242,8 +337,12 @@ TEST_F(StateBackendTest, stateTableCollisionPairStaysApart) {
 // keys share a row, the collision pair accumulates independently, and the
 // handle is idempotent per descriptor name.
 TEST_F(StateBackendTest, backendAccState) {
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keys =
+      probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
+  ASSERT_EQ(3, keys.size());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
-      kMaxParallelism, 0, kMaxParallelism);
+      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
 
   int initCount = 0;
   AccStateDescriptor descriptor(
@@ -256,11 +355,10 @@ TEST_F(StateBackendTest, backendAccState) {
       },
       pool());
   auto state = backend.getOrCreateAccState<VoidNamespace>(descriptor);
-  EXPECT_EQ(state.get(), backend.getOrCreateAccState<VoidNamespace>(descriptor).get());
+  EXPECT_EQ(
+      state.get(),
+      backend.getOrCreateAccState<VoidNamespace>(descriptor).get());
 
-  KeySelector selector({0}, kMaxParallelism, pool());
-  auto keys =
-      probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
   std::vector<char*> rows(keys.size(), nullptr);
   state->rows(
       folly::Range<const RowContainerStateKey*>(keys.data(), keys.size()),
@@ -299,16 +397,18 @@ TEST_F(StateBackendTest, backendAccState) {
 // (miss is default), overwrite on map put, and the collision pair stays
 // independent in each.
 TEST_F(StateBackendTest, backendValueListMapStates) {
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
-      kMaxParallelism, 0, kMaxParallelism);
-  KeyLab lab(pool());
-  auto keyA = lab.key(kCollisionKeyA);
-  auto keyB = lab.key(kCollisionKeyB);
-  auto keyC = lab.key(999);
+      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, 999});
+  const auto& keyA = keys[0];
+  const auto& keyB = keys[1];
+  const auto& keyC = keys[2];
   const VoidNamespace ns;
 
   auto valueState = backend.getOrCreateValueState<VoidNamespace>(
-      ValueStateDescriptor<std::shared_ptr<int64_t>>("value", nullptr, pool()));
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
   auto stored = std::make_shared<int64_t>(7);
   EXPECT_EQ(nullptr, valueState->value(keyA, ns));
   valueState->update(keyA, ns, stored);
@@ -318,7 +418,7 @@ TEST_F(StateBackendTest, backendValueListMapStates) {
   EXPECT_EQ(nullptr, valueState->value(keyA, ns));
 
   auto listState = backend.getOrCreateListState<VoidNamespace>(
-      ListStateDescriptor<int64_t>("list", nullptr, pool()));
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listState->add(keyA, ns, 1);
   listState->add(keyA, ns, 2);
   listState->add(keyB, ns, 3);
@@ -329,7 +429,8 @@ TEST_F(StateBackendTest, backendValueListMapStates) {
   EXPECT_TRUE(listState->get(keyA, ns).empty());
 
   auto mapState = backend.getOrCreateMapState<VoidNamespace>(
-      MapStateDescriptor<int64_t, int64_t>("map", nullptr, nullptr, pool()));
+      MapStateDescriptor<int64_t, int64_t>(
+          "map", int64Serializer(), int64Serializer(), pool()));
   mapState->put(keyA, ns, 10, 100);
   mapState->put(keyA, ns, 10, 111);
   mapState->put(keyA, ns, 20, 200);
@@ -345,24 +446,163 @@ TEST_F(StateBackendTest, backendValueListMapStates) {
   EXPECT_EQ(1, mapState->entries(keyA, ns).size());
 }
 
+// A full checkpoint round trip through all four state kinds: backend A
+// populates, backend B restores the stream into freshly registered states
+// and reads the same entries back. The collision pair stays independent,
+// restore does not re-initialize acc rows, and snapshotting unchanged
+// state twice yields identical bytes.
+TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
+  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysA =
+      probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
+  ASSERT_EQ(3, keysA.size());
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+
+  int initCountA = 0;
+  AccStateDescriptor accDescriptor(
+      "acc",
+      {BIGINT()},
+      [&](char* row) {
+        ++initCountA;
+        // Single fixed-width acc column: value sits at offset 0.
+        *reinterpret_cast<int64_t*>(row) = 0;
+      },
+      pool());
+  auto accState = backendA.getOrCreateAccState<VoidNamespace>(accDescriptor);
+  auto valueState = backendA.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto listState = backendA.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  auto mapState = backendA.getOrCreateMapState<VoidNamespace>(
+      MapStateDescriptor<int64_t, int64_t>(
+          "map", int64Serializer(), int64Serializer(), pool()));
+
+  // Accumulate 21 / 20 over the collision pair, as addRawInput would.
+  std::vector<char*> rows(keysA.size(), nullptr);
+  accState->rows(
+      folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
+      VoidNamespace::instance(),
+      rows.data());
+  const auto accOffset = accState->valueRows()->columnAt(0).offset();
+  *reinterpret_cast<int64_t*>(rows[0] + accOffset) = 10;
+  *reinterpret_cast<int64_t*>(rows[1] + accOffset) = 20;
+  *reinterpret_cast<int64_t*>(rows[2] + accOffset) += 11;
+  EXPECT_EQ(2, initCountA);
+
+  const VoidNamespace ns;
+  valueState->update(keysA[0], ns, std::make_shared<int64_t>(7));
+  listState->add(keysA[0], ns, 1);
+  listState->add(keysA[0], ns, 2);
+  listState->add(keysA[1], ns, 3);
+  mapState->put(keysA[0], ns, 10, 111);
+  mapState->put(keysA[1], ns, 30, 300);
+
+  const auto bytes = backendA.snapshot();
+  EXPECT_EQ(bytes, backendA.snapshot());
+
+  // Side B: a fresh backend over its own key container; restoring writes
+  // the entries without touching the init callback.
+  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysB =
+      probeKeys(selectorB, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  int initCountB = 0;
+  AccStateDescriptor accDescriptorB(
+      "acc",
+      {BIGINT()},
+      [&](char* row) {
+        ++initCountB;
+        *reinterpret_cast<int64_t*>(row) = 0;
+      },
+      pool());
+  auto accStateB = backendB.getOrCreateAccState<VoidNamespace>(accDescriptorB);
+  auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto listStateB = backendB.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  auto mapStateB = backendB.getOrCreateMapState<VoidNamespace>(
+      MapStateDescriptor<int64_t, int64_t>(
+          "map", int64Serializer(), int64Serializer(), pool()));
+  backendB.restore(bytes);
+
+  std::vector<char*> rowsB(keysB.size(), nullptr);
+  accStateB->rows(
+      folly::Range<const RowContainerStateKey*>(keysB.data(), keysB.size()),
+      VoidNamespace::instance(),
+      rowsB.data());
+  EXPECT_EQ(0, initCountB);
+  const auto accOffsetB = accStateB->valueRows()->columnAt(0).offset();
+  EXPECT_EQ(21, *reinterpret_cast<int64_t*>(rowsB[0] + accOffsetB));
+  EXPECT_EQ(20, *reinterpret_cast<int64_t*>(rowsB[1] + accOffsetB));
+  EXPECT_EQ(rowsB[0], rowsB[2]);
+  EXPECT_NE(rowsB[0], rowsB[1]);
+
+  auto restoredValue = valueStateB->value(keysB[0], ns);
+  ASSERT_NE(nullptr, restoredValue);
+  EXPECT_EQ(7, *restoredValue);
+  EXPECT_EQ(nullptr, valueStateB->value(keysB[1], ns));
+  EXPECT_EQ((std::vector<int64_t>{1, 2}), listStateB->get(keysB[0], ns));
+  EXPECT_EQ((std::vector<int64_t>{3}), listStateB->get(keysB[1], ns));
+  EXPECT_EQ(111, mapStateB->get(keysB[0], ns, 10));
+  EXPECT_EQ(0, mapStateB->get(keysB[0], ns, 99));
+  EXPECT_EQ(300, mapStateB->get(keysB[1], ns, 30));
+}
+
+// Checkpointing registered but empty states round-trips as an empty
+// stream: restore leaves every state at its miss semantics.
+TEST_F(StateBackendTest, snapshotRestoreEmptyStates) {
+  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  backendA.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  backendA.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  const auto bytes = backendA.snapshot();
+
+  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto valueState = backendB.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto listState = backendB.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  backendB.restore(bytes);
+  EXPECT_EQ(bytes, backendB.snapshot());
+
+  auto key = probeKeys(selectorB, {42})[0];
+  const VoidNamespace ns;
+  EXPECT_EQ(nullptr, valueState->value(key, ns));
+  EXPECT_TRUE(listState->get(key, ns).empty());
+}
+
 // One descriptor name is one state: registering a second type under a used
 // name fails instead of returning a mistyped handle.
 TEST_F(StateBackendTest, backendRejectsNameReuseAcrossTypes) {
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
-      kMaxParallelism, 0, kMaxParallelism);
+      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
   backend.getOrCreateValueState<VoidNamespace>(
-      ValueStateDescriptor<std::shared_ptr<int64_t>>("dup", nullptr, pool()));
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "dup", sharedInt64Serializer(), pool()));
   EXPECT_THROW(
       backend.getOrCreateListState<VoidNamespace>(
-          ListStateDescriptor<int64_t>("dup", nullptr, pool())),
+          ListStateDescriptor<int64_t>("dup", int64Serializer(), pool())),
       VeloxException);
 }
 
 // The pre-generic interface of the base stays abstract-compatible but is
 // not implemented on the heap backend until the operators migrate.
 TEST_F(StateBackendTest, backendPreGenericInterfaceIsNyi) {
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
-      kMaxParallelism, 0, kMaxParallelism);
+      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
   KeyedStateBackend& raw = backend;
   StateDescriptor descriptor("x");
   EXPECT_THROW(raw.getOrCreateValueState(descriptor), VeloxException);
@@ -371,13 +611,200 @@ TEST_F(StateBackendTest, backendPreGenericInterfaceIsNyi) {
 
 // Out-of-range key-group configurations are rejected at construction.
 TEST_F(StateBackendTest, backendRejectsInvalidKeyGroupRange) {
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keySerializer = selector.keySerializer();
   EXPECT_THROW(
       (HeapKeyedStateBackend<RowContainerStateKey>(
-          kMaxParallelism, 100, kMaxParallelism)),
+          keySerializer, kMaxParallelism, 100, kMaxParallelism)),
       VeloxException);
   EXPECT_THROW(
-      (HeapKeyedStateBackend<RowContainerStateKey>(kMaxParallelism, 0, 0)),
+      (HeapKeyedStateBackend<RowContainerStateKey>(
+          keySerializer, kMaxParallelism, 0, 0)),
       VeloxException);
+}
+
+// Restoring a checkpoint that contains a state the target backend has not
+// registered fails: one name is one state, and states must be registered
+// before restore.
+TEST_F(StateBackendTest, restoreRejectsUnknownState) {
+  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  backendA.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  backendA.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  const auto bytes = backendA.snapshot();
+
+  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  backendB.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+}
+
+// A checkpoint whose key-group range does not overlap the target backend's
+// range is rejected by the header cross-check instead of silently
+// mis-bucketing.
+TEST_F(StateBackendTest, restoreRejectsKeyGroupRangeMismatch) {
+  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      selectorA.keySerializer(), kMaxParallelism, 4, 2);
+  backendA.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  const auto bytes = backendA.snapshot();
+
+  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      selectorB.keySerializer(), kMaxParallelism, 100, 28);
+  backendB.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+}
+
+// A states-bearing header with a zero key-group count is corruption, not an
+// empty range: [64, 64) inside the local range would otherwise sneak past
+// the overlap check (an empty range overlaps nothing) and restore nothing.
+TEST_F(StateBackendTest, restoreRejectsZeroKeyGroupCount) {
+  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto list = backend.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+
+  std::string bytes;
+  CheckpointWriter writer(bytes);
+  writer.writeInt32(kCheckpointFormatVersion);
+  writer.writeBytes(selector.keySerializer()->schema());
+  writer.writeInt32(1);
+  writer.writeBytes("list");
+  writer.writeBytes(list->namespaceSchema());
+  writer.writeBytes(list->valueSchema());
+  writer.writeInt32(kMaxParallelism / 2);
+  writer.writeInt32(0);
+  EXPECT_THROW(backend.restore(bytes), VeloxException);
+}
+
+// A sub-range backend picks its own key groups out of a wider checkpoint,
+// the shape of a scale-up restore: the in-range entries restore, the rest
+// of the stream is skipped, and a key of a foreign key group is rejected
+// by the state table instead of mis-bucketing.
+TEST_F(StateBackendTest, restorePicksSubRange) {
+  const std::vector<std::optional<int64_t>> inputs = {
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysA = probeKeys(selectorA, inputs);
+  // Split the probed values by the half of the key-group space their keys
+  // hash to, through the production grouping path.
+  std::vector<size_t> low;
+  std::vector<size_t> high;
+  for (size_t i = 0; i < keysA.size() && (low.size() < 2 || high.size() < 2);
+       ++i) {
+    auto& half = keysA[i].keyGroup() < kMaxParallelism / 2 ? low : high;
+    if (half.size() < 2) {
+      half.push_back(i);
+    }
+  }
+  ASSERT_EQ(2, low.size());
+  ASSERT_EQ(2, high.size());
+
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto valueStateA = backendA.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  const VoidNamespace ns;
+  for (const auto i : low) {
+    valueStateA->update(keysA[i], ns, std::make_shared<int64_t>(*inputs[i]));
+  }
+  for (const auto i : high) {
+    valueStateA->update(keysA[i], ns, std::make_shared<int64_t>(*inputs[i]));
+  }
+  const auto bytes = backendA.snapshot();
+
+  // The upper half as its own backend, as a doubled parallelism would cut it.
+  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysB = probeKeys(selectorB, inputs);
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      selectorB.keySerializer(), kMaxParallelism, 64, 64);
+  auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  backendB.restore(bytes);
+
+  for (const auto i : high) {
+    auto restored = valueStateB->value(keysB[i], ns);
+    ASSERT_NE(nullptr, restored);
+    EXPECT_EQ(*inputs[i], *restored);
+  }
+  for (const auto i : low) {
+    EXPECT_THROW(valueStateB->value(keysB[i], ns), VeloxException);
+  }
+}
+
+// A wider backend restores two disjoint-range streams in sequence, the
+// shape of a scale-down restore; the halves accumulate into one backend.
+TEST_F(StateBackendTest, restoreAccumulatesStreams) {
+  const std::vector<std::optional<int64_t>> inputs = {
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysA = probeKeys(selectorA, inputs);
+  std::vector<size_t> low;
+  std::vector<size_t> high;
+  for (size_t i = 0; i < keysA.size() && (low.size() < 2 || high.size() < 2);
+       ++i) {
+    auto& half = keysA[i].keyGroup() < kMaxParallelism / 2 ? low : high;
+    if (half.size() < 2) {
+      half.push_back(i);
+    }
+  }
+  ASSERT_EQ(2, low.size());
+  ASSERT_EQ(2, high.size());
+
+  // Two backends over the two halves of the key-group space, as a halved
+  // parallelism would cut it.
+  HeapKeyedStateBackend<RowContainerStateKey> backendLow(
+      selectorA.keySerializer(), kMaxParallelism, 0, 64);
+  auto valueStateLow = backendLow.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  HeapKeyedStateBackend<RowContainerStateKey> backendHigh(
+      selectorA.keySerializer(), kMaxParallelism, 64, 64);
+  auto valueStateHigh = backendHigh.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  const VoidNamespace ns;
+  for (const auto i : low) {
+    valueStateLow->update(keysA[i], ns, std::make_shared<int64_t>(*inputs[i]));
+  }
+  for (const auto i : high) {
+    valueStateHigh->update(keysA[i], ns, std::make_shared<int64_t>(*inputs[i]));
+  }
+  const auto bytesLow = backendLow.snapshot();
+  const auto bytesHigh = backendHigh.snapshot();
+
+  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysB = probeKeys(selectorB, inputs);
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  backendB.restore(bytesLow);
+  backendB.restore(bytesHigh);
+
+  for (const auto i : low) {
+    auto restored = valueStateB->value(keysB[i], ns);
+    ASSERT_NE(nullptr, restored);
+    EXPECT_EQ(*inputs[i], *restored);
+  }
+  for (const auto i : high) {
+    auto restored = valueStateB->value(keysB[i], ns);
+    ASSERT_NE(nullptr, restored);
+    EXPECT_EQ(*inputs[i], *restored);
+  }
 }
 
 // The handler's checkpoint plane tolerates a backend that is not created
@@ -394,8 +821,8 @@ TEST_F(StateBackendTest, handlerToleratesNullBackend) {
 TEST_F(StateBackendTest, backendParametersRoundTrip) {
   auto parameters = std::make_shared<const KeyedStateBackendParameters>(
       StateBackendType::HEAP, "job", "op", 256, 10, 20);
-  auto restored = KeyedStateBackendParameters::create(
-      parameters->serialize(), nullptr);
+  auto restored =
+      KeyedStateBackendParameters::create(parameters->serialize(), nullptr);
   ASSERT_NE(nullptr, restored);
   EXPECT_EQ(StateBackendType::HEAP, restored->getBackendType());
   EXPECT_EQ("job", restored->getJobId());
@@ -408,8 +835,7 @@ TEST_F(StateBackendTest, backendParametersRoundTrip) {
   legacy["jobId"] = "job";
   legacy["operatorId"] = "op";
   legacy["stateBackendType"] = static_cast<int32_t>(StateBackendType::HEAP);
-  auto legacyRestored =
-      KeyedStateBackendParameters::create(legacy, nullptr);
+  auto legacyRestored = KeyedStateBackendParameters::create(legacy, nullptr);
   ASSERT_NE(nullptr, legacyRestored);
   EXPECT_EQ(128, legacyRestored->getMaxParallelism());
   EXPECT_EQ(0, legacyRestored->getStartKeyGroup());
