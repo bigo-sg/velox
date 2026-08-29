@@ -32,9 +32,9 @@ namespace {
 
 using namespace facebook::velox;
 
-// 391 and 32728 are the collision pair that broke the V1 identity: both map
-// to 250707955 under fmix64 % INT_MAX, so V1 partition() silently merged
-// them. Every test below probes them through the V2 groupProbe path.
+// 391 and 32728 are the collision pair that broke the old identity: both
+// map to 250707955 under fmix64 % INT_MAX, so the old partition() silently
+// merged them. Every test below probes them through the groupProbe path.
 constexpr int64_t kCollisionKeyA = 391;
 constexpr int64_t kCollisionKeyB = 32728;
 
@@ -49,9 +49,9 @@ class KeySelectorTest : public testing::Test, public test::VectorTestBase {
   }
 };
 
-// M1: the collision pair lands on two different rows; nothing merges.
+// The collision pair lands on two different rows; nothing merges.
 TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
 
   auto keys = selector.keys();
@@ -77,9 +77,12 @@ TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
 // Usage 1 (per-row): keys are 1:1 with input rows, equal keys share the row
 // pointer, and repeated probes are idempotent.
 TEST_F(KeySelectorTest, perRowKeys) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
   selector.probe(makeInput(
-      {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA, kCollisionKeyA,
+      {kCollisionKeyA,
+       kCollisionKeyB,
+       kCollisionKeyA,
+       kCollisionKeyA,
        kCollisionKeyB}));
 
   auto keys = selector.keys();
@@ -115,7 +118,7 @@ TEST_F(KeySelectorTest, perRowKeys) {
 // Row pointers stay stable and newGroups only reports first occurrences
 // across probes.
 TEST_F(KeySelectorTest, probesAreIncremental) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
 
   selector.probe(makeInput({kCollisionKeyA}));
   auto firstRows = selector.keys();
@@ -140,7 +143,7 @@ TEST_F(KeySelectorTest, probesAreIncremental) {
 
 // Null keys form their own group: null equals null, one distinct key.
 TEST_F(KeySelectorTest, nullKeysFormOneGroup) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
   selector.probe(makeInput({std::nullopt, kCollisionKeyA, std::nullopt}));
 
   auto keys = selector.keys();
@@ -162,7 +165,7 @@ TEST_F(KeySelectorTest, compositeKey) {
       {makeNullableFlatVector<std::string>({"a", "b", "a", "a"}),
        makeNullableFlatVector<int64_t>({1, 1, 1, 2})});
 
-  KeySelector selector({0, 1}, 128, pool());
+  KeySelector selector({0, 1}, {VARCHAR(), BIGINT()}, 128, pool());
   selector.probe(input);
 
   auto keys = selector.keys();
@@ -183,7 +186,7 @@ TEST_F(KeySelectorTest, compositeKey) {
 // kHash on rehash). Previously returned row pointers must survive such
 // transitions and the collision pair must stay distinct afterwards.
 TEST_F(KeySelectorTest, rowPointersSurviveHashModeTransitions) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
 
   // Small non-negative values keep the table in kArray mode.
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
@@ -208,7 +211,7 @@ TEST_F(KeySelectorTest, rowPointersSurviveHashModeTransitions) {
 
 // Empty input is a no-op probe with empty results.
 TEST_F(KeySelectorTest, emptyInput) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
   selector.probe(makeInput({}));
 
   EXPECT_TRUE(selector.keys().empty());
@@ -220,19 +223,20 @@ TEST_F(KeySelectorTest, emptyInput) {
   EXPECT_EQ(1, selector.keys().size());
 }
 
-// The stable hash chain of probe() must match the chain recomputed by the
-// serializer on restore (serialize -> deserialize round trip), so keyGroup
-// is identical at probe time and after a restart.
+// The stable hash chain of probe() must match the chain the serializer
+// probes a restored key through (serialize -> deserialize round trip), so
+// hash and keyGroup are identical at probe time and after a restart, and a
+// restored key lands on the very row it had at probe time.
 TEST_F(KeySelectorTest, probeHashMatchesSerializerChain) {
-  KeySelector selector({0}, 128, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB, kCollisionKeyA}));
 
   auto distinct = selector.distinctKeys();
   ASSERT_EQ(2, distinct.size());
-  RowContainerStateKeySerializer serializer(
-      distinct[0].schema(), 128, pool());
+  auto serializer = selector.keySerializer();
   for (const auto& key : distinct) {
-    auto restored = serializer.deserialize(serializer.serialize(key));
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
     EXPECT_EQ(key.hash(), restored.hash());
     EXPECT_EQ(key.keyGroup(), restored.keyGroup());
     EXPECT_TRUE(key.equals(restored));

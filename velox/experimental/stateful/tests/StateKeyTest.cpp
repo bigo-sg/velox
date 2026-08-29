@@ -13,23 +13,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "velox/experimental/stateful/state/StateKey.h"
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
-#include "velox/vector/SelectivityVector.h"
+#include "velox/exec/RowContainer.h"
+#include "velox/exec/VectorHasher.h"
+#include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
-#include "velox/experimental/stateful/state/StateKey.h"
-#include "velox/exec/RowContainer.h"
-#include "velox/exec/VectorHasher.h"
 #include "velox/vector/BaseVector.h"
 #include "velox/vector/DecodedVector.h"
 #include "velox/vector/FlatVector.h"
+#include "velox/vector/SelectivityVector.h"
 #include "velox/vector/tests/utils/VectorTestBase.h"
 
 namespace facebook::velox::stateful::test {
@@ -43,7 +44,8 @@ class StateKeyTest : public testing::Test, public velox::test::VectorTestBase {
     memory::MemoryManager::testingSetInstance({});
   }
 
-  std::unique_ptr<RowContainer> newContainer(const std::vector<TypePtr>& types) {
+  std::unique_ptr<RowContainer> newContainer(
+      const std::vector<TypePtr>& types) {
     return std::make_unique<RowContainer>(types, pool());
   }
 
@@ -105,8 +107,10 @@ TEST_F(StateKeyTest, bigintKeys) {
 
   auto* row391 = storeRow(container.get(), {bigintValue(391)});
   auto* row392 = storeRow(container.get(), {bigintValue(392)});
-  RowContainerStateKey key391(&schema, row391, expectedHash(schema, row391), kMaxParallelism);
-  RowContainerStateKey key392(&schema, row392, expectedHash(schema, row392), kMaxParallelism);
+  RowContainerStateKey key391(
+      &schema, row391, expectedHash(schema, row391), kMaxParallelism);
+  RowContainerStateKey key392(
+      &schema, row392, expectedHash(schema, row392), kMaxParallelism);
 
   EXPECT_TRUE(key391.equals(key391));
   EXPECT_FALSE(key391.equals(key392));
@@ -146,8 +150,10 @@ TEST_F(StateKeyTest, equalValuesInDifferentRowsAreEqual) {
 
   auto* rowA = storeRow(container.get(), {bigintValue(42)});
   auto* rowB = storeRow(container.get(), {bigintValue(42)});
-  RowContainerStateKey keyA(&schema, rowA, expectedHash(schema, rowA), kMaxParallelism);
-  RowContainerStateKey keyB(&schema, rowB, expectedHash(schema, rowB), kMaxParallelism);
+  RowContainerStateKey keyA(
+      &schema, rowA, expectedHash(schema, rowA), kMaxParallelism);
+  RowContainerStateKey keyB(
+      &schema, rowB, expectedHash(schema, rowB), kMaxParallelism);
 
   EXPECT_NE(rowA, rowB);
   EXPECT_TRUE(keyA.equals(keyB));
@@ -186,9 +192,12 @@ TEST_F(StateKeyTest, nullKeys) {
   auto* nullRowA = storeRow(container.get(), {nullValue(BIGINT())});
   auto* nullRowB = storeRow(container.get(), {nullValue(BIGINT())});
   auto* valueRow = storeRow(container.get(), {bigintValue(1)});
-  RowContainerStateKey nullA(&schema, nullRowA, expectedHash(schema, nullRowA), kMaxParallelism);
-  RowContainerStateKey nullB(&schema, nullRowB, expectedHash(schema, nullRowB), kMaxParallelism);
-  RowContainerStateKey value(&schema, valueRow, expectedHash(schema, valueRow), kMaxParallelism);
+  RowContainerStateKey nullA(
+      &schema, nullRowA, expectedHash(schema, nullRowA), kMaxParallelism);
+  RowContainerStateKey nullB(
+      &schema, nullRowB, expectedHash(schema, nullRowB), kMaxParallelism);
+  RowContainerStateKey value(
+      &schema, valueRow, expectedHash(schema, valueRow), kMaxParallelism);
 
   EXPECT_TRUE(nullA.equals(nullB));
   EXPECT_FALSE(nullA.equals(value));
@@ -204,10 +213,14 @@ TEST_F(StateKeyTest, varcharKeys) {
   auto* rowFoo2 = storeRow(container.get(), {varcharValue("foo")});
   auto* rowFood = storeRow(container.get(), {varcharValue("food")});
   auto* rowBar = storeRow(container.get(), {varcharValue("bar")});
-  RowContainerStateKey foo(&schema, rowFoo, expectedHash(schema, rowFoo), kMaxParallelism);
-  RowContainerStateKey foo2(&schema, rowFoo2, expectedHash(schema, rowFoo2), kMaxParallelism);
-  RowContainerStateKey food(&schema, rowFood, expectedHash(schema, rowFood), kMaxParallelism);
-  RowContainerStateKey bar(&schema, rowBar, expectedHash(schema, rowBar), kMaxParallelism);
+  RowContainerStateKey foo(
+      &schema, rowFoo, expectedHash(schema, rowFoo), kMaxParallelism);
+  RowContainerStateKey foo2(
+      &schema, rowFoo2, expectedHash(schema, rowFoo2), kMaxParallelism);
+  RowContainerStateKey food(
+      &schema, rowFood, expectedHash(schema, rowFood), kMaxParallelism);
+  RowContainerStateKey bar(
+      &schema, rowBar, expectedHash(schema, rowBar), kMaxParallelism);
 
   EXPECT_TRUE(foo.equals(foo2));
   EXPECT_TRUE(foo2.equals(foo));
@@ -222,18 +235,18 @@ TEST_F(StateKeyTest, multiColumnKeys) {
   RowContainerKeySchema schema(container.get(), {BIGINT(), VARCHAR()});
   constexpr uint32_t kMaxParallelism = 64;
 
-  auto* rowA =
-      storeRow(container.get(), {bigintValue(1), varcharValue("a")});
-  auto* rowA2 =
-      storeRow(container.get(), {bigintValue(1), varcharValue("a")});
-  auto* rowB =
-      storeRow(container.get(), {bigintValue(1), varcharValue("b")});
-  auto* rowC =
-      storeRow(container.get(), {bigintValue(2), varcharValue("a")});
-  RowContainerStateKey keyA(&schema, rowA, expectedHash(schema, rowA), kMaxParallelism);
-  RowContainerStateKey keyA2(&schema, rowA2, expectedHash(schema, rowA2), kMaxParallelism);
-  RowContainerStateKey keyB(&schema, rowB, expectedHash(schema, rowB), kMaxParallelism);
-  RowContainerStateKey keyC(&schema, rowC, expectedHash(schema, rowC), kMaxParallelism);
+  auto* rowA = storeRow(container.get(), {bigintValue(1), varcharValue("a")});
+  auto* rowA2 = storeRow(container.get(), {bigintValue(1), varcharValue("a")});
+  auto* rowB = storeRow(container.get(), {bigintValue(1), varcharValue("b")});
+  auto* rowC = storeRow(container.get(), {bigintValue(2), varcharValue("a")});
+  RowContainerStateKey keyA(
+      &schema, rowA, expectedHash(schema, rowA), kMaxParallelism);
+  RowContainerStateKey keyA2(
+      &schema, rowA2, expectedHash(schema, rowA2), kMaxParallelism);
+  RowContainerStateKey keyB(
+      &schema, rowB, expectedHash(schema, rowB), kMaxParallelism);
+  RowContainerStateKey keyC(
+      &schema, rowC, expectedHash(schema, rowC), kMaxParallelism);
 
   EXPECT_TRUE(keyA.equals(keyA2));
   EXPECT_FALSE(keyA.equals(keyB));
@@ -265,41 +278,34 @@ TEST(VoidNamespaceTest, singleton) {
 
 class RowContainerStateKeySerializerTest : public StateKeyTest {};
 
+// Every round trip goes through the owning selector: serialize() writes the
+// column values, deserialize() reassembles them and probes them back through
+// the selector, so a restored key must land on the very row it had at probe
+// time, with the same hash and key group.
 TEST_F(RowContainerStateKeySerializerTest, bigintRoundtrip) {
-  auto container = newContainer({BIGINT()});
-  RowContainerKeySchema schema(container.get(), {BIGINT()});
-  constexpr uint32_t kMaxParallelism = 128;
-  RowContainerStateKeySerializer serializer(&schema, kMaxParallelism, pool());
-
-  for (const int64_t value : {int64_t{391}, int64_t{32728}, int64_t{-1}, int64_t{0}}) {
-    auto* row = storeRow(container.get(), {bigintValue(value)});
-    RowContainerStateKey original(&schema, row, expectedHash(schema, row), kMaxParallelism);
-
-    auto restored = serializer.deserialize(serializer.serialize(original));
-
-    EXPECT_TRUE(restored.equals(original));
-    EXPECT_TRUE(original.equals(restored));
-    EXPECT_EQ(restored.hash(), original.hash());
-    EXPECT_EQ(restored.keyGroup(), original.keyGroup());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  selector.probe(
+      makeRowVector({makeNullableFlatVector<int64_t>({391, 32728, -1, 0})}));
+  auto serializer = selector.keySerializer();
+  for (const auto& key : selector.keys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_TRUE(restored.equals(key));
+    EXPECT_EQ(restored.hash(), key.hash());
+    EXPECT_EQ(restored.keyGroup(), key.keyGroup());
   }
 }
 
 TEST_F(RowContainerStateKeySerializerTest, collisionPairRoundtrip) {
-  auto container = newContainer({BIGINT()});
-  RowContainerKeySchema schema(container.get(), {BIGINT()});
-  constexpr uint32_t kMaxParallelism = 128;
-  RowContainerStateKeySerializer serializer(&schema, kMaxParallelism, pool());
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  selector.probe(
+      makeRowVector({makeNullableFlatVector<int64_t>({391, 32728})}));
+  auto keys = selector.keys();
+  auto serializer = selector.keySerializer();
 
-  auto* row391 = storeRow(container.get(), {bigintValue(391)});
-  auto* row32728 = storeRow(container.get(), {bigintValue(32728)});
-  RowContainerStateKey key391(&schema, row391, expectedHash(schema, row391), kMaxParallelism);
-  RowContainerStateKey key32728(&schema, row32728, expectedHash(schema, row32728), kMaxParallelism);
+  auto restored391 = serializer->deserialize(serializer->serialize(keys[0]));
+  auto restored32728 = serializer->deserialize(serializer->serialize(keys[1]));
 
-  auto restored391 = serializer.deserialize(serializer.serialize(key391));
-  auto restored32728 = serializer.deserialize(serializer.serialize(key32728));
-
-  EXPECT_TRUE(restored391.equals(key391));
-  EXPECT_TRUE(restored32728.equals(key32728));
   // The restored keys stay distinct: the collision pair must not collapse
   // through the snapshot / restore path either.
   EXPECT_FALSE(restored391.equals(restored32728));
@@ -308,39 +314,52 @@ TEST_F(RowContainerStateKeySerializerTest, collisionPairRoundtrip) {
 }
 
 TEST_F(RowContainerStateKeySerializerTest, varcharRoundtrip) {
-  auto container = newContainer({VARCHAR()});
-  RowContainerKeySchema schema(container.get(), {VARCHAR()});
-  constexpr uint32_t kMaxParallelism = 128;
-  RowContainerStateKeySerializer serializer(&schema, kMaxParallelism, pool());
-
-  const std::vector<std::string> values = {"", "a", "hello world", std::string(500, 'x')};
-  for (const std::string& value : values) {
-    auto* row = storeRow(container.get(), {varcharValue(value)});
-    RowContainerStateKey original(&schema, row, expectedHash(schema, row), kMaxParallelism);
-
-    auto restored = serializer.deserialize(serializer.serialize(original));
-
-    EXPECT_TRUE(restored.equals(original));
-    EXPECT_EQ(restored.hash(), original.hash());
-    EXPECT_EQ(restored.keyGroup(), original.keyGroup());
+  KeySelector selector({0}, {VARCHAR()}, 128, pool());
+  selector.probe(makeRowVector({makeNullableFlatVector<std::string>(
+      {"", "a", "hello world", std::string(500, 'x')})}));
+  auto serializer = selector.keySerializer();
+  for (const auto& key : selector.keys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_TRUE(restored.equals(key));
+    EXPECT_EQ(restored.hash(), key.hash());
+    EXPECT_EQ(restored.keyGroup(), key.keyGroup());
   }
 }
 
+TEST_F(RowContainerStateKeySerializerTest, nullColumnRoundtrip) {
+  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  selector.probe(
+      makeRowVector({makeNullableFlatVector<int64_t>({std::nullopt, 5})}));
+  auto keys = selector.keys();
+  ASSERT_EQ(2, keys.size());
+  auto serializer = selector.keySerializer();
+
+  // The null column round-trips through its null flag alone; null equals
+  // null at probe time, so the restored key lands on the null group's row.
+  auto restoredNull = serializer->deserialize(serializer->serialize(keys[0]));
+  EXPECT_EQ(keys[0].row(), restoredNull.row());
+  EXPECT_TRUE(restoredNull.equals(keys[0]));
+  EXPECT_EQ(restoredNull.hash(), keys[0].hash());
+  EXPECT_FALSE(restoredNull.equals(keys[1]));
+}
+
 TEST_F(RowContainerStateKeySerializerTest, multiColumnRoundtrip) {
-  auto container = newContainer({BIGINT(), VARCHAR()});
-  RowContainerKeySchema schema(container.get(), {BIGINT(), VARCHAR()});
-  constexpr uint32_t kMaxParallelism = 64;
-  RowContainerStateKeySerializer serializer(&schema, kMaxParallelism, pool());
+  KeySelector selector({0, 1}, {BIGINT(), VARCHAR()}, 64, pool());
+  selector.probe(makeRowVector(
+      {makeNullableFlatVector<int64_t>({3}),
+       makeNullableFlatVector<std::string>({"k"})}));
+  auto keys = selector.keys();
+  ASSERT_EQ(1, keys.size());
+  auto serializer = selector.keySerializer();
 
-  auto* row = storeRow(container.get(), {bigintValue(3), varcharValue("k")});
-  RowContainerStateKey original(&schema, row, expectedHash(schema, row), kMaxParallelism);
+  auto restored = serializer->deserialize(serializer->serialize(keys[0]));
 
-  auto restored = serializer.deserialize(serializer.serialize(original));
-
-  EXPECT_TRUE(restored.equals(original));
-  EXPECT_EQ(restored.hash(), original.hash());
-  EXPECT_EQ(restored.keyGroup(), original.keyGroup());
-  EXPECT_EQ(restored.schema(), &schema);
+  EXPECT_EQ(keys[0].row(), restored.row());
+  EXPECT_TRUE(restored.equals(keys[0]));
+  EXPECT_EQ(restored.hash(), keys[0].hash());
+  EXPECT_EQ(restored.keyGroup(), keys[0].keyGroup());
+  EXPECT_EQ(restored.schema(), keys[0].schema());
 }
 
 class NamespaceSerializerTest : public StateKeyTest {};
@@ -407,7 +426,8 @@ class FakeMapState : public MapState<K, N, UK, UV> {
     return map_[{key, ns}][userKey];
   }
 
-  void put(const K& key, const N& ns, const UK& userKey, const UV& value) override {
+  void put(const K& key, const N& ns, const UK& userKey, const UV& value)
+      override {
     map_[{key, ns}][userKey] = value;
   }
 

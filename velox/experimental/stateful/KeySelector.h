@@ -27,6 +27,7 @@
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/common/memory/RawVector.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/vector/ComplexVector.h"
 #include "velox/vector/SelectivityVector.h"
@@ -52,14 +53,17 @@ namespace facebook::velox::stateful {
 /// internals (HashLookup, hits, hashes) stay private to this class.
 class KeySelector {
  public:
-  /// Constructs a selector over the user key channels of the probe
-  /// input. The key RowContainer, the probe hash table and the hashers are
-  /// created lazily on the first probe() from the input's column types.
-  /// 'maxParallelism' feeds StateKey::keyGroup() = hash % maxParallelism and
-  /// must be the same in every place that derives key groups (shuffle,
-  /// probe, snapshot, restore).
+  /// Constructs a selector over the user key channels of the probe input.
+  /// 'keyTypes' are the key column types as declared by the plan; the key
+  /// RowContainer, the probe hash table, the hashers and the schema are
+  /// built here, at construction, so keys can be restored (through
+  /// keySerializer()) before the first input arrives. 'maxParallelism'
+  /// feeds StateKey::keyGroup() = hash % maxParallelism and must be the
+  /// same in every place that derives key groups (shuffle, probe, snapshot,
+  /// restore).
   KeySelector(
       std::vector<column_index_t> keyChannels,
+      std::vector<TypePtr> keyTypes,
       uint32_t maxParallelism,
       memory::MemoryPool* pool);
 
@@ -99,13 +103,29 @@ class KeySelector {
   /// with the user key columns only.
   exec::RowContainer* keyRowContainer() const;
 
+  /// The key schema of keyRowContainer(), available from construction.
+  const RowContainerKeySchema* schema() const;
+
+  /// The key serializer for the state backend: serializes keys column-wise
+  /// and, on deserialize, probes the reassembled key columns back through
+  /// this selector, so restored keys land in the same rows and bucket
+  /// entries as runtime keys. The serializer probes through this selector
+  /// and must not outlive it.
+  std::shared_ptr<RowContainerStateKeySerializer> keySerializer();
+
   /// Deprecated: partitions 'input' by hash-derived partition id. Distinct
   /// keys with colliding hashes are silently merged; kept only until the
   /// operators migrate to probe().
   std::map<int64_t, RowVectorPtr> partition(const RowVectorPtr& input);
 
  private:
-  void createInternal(const RowVectorPtr& input);
+  // Shared tail of the two probe entries: stable hash chain, groupProbe,
+  // and (for probe()) the per-row key construction.
+  void probeKeyInput(const RowVectorPtr& keyInput);
+
+  // The restore door behind keySerializer(): probes one key supplied as
+  // one-row key columns without touching the per-probe result caches.
+  RowContainerStateKey probeKeyColumns(std::vector<VectorPtr> keyColumns);
 
   void ensureDistinct() const;
 
@@ -115,19 +135,21 @@ class KeySelector {
   memory::MemoryPool* pool_;
   const int numPartitions_ = INT_MAX;
 
-  // Fixed at construction.
+  // Fixed at construction. 'keyRowType_' is the key columns re-packed as a
+  // row: the layout every groupProbe call feeds, built once here.
   const std::vector<column_index_t> keyChannels_ = {};
   const uint32_t maxParallelism_ = 0;
+  const std::vector<TypePtr> keyTypes_ = {};
+  const RowTypePtr keyRowType_;
 
-  // Created lazily on the first probe(). Destroyed before 'lookup_',
+  // Built at construction. 'hashTable_' is destroyed before 'lookup_',
   // which holds a reference into the table.
-  std::vector<TypePtr> keyTypes_;
   std::unique_ptr<exec::HashTable<false>> hashTable_;
   std::unique_ptr<exec::HashLookup> lookup_;
   // Independent hasher set for the stable 64-bit hash chain, the same chain
-  // recomputed on restore (RowContainerStateKeySerializer). The probe
-  // hashers live inside 'hashTable_' and their output cannot be reused: its
-  // meaning changes with the table's hash mode (value IDs in kArray /
+  // a restored key is probed through (keySerializer()). The probe hashers
+  // live inside 'hashTable_' and their output cannot be reused: its meaning
+  // changes with the table's hash mode (value IDs in kArray /
   // kNormalizedKey, hashes only in kHash) and the mode changes at runtime.
   std::vector<std::unique_ptr<exec::VectorHasher>> stableHashers_;
   std::unique_ptr<RowContainerKeySchema> schema_;
