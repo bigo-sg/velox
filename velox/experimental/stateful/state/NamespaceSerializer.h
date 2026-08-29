@@ -25,12 +25,30 @@ namespace facebook::velox::stateful {
 /// empty and all instances are equal.
 class VoidNamespaceSerializer : public TypeSerializer<VoidNamespace> {
  public:
+  std::string schema() const override {
+    return "void";
+  }
+
   std::string serialize(const VoidNamespace& /* ns */) override {
     return "";
   }
 
-  VoidNamespace deserialize(const std::string& /* str */) override {
+  VoidNamespace deserialize(std::string_view /* str */) override {
     return VoidNamespace{};
+  }
+};
+
+/// Compile-time binding of a namespace type to its serializer, in the
+/// shape of TypeTraits: the primary template is undefined, so a namespace
+/// type without a specialization fails to compile where a handle
+/// constructs its serializer; a new namespace type plugs in here.
+template <typename N>
+struct NamespaceSerializerTraits;
+
+template <>
+struct NamespaceSerializerTraits<VoidNamespace> {
+  static std::shared_ptr<TypeSerializer<VoidNamespace>> create() {
+    return std::make_shared<VoidNamespaceSerializer>();
   }
 };
 

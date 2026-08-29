@@ -17,11 +17,18 @@
 
 #include <folly/Range.h>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "velox/exec/RowContainer.h"
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
+#include "velox/type/Type.h"
+#include "velox/vector/BaseVector.h"
+#include "velox/vector/FlatVector.h"
 
 namespace facebook::velox::stateful {
 
@@ -39,15 +46,19 @@ class HeapAccState : public AccState<K, N> {
  public:
   HeapAccState(
       std::shared_ptr<StateTable<K, N, char*>> stateTable,
-      const AccStateDescriptor& descriptor)
+      const AccStateDescriptor& descriptor,
+      std::shared_ptr<TypeSerializer<K>> keySerializer)
       : stateTable_(std::move(stateTable)),
         valueRows_(std::make_unique<exec::RowContainer>(
             descriptor.accTypes(),
             descriptor.memoryPool())),
-        initializeRow_(descriptor.initializeRow()) {}
+        initializeRow_(descriptor.initializeRow()),
+        pool_(descriptor.memoryPool()),
+        keySerializer_(std::move(keySerializer)),
+        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        valueSchema_(accTypesSchema(descriptor.accTypes())) {}
 
-  void rows(folly::Range<const K*> keys, const N& ns, char** outRows)
-      override {
+  void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
     for (size_t i = 0; i < keys.size(); ++i) {
       outRows[i] = row(keys[i], ns);
     }
@@ -71,9 +82,73 @@ class HeapAccState : public AccState<K, N> {
     stateTable_->clear();
   }
 
+  void snapshotKeyGroup(int32_t keyGroupId, CheckpointWriter& writer) override {
+    auto& map =
+        stateTable_->stateMapForKeyGroup(static_cast<uint32_t>(keyGroupId));
+    auto snapshot = map.createSnapshot();
+    const auto countPosition = writer.writeInt32Placeholder();
+    int32_t entryCount = 0;
+    for (const auto& head : snapshot.heads) {
+      for (auto entry = head; entry != nullptr; entry = entry->next_) {
+        writer.writeBytes(nsSerializer_->serialize(entry->namespace_));
+        writer.writeBytes(keySerializer_->serialize(entry->key_));
+        writer.writeBytes(serializeRow(entry->state_));
+        ++entryCount;
+      }
+    }
+    writer.patchInt32(countPosition, entryCount);
+    map.releaseSnapshot(snapshot.version);
+  }
+
+  void restoreEntry(CheckpointReader& reader) override {
+    const auto ns = nsSerializer_->deserialize(reader.readBytes());
+    const auto key = keySerializer_->deserialize(reader.readBytes());
+    const auto bytes = reader.readBytes();
+    char* row = valueRows_->newRow();
+    auto input = BaseVector::create(VARBINARY(), 1, pool_);
+    auto* flat = input->as<FlatVector<StringView>>();
+    flat->set(0, StringView(bytes.data(), bytes.size()));
+    valueRows_->storeSerializedRow(*flat, 0, row);
+    stateTable_->put(key, ns, row);
+  }
+
+  std::string namespaceSchema() const override {
+    return nsSerializer_->schema();
+  }
+
+  std::string valueSchema() const override {
+    return valueSchema_;
+  }
+
  private:
+  /// Serializes one value row through the container's row serialization
+  /// (the same format as spilling), which is column-wise typed and handles
+  /// fixed-width, variable-width and nested accumulator columns.
+  std::string serializeRow(const char* row) {
+    auto result = BaseVector::create(VARBINARY(), 1, pool_);
+    char* rowPtr = const_cast<char*>(row);
+    valueRows_->extractSerializedRows(folly::Range<char**>(&rowPtr, 1), result);
+    const auto& value = result->as<FlatVector<StringView>>()->valueAt(0);
+    return std::string(value.data(), value.size());
+  }
+
+  static std::string accTypesSchema(const std::vector<TypePtr>& accTypes) {
+    std::string schema;
+    for (const auto& accType : accTypes) {
+      if (!schema.empty()) {
+        schema += ",";
+      }
+      schema += accType->toString();
+    }
+    return "(" + schema + ")";
+  }
+
   std::shared_ptr<StateTable<K, N, char*>> stateTable_;
   std::unique_ptr<exec::RowContainer> valueRows_;
   AccStateDescriptor::InitRowCallback initializeRow_;
+  memory::MemoryPool* pool_;
+  std::shared_ptr<TypeSerializer<K>> keySerializer_;
+  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  const std::string valueSchema_;
 };
 } // namespace facebook::velox::stateful

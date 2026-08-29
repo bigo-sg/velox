@@ -18,6 +18,9 @@
 #include <folly/Range.h>
 #include <map>
 #include <memory>
+#include <string>
+#include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/state/CheckpointStream.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::exec {
@@ -32,6 +35,29 @@ class State {
   static const int VOID_NAMESPACE = 0;
   virtual ~State() = default;
   virtual void clear() = 0;
+
+  /// Checkpoint plane of the heap storage: serializes this state's entries
+  /// of one key group / deserializes one entry, and reports the schema
+  /// strings the backend cross-checks against the checkpoint header.
+  /// Implemented by the heap state handles; states that predate the typed
+  /// API keep the defaults and never take part in heap checkpoints.
+  virtual void snapshotKeyGroup(
+      int32_t /* keyGroupId */,
+      CheckpointWriter& /* writer */) {
+    VELOX_NYI("This state does not support key-group snapshots");
+  }
+
+  virtual void restoreEntry(CheckpointReader& /* reader */) {
+    VELOX_NYI("This state does not support entry restore");
+  }
+
+  virtual std::string namespaceSchema() const {
+    return "";
+  }
+
+  virtual std::string valueSchema() const {
+    return "";
+  }
 };
 
 using StatePtr = std::shared_ptr<State>;

@@ -16,6 +16,7 @@
 #pragma once
 
 #include "velox/common/base/BitUtil.h"
+#include "velox/common/base/Exceptions.h"
 
 #include <climits>
 #include <cstdint>
@@ -186,6 +187,64 @@ class StateMap {
 
   size_t size() const {
     return primaryTableSize_ + incrementalRehashTableSize_;
+  }
+
+  /// Immutable view over the map for the snapshot path: the combined
+  /// bucket-head array captured at a version, as in Flink
+  /// CopyOnWriteStateMap.snapshotMapArrays(). Entries reachable from the
+  /// captured heads are exactly the entries visible at 'version': later
+  /// modifications prepend new entries to the live tables or copy-on-write
+  /// modified entries, so the captured chains never change.
+  struct StateMapSnapshot {
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> heads;
+    int32_t version;
+  };
+
+  /// Must be called from the thread that modifies the map. Registers a new
+  /// snapshot version (modifications copy-on-write the entries it
+  /// references until releaseSnapshot) and captures the combined bucket
+  /// head array: the whole primary table, or — while rehashing — the
+  /// primary segment [rehashIndex, len), the transferred segment
+  /// [0, rehashIndex) and the insertion segment [len, len + rehashIndex)
+  /// of the incremental table (whose length is 2 * len).
+  StateMapSnapshot createSnapshot() {
+    VELOX_CHECK(++stateMapVersion_ > 0, "Version count overflow in StateMap");
+    highestRequiredSnapshotVersion_ = stateMapVersion_;
+    snapshotVersions_.insert(stateMapVersion_);
+
+    std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> heads;
+    if (!isRehashing()) {
+      heads = primaryTable_;
+    } else {
+      const int32_t rehashIndex = rehashIndex_;
+      const size_t primaryLength = primaryTable_.size();
+      const size_t incrementalLength = incrementalRehashTable_.size();
+      heads.reserve(primaryLength + rehashIndex);
+      heads.insert(
+          heads.end(),
+          primaryTable_.begin() + rehashIndex,
+          primaryTable_.end());
+      heads.insert(
+          heads.end(),
+          incrementalRehashTable_.begin(),
+          incrementalRehashTable_.begin() + rehashIndex);
+      heads.insert(
+          heads.end(),
+          incrementalRehashTable_.begin() + primaryLength,
+          incrementalRehashTable_.begin() + primaryLength + rehashIndex);
+    }
+    return StateMapSnapshot{std::move(heads), stateMapVersion_};
+  }
+
+  /// Drops the snapshot version; copy-on-write for the entries it
+  /// referenced ends when the oldest open snapshot is released.
+  void releaseSnapshot(int32_t snapshotVersion) {
+    VELOX_CHECK(
+        snapshotVersions_.erase(snapshotVersion) > 0,
+        "Attempt to release unknown snapshot version {}",
+        snapshotVersion);
+    highestRequiredSnapshotVersion_ =
+        snapshotVersions_.empty() ? 0 : *snapshotVersions_.rbegin();
   }
 
  private:
