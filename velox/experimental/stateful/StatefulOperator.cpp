@@ -54,8 +54,9 @@ bool StatefulOperator::isFinished() {
 
 void StatefulOperator::addInput(StreamElementPtr input) {
   auto record = std::static_pointer_cast<StreamRecord>(input);
-  operator_->traceInput(record->record());
-  operator_->addInput(record->record());
+  const auto& rowVector = record->record();
+  operator_->traceInput(rowVector);
+  operator_->addInput(rowVector);
 }
 
 bool StatefulOperator::sourceEmpty() {

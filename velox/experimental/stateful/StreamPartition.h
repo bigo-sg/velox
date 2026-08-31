@@ -45,15 +45,21 @@ class StreamPartition : public StatefulOperator {
 
   void allocateIndexBuffers(const std::vector<vector_size_t>& sizes);
 
-  RowVectorPtr wrapChildren(
-      const RowVectorPtr& input,
+  // Applies partition indices to a (value, rowKind) pair: wraps each child
+  // column of value and (when present) the rowKind vector with the same
+  // dictionary. appendOnly inputs (rowKind == nullptr) produce appendOnly
+  // outputs.
+  std::pair<RowVectorPtr, SimpleVectorPtr<int8_t>> wrapForPartition(
+      const RowVectorPtr& value,
+      const SimpleVectorPtr<int8_t>& rowKind,
       vector_size_t size,
       const BufferPtr& indices);
 
   const std::unique_ptr<core::PartitionFunction> partitionFunction_;
   const int numPartitions_;
 
-  RowVectorPtr input_;
+  RowVectorPtr inputRowVector_;
+  SimpleVectorPtr<int8_t> inputRowKind_;
 
   /// Reusable memory for hash calculation.
   std::vector<uint32_t> partitions_;

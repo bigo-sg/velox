@@ -16,6 +16,7 @@
 #include "velox/experimental/stateful/StreamPartition.h"
 #include <cstdint>
 #include "velox/experimental/stateful/StatefulTask.h"
+#include "velox/vector/VectorEncoding.h"
 
 namespace facebook::velox::stateful {
 
@@ -25,7 +26,7 @@ StreamPartition::StreamPartition(
     int numPartitions)
     : StatefulOperator(std::move(op), {}),
       partitionFunction_(std::move(partitionFunctionSpec.create(
-          numPartitions_,
+          numPartitions,
           /*localExchange=*/false))),
       numPartitions_(numPartitions) {
   indexBuffers_.resize(numPartitions_);
@@ -37,23 +38,27 @@ bool StreamPartition::isFinished() {
 }
 
 void StreamPartition::addInput(StreamElementPtr input) {
-  VELOX_CHECK_NULL(input_);
+  VELOX_CHECK_NULL(inputRowVector_);
+  VELOX_CHECK_NULL(inputRowKind_);
   auto record = std::static_pointer_cast<StreamRecord>(input);
-  input_ = record->record();
+  inputRowVector_ = record->record();
+  inputRowKind_ = record->rowKind();
 }
 
 void StreamPartition::advance() {
-  prepareForInput(input_);
+  prepareForInput(inputRowVector_);
 
   if (numPartitions_ == 1) {
-    pushToTask(std::make_shared<StreamRecord>(getPlanNodeId(), 0, input_));
-    input_.reset();
+    pushToTask(std::make_shared<StreamRecord>(
+        getPlanNodeId(), 0, inputRowVector_, inputRowKind_));
+    inputRowVector_.reset();
+    inputRowKind_.reset();
     return;
   }
 
   // TODO: The partition function doesn't use max parallelism.
-  partitionFunction_->partition(*input_, partitions_);
-  const auto numInput = input_->size();
+  partitionFunction_->partition(*inputRowVector_, partitions_);
+  const auto numInput = inputRowVector_->size();
   std::vector<vector_size_t> maxIndex(numPartitions_, 0);
   for (auto i = 0; i < numInput; ++i) {
     ++maxIndex[partitions_[i]];
@@ -67,18 +72,19 @@ void StreamPartition::advance() {
     ++maxIndex[partition];
   }
 
-  const int64_t totalSize = input_->retainedSize();
   for (auto i = 0; i < numPartitions_; i++) {
     auto partitionSize = maxIndex[i];
     if (partitionSize == 0) {
       // Do not enqueue empty partitions.
       continue;
     }
-    auto partitionData = wrapChildren(input_, partitionSize, indexBuffers_[i]);
-    pushToTask(
-        std::make_shared<StreamRecord>(getPlanNodeId(), i, partitionData));
+    auto [value, rowKind] = wrapForPartition(
+        inputRowVector_, inputRowKind_, partitionSize, indexBuffers_[i]);
+    pushToTask(std::make_shared<StreamRecord>(
+        getPlanNodeId(), i, std::move(value), std::move(rowKind)));
   }
-  input_.reset();
+  inputRowVector_.reset();
+  inputRowKind_.reset();
 }
 
 void StreamPartition::pushToTask(StreamElementPtr output) {
@@ -87,8 +93,7 @@ void StreamPartition::pushToTask(StreamElementPtr output) {
   task->addOutput(std::move(output));
 }
 
-// These methods are copied from LocalPartition.cpp, maybe we can refactor
-// them to reuse the code in LocalPartition.cpp.
+// prepareForInput and allocateIndexBuffers are adapted from LocalPartition.cpp.
 void StreamPartition::prepareForInput(RowVectorPtr& input) {
   // Lazy vectors must be loaded or processed to ensure the late materialized in
   // order.
@@ -116,32 +121,41 @@ void StreamPartition::allocateIndexBuffers(
   }
 }
 
-RowVectorPtr StreamPartition::wrapChildren(
-    const RowVectorPtr& input,
+std::pair<RowVectorPtr, SimpleVectorPtr<int8_t>>
+StreamPartition::wrapForPartition(
+    const RowVectorPtr& value,
+    const SimpleVectorPtr<int8_t>& rowKind,
     vector_size_t size,
     const BufferPtr& indices) {
-  RowVectorPtr result = std::make_shared<RowVector>(
+  RowVectorPtr wrappedValue = std::make_shared<RowVector>(
       op()->pool(),
-      input->type(),
+      value->type(),
       nullptr,
       size,
-      std::vector<VectorPtr>(input->childrenSize()));
+      std::vector<VectorPtr>(value->childrenSize()));
+  for (auto i = 0; i < value->childrenSize(); ++i) {
+    wrappedValue->childAt(i) =
+        BaseVector::wrapInDictionary(nullptr, indices, size, value->childAt(i));
+  }
+  wrappedValue->updateContainsLazyNotLoaded();
 
-  for (auto i = 0; i < input->childrenSize(); ++i) {
-    auto& child = result->childAt(i);
-    if (child && child->encoding() == VectorEncoding::Simple::DICTIONARY &&
-        child.use_count() == 1) {
-      child->BaseVector::resize(size);
-      child->setWrapInfo(indices);
-      child->setValueVector(input->childAt(i));
-    } else {
-      child = BaseVector::wrapInDictionary(
-          nullptr, indices, size, input->childAt(i));
-    }
+  if (rowKind == nullptr) {
+    return {std::move(wrappedValue), nullptr};
   }
 
-  result->updateContainsLazyNotLoaded();
-  return result;
+  // Re-apply the same indices to rowKind so each partition carries the original
+  // row kind for its rows. wrapInDictionary may return a DictionaryVector or,
+  // for constant input, a ConstantVector; both inherit from SimpleVector.
+  auto wrapped = BaseVector::wrapInDictionary(nullptr, indices, size, rowKind);
+  auto wrappedRowKind =
+      std::dynamic_pointer_cast<SimpleVector<int8_t>>(wrapped);
+  VELOX_CHECK_NOT_NULL(
+      wrappedRowKind,
+      "wrapInDictionary unexpectedly returned a non-SimpleVector encoding for the rowKind column: {}",
+      wrapped == nullptr
+          ? std::string{"null"}
+          : VectorEncoding::mapSimpleToName(wrapped->encoding()));
+  return {std::move(wrappedValue), std::move(wrappedRowKind)};
 }
 
 } // namespace facebook::velox::stateful

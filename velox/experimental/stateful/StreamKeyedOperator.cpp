@@ -42,6 +42,7 @@ bool StreamKeyedOperator::isFinished() {
 void StreamKeyedOperator::addInput(StreamElementPtr input) {
   VELOX_CHECK_NULL(input_);
   auto record = std::static_pointer_cast<StreamRecord>(input);
+  // TODO: preserve rowKind across this operator.
   input_ = record->record();
 }
 

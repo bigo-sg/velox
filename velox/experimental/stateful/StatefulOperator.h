@@ -47,7 +47,7 @@ class StatefulOperator {
       : keyedStateBackendParameters_(keyedStateBackendParameters),
         operator_(std::move(op)),
         targets_(std::move(targets)) {
-    sink = operator_->operatorType() == "TableWrite";
+    sink_ = operator_->operatorType() == "TableWrite";
   }
 
   virtual ~StatefulOperator() = default;
@@ -56,8 +56,17 @@ class StatefulOperator {
 
   virtual bool isFinished();
 
+  // Receives a StreamRecord and feeds record() to the underlying velox
+  // operator. The base implementation drops rowKind, which is correct for
+  // stateless passthrough. Operators with retract semantics (group aggregation,
+  // stream join, etc.) must override this and advance() to act on rowKind.
   virtual void addInput(StreamElementPtr input);
 
+  // Pulls the next output batch from the underlying velox operator and wraps it
+  // as a StreamRecord. The base implementation assumes appendOnly output (no
+  // $row_kind column), which matches stateless passthrough. Operators with
+  // retract semantics must override this together with addInput() to emit
+  // rowKind according to their changelog semantics.
   virtual void advance();
 
   void advanceWithFuture(ContinueFuture* future);
@@ -161,7 +170,7 @@ class StatefulOperator {
 
  private:
   bool isSink() {
-    return sink;
+    return sink_;
   }
 
   bool isSource() const {
@@ -170,7 +179,7 @@ class StatefulOperator {
 
   std::unique_ptr<exec::Operator> operator_;
   std::vector<std::unique_ptr<StatefulOperator>> targets_;
-  bool sink;
+  bool sink_;
   bool sourceEmpty_ = true;
   std::unique_ptr<CombinedWatermarkStatus> combinedWatermarkStatus_;
   StreamOperatorStateHandlerPtr stateHandler_;
