@@ -153,6 +153,15 @@ class ConnectorInsertTableHandle : public ISerializable {
     return false;
   }
 
+  /// Whether this sink consumes the per-row $row_kind (changelog) column when
+  /// present. The stateful planner augments the TableWriteNode with a trailing
+  /// $row_kind TINYINT column and feeds a merged RowVector only when the sink
+  /// declares support; other sinks are left untouched. Default false;
+  /// connectors that render/emit changelog (e.g. print) override to true.
+  virtual bool supportsRowKind() const {
+    return false;
+  }
+
   virtual std::string toString() const = 0;
 
   folly::dynamic serialize() const override {

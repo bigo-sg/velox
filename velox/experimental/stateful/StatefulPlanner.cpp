@@ -44,7 +44,9 @@
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
+#include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StatefulSinkOperator.h"
 #include "velox/experimental/stateful/StatefulSourceOperator.h"
 #include "velox/experimental/stateful/StreamJoin.h"
 #include "velox/experimental/stateful/StreamKeyedOperator.h"
@@ -67,6 +69,42 @@ static int nextOperatorId() {
   static std::atomic<int> opId = 0;
   return opId.fetch_add(1);
 }
+
+namespace {
+
+// Returns a new TableWriteNode identical to 'node' but with columns and the
+// (EmptyNode) source outputType extended by a trailing $row_kind TINYINT
+// column. Lets the underlying exec::TableWriter's name-based inputMapping_
+// pick up $row_kind so per-row RowKind flows into the connector DataSink.
+// StatefulSinkOperator::addInput re-merges $row_kind into the RowVector on the
+// sink path via StreamRecord::toMergedRowVector. Only invoked when the sink's
+// ConnectorInsertTableHandle declares supportsRowKind().
+std::shared_ptr<const core::TableWriteNode> augmentTableWriteForRowKind(
+    const std::shared_ptr<const core::TableWriteNode>& node) {
+  auto oldColumns = node->columns();
+  std::vector<std::string> names = oldColumns->names();
+  std::vector<TypePtr> types = oldColumns->children();
+  names.emplace_back(std::string(kRowKindColumnName));
+  types.emplace_back(TINYINT());
+  auto augmentedColumns = ROW(std::move(names), std::move(types));
+
+  // EmptyNode outputType must contain every column name; the TableWriteNode
+  // constructor enforces name containment.
+  auto augmentedSource = std::make_shared<EmptyNode>(augmentedColumns);
+
+  return std::make_shared<core::TableWriteNode>(
+      node->id(),
+      augmentedColumns,
+      augmentedColumns->names(),
+      node->aggregationNode(),
+      node->insertTableHandle(),
+      node->hasPartitioningScheme(),
+      node->outputType(),
+      node->commitStrategy(),
+      augmentedSource);
+}
+
+} // namespace
 
 // static
 StatefulOperatorPtr StatefulPlanner::plan(
@@ -425,6 +463,16 @@ StatefulOperatorPtr StatefulPlanner::transformGenericOperator(
     return std::make_unique<StatefulSourceOperator>(
         std::move(op), std::move(targets));
   }
+  if (auto tableWriteNode =
+          std::dynamic_pointer_cast<const core::TableWriteNode>(
+              planNode.node())) {
+    return std::make_unique<StatefulSinkOperator>(
+        std::move(op),
+        std::move(targets),
+        tableWriteNode->insertTableHandle()
+            ->connectorInsertTableHandle()
+            ->supportsRowKind());
+  }
   return std::make_unique<StatefulOperator>(std::move(op), std::move(targets));
 }
 
@@ -465,6 +513,16 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(
   } else if (
       auto tableWriteNode =
           std::dynamic_pointer_cast<const core::TableWriteNode>(planNode)) {
+    // For changelog-aware sinks (ConnectorInsertTableHandle::supportsRowKind),
+    // augment the node with a trailing $row_kind column so per-row RowKind
+    // flows through TableWriter's name-based column selection into the
+    // connector DataSink.
+    if (tableWriteNode->insertTableHandle()
+            ->connectorInsertTableHandle()
+            ->supportsRowKind()) {
+      return std::make_unique<exec::TableWriter>(
+          nextOperatorId(), ctx_, augmentTableWriteForRowKind(tableWriteNode));
+    }
     return std::make_unique<exec::TableWriter>(
         nextOperatorId(), ctx_, tableWriteNode);
   } else if (

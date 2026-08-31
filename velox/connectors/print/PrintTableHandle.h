@@ -48,6 +48,12 @@ class PrintTableHandle : public ConnectorInsertTableHandle {
     return isStdErr_;
   }
 
+  /// The print sink renders per-row RowKind as the +I/-U/+U/-D prefix, so it
+  /// consumes the trailing $row_kind column.
+  bool supportsRowKind() const override {
+    return true;
+  }
+
   std::string toString() const override;
 
   folly::dynamic serialize() const override;
