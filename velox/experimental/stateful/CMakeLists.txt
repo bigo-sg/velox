@@ -26,6 +26,7 @@ velox_add_library(
   StatefulPlanner.cpp
   StatefulPlanNode.cpp
   StatefulOperator.cpp
+  StatefulCalcOperator.cpp
   StreamPartition.cpp
   StreamJoin.cpp
   StreamKeyedOperator.cpp
