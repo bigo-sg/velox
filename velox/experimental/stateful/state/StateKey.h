@@ -59,8 +59,7 @@ class RowContainerKeySchema {
   RowContainerKeySchema(
       exec::RowContainer* container,
       std::vector<TypePtr> keyTypes)
-      : container_(container),
-        keyTypes_(std::move(keyTypes)) {}
+      : container_(container), keyTypes_(std::move(keyTypes)) {}
 
   /// Column-wise value equality of two rows of the container. Null equals
   /// null. Supported key column types: fixed-width scalars and varchar /
@@ -130,17 +129,14 @@ inline bool RowContainerStateKey::equals(const StateKey& other) const {
       schema_->rowsEqual(row_, otherKey->row_);
 }
 
-inline bool RowContainerKeySchema::rowsEqual(
-    const char* lhs,
-    const char* rhs) const {
+inline bool RowContainerKeySchema::rowsEqual(const char* lhs, const char* rhs)
+    const {
   for (size_t i = 0; i < keyTypes_.size(); ++i) {
     const auto column = container_->columnAt(i);
     // For a non-nullable column nullMask() is 0, so the check is always
     // false and always safe (see RowColumn::PackOffsets).
-    const bool lhsNull =
-        (lhs[column.nullByte()] & column.nullMask()) != 0;
-    const bool rhsNull =
-        (rhs[column.nullByte()] & column.nullMask()) != 0;
+    const bool lhsNull = (lhs[column.nullByte()] & column.nullMask()) != 0;
+    const bool rhsNull = (rhs[column.nullByte()] & column.nullMask()) != 0;
     if (lhsNull != rhsNull) {
       return false;
     }
@@ -150,14 +146,14 @@ inline bool RowContainerKeySchema::rowsEqual(
     const char* lhsValue = lhs + column.offset();
     const char* rhsValue = rhs + column.offset();
     switch (keyTypes_[i]->kind()) {
-#define VELOX_STATEFUL_COMPARE_FIXED_WIDTH(KIND)                       \
-  case TypeKind::KIND: {                                               \
-    using T = TypeTraits<TypeKind::KIND>::NativeType;                  \
-    if (*reinterpret_cast<const T*>(lhsValue) !=                       \
-        *reinterpret_cast<const T*>(rhsValue)) {                       \
-      return false;                                                    \
-    }                                                                  \
-    break;                                                             \
+#define VELOX_STATEFUL_COMPARE_FIXED_WIDTH(KIND)      \
+  case TypeKind::KIND: {                              \
+    using T = TypeTraits<TypeKind::KIND>::NativeType; \
+    if (*reinterpret_cast<const T*>(lhsValue) !=      \
+        *reinterpret_cast<const T*>(rhsValue)) {      \
+      return false;                                   \
+    }                                                 \
+    break;                                            \
   }
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(BOOLEAN)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(TINYINT)
@@ -171,13 +167,10 @@ inline bool RowContainerKeySchema::rowsEqual(
 #undef VELOX_STATEFUL_COMPARE_FIXED_WIDTH
       case TypeKind::VARCHAR:
       case TypeKind::VARBINARY: {
-        const auto& lhsView =
-            *reinterpret_cast<const StringView*>(lhsValue);
-        const auto& rhsView =
-            *reinterpret_cast<const StringView*>(rhsValue);
+        const auto& lhsView = *reinterpret_cast<const StringView*>(lhsValue);
+        const auto& rhsView = *reinterpret_cast<const StringView*>(rhsValue);
         if (lhsView.size() != rhsView.size() ||
-            std::memcmp(lhsView.data(), rhsView.data(), lhsView.size()) !=
-                0) {
+            std::memcmp(lhsView.data(), rhsView.data(), lhsView.size()) != 0) {
           return false;
         }
         break;

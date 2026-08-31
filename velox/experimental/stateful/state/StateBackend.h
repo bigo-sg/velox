@@ -107,20 +107,22 @@ class KeyedStateBackendParameters : public ISerializable {
     const std::string operatorId = obj["operatorId"].asString();
     const StateBackendType backendType =
         static_cast<StateBackendType>(obj["stateBackendType"].asInt());
-    const uint32_t maxParallelism =
-        obj.count("maxParallelism")
-            ? static_cast<uint32_t>(obj["maxParallelism"].asInt())
-            : kDefaultMaxParallelism;
-    const uint32_t startKeyGroup =
-        obj.count("startKeyGroup")
-            ? static_cast<uint32_t>(obj["startKeyGroup"].asInt())
-            : 0;
-    const uint32_t numKeyGroups =
-        obj.count("numKeyGroups")
-            ? static_cast<uint32_t>(obj["numKeyGroups"].asInt())
-            : kDefaultMaxParallelism;
+    const uint32_t maxParallelism = obj.count("maxParallelism")
+        ? static_cast<uint32_t>(obj["maxParallelism"].asInt())
+        : kDefaultMaxParallelism;
+    const uint32_t startKeyGroup = obj.count("startKeyGroup")
+        ? static_cast<uint32_t>(obj["startKeyGroup"].asInt())
+        : 0;
+    const uint32_t numKeyGroups = obj.count("numKeyGroups")
+        ? static_cast<uint32_t>(obj["numKeyGroups"].asInt())
+        : kDefaultMaxParallelism;
     return std::make_shared<const KeyedStateBackendParameters>(
-        backendType, jobId, operatorId, maxParallelism, startKeyGroup, numKeyGroups);
+        backendType,
+        jobId,
+        operatorId,
+        maxParallelism,
+        startKeyGroup,
+        numKeyGroups);
   }
 
   static void registerSerDe() {
