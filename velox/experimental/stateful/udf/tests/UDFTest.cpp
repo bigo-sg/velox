@@ -92,6 +92,8 @@ TEST_F(UDFTest, extractAllFields) {
       {"isodow", "ISODOW", "IsoDow", 1},
       {"day_of_year", "DAY_OF_YEAR", "Day_Of_Year", 159},
       {"doy", "DOY", "Doy", 159},
+      {"week", "WEEK", "Week", 24},
+      {"week_of_year", "WEEK_OF_YEAR", "Week_Of_Year", 24},
   };
 
   for (const auto& f : fields) {
@@ -145,6 +147,8 @@ TEST_F(UDFTest, extractFromDate) {
       {"isodow", 1},
       {"day_of_year", 159},
       {"doy", 159},
+      {"week", 24},
+      {"week_of_year", 24},
   };
 
   for (const auto& [field, expected] : fields) {
@@ -152,6 +156,31 @@ TEST_F(UDFTest, extractFromDate) {
     auto result = evaluate(expr, rowVector);
     EXPECT_EQ(expected, result->asFlatVector<int64_t>()->valueAt(0))
         << "field: " << field;
+  }
+}
+
+TEST_F(UDFTest, extractWeekIsoYearBoundaries) {
+  stateful::udf::registerFunctions("");
+
+  // ISO-8601 week: Jan 1 can fall in the previous year's last week, and Dec 31
+  // can belong to the current year's week 53. (timestamp, expected week):
+  // 2026-06-08 Mon -> W24, 2026-06-07 Sun -> W23,
+  // 2026-01-01 Thu -> W01, 2025-12-31 Wed -> W01 (belongs to 2026-W01),
+  // 2027-01-01 Fri -> W53 (belongs to 2026-W53), 2026-12-31 Thu -> W53.
+  const std::vector<std::pair<int64_t, int64_t>> cases = {
+      {kMondayTs, 24},
+      {kSundayTs, 23},
+      {1767225600, 1},
+      {1767139200, 1},
+      {1798761600, 53},
+      {1798675200, 53}};
+
+  for (const auto& name :
+       {"week", "WEEK", "Week", "week_of_year", "WEEK_OF_YEAR"}) {
+    for (const auto& [ts, expected] : cases) {
+      EXPECT_EQ(expected, extractField(name, Timestamp(ts, 0)).value())
+          << "field: " << name << ", timestamp: " << ts;
+    }
   }
 }
 
