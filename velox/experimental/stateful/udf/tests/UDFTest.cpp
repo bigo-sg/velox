@@ -81,6 +81,7 @@ TEST_F(UDFTest, extractAllFields) {
 
   const std::vector<Case> fields = {
       {"year", "YEAR", "Year", 2026},
+      {"quarter", "QUARTER", "Quarter", 2},
       {"month", "MONTH", "Month", 6},
       {"day", "DAY", "Day", 8},
       {"day_of_month", "DAY_OF_MONTH", "Day_Of_Month", 8},
