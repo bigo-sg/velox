@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/state/HashMapStateBackend.h"
-#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
 
 namespace facebook::velox::stateful {
 
@@ -23,7 +22,12 @@ HashMapStateBackend::HashMapStateBackend(
     : StateBackend(parameters) {}
 
 KeyedStateBackendPtr HashMapStateBackend::createKeyedStateBackend() {
-  return std::make_shared<HeapKeyedStateBackend>();
+  // The heap backend is generic on the key type (a StateKey subclass),
+  // which this factory cannot know: operators name their key type when they
+  // construct their backend from the StateBackend handed down at
+  // initialization. Until the stateful operators are migrated, there is no
+  // factory-created heap backend; the handler tolerates a null one.
+  return nullptr;
 }
 
 } // namespace facebook::velox::stateful

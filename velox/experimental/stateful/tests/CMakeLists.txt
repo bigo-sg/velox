@@ -129,3 +129,63 @@ target_link_libraries(
   velox_common_base
   GTest::gtest
   GTest::gtest_main)
+
+add_executable(velox_stateful_state_key_test StateKeyTest.cpp)
+
+add_test(velox_stateful_state_key_test velox_stateful_state_key_test)
+
+target_link_libraries(
+  velox_stateful_state_key_test
+  velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
+
+add_executable(velox_stateful_key_selector_test KeySelectorTest.cpp)
+
+add_test(velox_stateful_key_selector_test velox_stateful_key_selector_test)
+
+target_link_libraries(
+  velox_stateful_key_selector_test
+  velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
+
+add_executable(velox_stateful_state_backend_test StateBackendTest.cpp)
+
+add_test(velox_stateful_state_backend_test velox_stateful_state_backend_test)
+
+target_link_libraries(
+  velox_stateful_state_backend_test
+  velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)

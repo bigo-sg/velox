@@ -15,55 +15,86 @@
  */
 #pragma once
 
-#include "velox/experimental/stateful/state/StateMap.h"
-
+#include <cstdint>
 #include <vector>
+
+#include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/state/StateMap.h"
 
 namespace facebook::velox::stateful {
 
-/**
- * This class is relevant to Flink
- * org.apache.flink.runtime.state.heap.StateTable. remove namespace first. And
- * implement it here instead of making it as a interface.
- * @param <K> type of key
- * @param <S> type of state
- */
+/// Two-layer (key, namespace) -> state storage for one state name. Layer 1
+/// buckets by key group: bucket count is the backend's key-group sub-range
+/// and the bucket index is key.keyGroup() - startKeyGroup, so the bucket
+/// index is the key group and snapshotting can stream bucket by bucket
+/// without recomputing hashes. Layer 2 is a StateMap keyed by the composite
+/// (K, N). All StateMaps are created eagerly at construction, as in Flink
+/// org.apache.flink.runtime.state.heap.StateTable.
+/// @param <K> type of key, a StateKey subclass
+/// @param <N> type of namespace, a Namespace subclass
+/// @param <S> type of state, a nullable pointer type (miss is nullptr)
 template <typename K, typename N, typename S>
 class StateTable {
  public:
-  StateTable(int keyGroupNumber)
-      : keyGroupedStates_(keyGroupNumber), keyGroupNumber_(keyGroupNumber) {}
-
-  S get(const K& key, const N& ns) {
-    if (keyGroupNumber_ == 0) {
-      return nullptr;
-    }
-    int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
-    return keyGroupedStates_[keyGroupIndex].get(key, ns);
+  StateTable(uint32_t startKeyGroup, uint32_t numKeyGroups)
+      : startKeyGroup_(startKeyGroup), buckets_(numKeyGroups) {
+    VELOX_CHECK(numKeyGroups > 0, "numKeyGroups must be greater than 0");
   }
 
-  void put(const K& key, const N& ns, const S& state) {
-    if (keyGroupNumber_ == 0) {
-      return;
-    }
-    int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
-    keyGroupedStates_[keyGroupIndex].put(key, ns, state);
+  /// Returns the state for (key, ns) or nullptr on a miss.
+  S get(const K& key, const N& ns) {
+    return bucket(key).get(key, ns);
+  }
+
+  void put(const K& key, const N& ns, S state) {
+    bucket(key).put(key, ns, state);
   }
 
   void remove(const K& key, const N& ns) {
-    if (keyGroupNumber_ == 0) {
-      return;
-    }
-    int keyGroupIndex = std::hash<K>()(key) % keyGroupNumber_;
-    keyGroupedStates_[keyGroupIndex].remove(key, ns);
+    bucket(key).remove(key, ns);
   }
 
+  /// Number of entries across all key groups.
+  size_t size() const {
+    size_t total = 0;
+    for (const auto& bucket : buckets_) {
+      total += bucket.size();
+    }
+    return total;
+  }
+
+  /// Drops the entries of all key groups.
   void clear() {
-    keyGroupedStates_.assign(keyGroupNumber_, StateMap<K, N, S>{});
+    buckets_.assign(buckets_.size(), StateMap<K, N, S>());
+  }
+
+  uint32_t startKeyGroup() const {
+    return startKeyGroup_;
+  }
+
+  uint32_t numKeyGroups() const {
+    return buckets_.size();
+  }
+
+  /// Returns the StateMap of one key group; the snapshot path streams
+  /// bucket by bucket. 'keyGroup' must be inside the sub-range.
+  StateMap<K, N, S>& stateMapForKeyGroup(uint32_t keyGroup) {
+    VELOX_CHECK(
+        keyGroup >= startKeyGroup_ &&
+            keyGroup < startKeyGroup_ + buckets_.size(),
+        "Key group {} is outside the state table range [{}, {})",
+        keyGroup,
+        startKeyGroup_,
+        startKeyGroup_ + buckets_.size());
+    return buckets_[keyGroup - startKeyGroup_];
   }
 
  private:
-  std::vector<StateMap<K, N, S>> keyGroupedStates_;
-  int keyGroupNumber_;
+  StateMap<K, N, S>& bucket(const K& key) {
+    return stateMapForKeyGroup(static_cast<uint32_t>(key.keyGroup()));
+  }
+
+  const uint32_t startKeyGroup_;
+  std::vector<StateMap<K, N, S>> buckets_;
 };
 } // namespace facebook::velox::stateful

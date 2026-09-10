@@ -15,18 +15,39 @@
  */
 #pragma once
 
+#include <memory>
+#include <utility>
+
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
+#include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to Flink HeapMapState.
+/// ValueState on the heap storage. The value V is stored directly in the
+/// state table, so V must be a nullable pointer type (raw or smart): the
+/// state table signals a miss with nullptr. Relevant to Flink
+/// HeapValueState.
+/// @param <K> type of key, a StateKey subclass
+/// @param <N> type of namespace, a Namespace subclass
+/// @param <V> type of value, a nullable pointer type
 template <typename K, typename N, typename V>
 class HeapValueState : public ValueState<K, N, V> {
  public:
-  HeapValueState(int keyGroupNumber) {
-    VELOX_CHECK(keyGroupNumber > 0, "keyGroupNumber must be greater than 0");
-    stateTable_ = std::make_unique<StateTable<K, N, V>>(keyGroupNumber);
+  HeapValueState(
+      std::shared_ptr<StateTable<K, N, V>> stateTable,
+      const ValueStateDescriptor<V>& descriptor,
+      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      : stateTable_(std::move(stateTable)),
+        keySerializer_(std::move(keySerializer)),
+        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        valueSerializer_(std::dynamic_pointer_cast<TypeSerializer<V>>(
+            descriptor.serializer())) {
+    VELOX_CHECK_NOT_NULL(
+        valueSerializer_,
+        "Value state '{}' requires a serializer for its value type",
+        descriptor.name());
   }
 
   V value(const K& key, const N& ns) override {
@@ -45,7 +66,43 @@ class HeapValueState : public ValueState<K, N, V> {
     stateTable_->clear();
   }
 
+  void snapshotKeyGroup(int32_t keyGroupId, CheckpointWriter& writer) override {
+    auto& map =
+        stateTable_->stateMapForKeyGroup(static_cast<uint32_t>(keyGroupId));
+    auto snapshot = map.createSnapshot();
+    const auto countPosition = writer.writeInt32Placeholder();
+    int32_t entryCount = 0;
+    for (const auto& head : snapshot.heads) {
+      for (auto entry = head; entry != nullptr; entry = entry->next_) {
+        writer.writeBytes(nsSerializer_->serialize(entry->namespace_));
+        writer.writeBytes(keySerializer_->serialize(entry->key_));
+        writer.writeBytes(valueSerializer_->serialize(entry->state_));
+        ++entryCount;
+      }
+    }
+    writer.patchInt32(countPosition, entryCount);
+    map.releaseSnapshot(snapshot.version);
+  }
+
+  void restoreEntry(CheckpointReader& reader) override {
+    const auto ns = nsSerializer_->deserialize(reader.readBytes());
+    const auto key = keySerializer_->deserialize(reader.readBytes());
+    const auto value = valueSerializer_->deserialize(reader.readBytes());
+    stateTable_->put(key, ns, value);
+  }
+
+  std::string namespaceSchema() const override {
+    return nsSerializer_->schema();
+  }
+
+  std::string valueSchema() const override {
+    return valueSerializer_->schema();
+  }
+
  private:
-  std::unique_ptr<StateTable<K, N, V>> stateTable_;
+  std::shared_ptr<StateTable<K, N, V>> stateTable_;
+  std::shared_ptr<TypeSerializer<K>> keySerializer_;
+  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<TypeSerializer<V>> valueSerializer_;
 };
 } // namespace facebook::velox::stateful

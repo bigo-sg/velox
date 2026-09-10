@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <folly/Demangle.h>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -35,6 +36,13 @@ class TypeBaseSerializer {
  public:
   TypeBaseSerializer() {}
   virtual ~TypeBaseSerializer() = default;
+
+  /// Identity of the serialized layout, compared by the heap backend
+  /// against the checkpoint header to reject a checkpoint whose layout does
+  /// not match the registered states.
+  virtual std::string schema() const {
+    return "";
+  }
 };
 
 using TypeSerializerPtr = std::shared_ptr<TypeBaseSerializer>;
@@ -47,8 +55,10 @@ class TypeSerializer : public TypeBaseSerializer {
   /// Serialize the given value to char array.
   virtual std::string serialize(const D& data) = 0;
 
-  /// Deserialize the give char array to value.
-  virtual D deserialize(const std::string& str) = 0;
+  /// Deserialize the given bytes to a value. 'str' is a zero-copy view into
+  /// the checkpoint buffer; implementations must not keep the view (or
+  /// pointers into it) beyond the returned value's own construction.
+  virtual D deserialize(std::string_view str) = 0;
 
  protected:
   std::unique_ptr<ByteInputStream> toByteStream(
@@ -67,6 +77,10 @@ template <typename D>
 class ValueSerializer : public TypeSerializer<D> {
  public:
   ValueSerializer() : TypeSerializer<D>() {}
+
+  std::string schema() const override {
+    return folly::demangle(typeid(D).name()).c_str();
+  }
 
   std::string serialize(const D& t) override {
     if constexpr (
@@ -96,7 +110,7 @@ class ValueSerializer : public TypeSerializer<D> {
     }
   }
 
-  D deserialize(const std::string& str) override {
+  D deserialize(std::string_view str) override {
     if constexpr (
         std::is_same_v<D, int8_t> || std::is_same_v<D, int16_t> ||
         std::is_same_v<D, int32_t> || std::is_same_v<D, int64_t> ||
@@ -112,6 +126,9 @@ class ValueSerializer : public TypeSerializer<D> {
       std::memcpy(&byteValue, str.data(), str.size());
       return byteValue > 0 ? true : false;
     } else if constexpr (std::is_same_v<D, StringView>) {
+      // Borrowed result: the StringView points into 'str'; the caller must
+      // copy it (as FlatVector::set does) if it outlives the checkpoint
+      // buffer.
       return StringView(str.data(), str.size());
     } else if constexpr (std::is_same_v<D, Timestamp>) {
       int64_t mills;
@@ -133,13 +150,17 @@ class ComplexVectorSerializer : public TypeSerializer<D> {
     checkTypes();
   }
 
+  std::string schema() const override {
+    return dataType_->toString();
+  }
+
   std::string serialize(const D& t) override {
     std::ostringstream output;
     serde_->serializeSingleColumn(t, nullptr, pool_, &output);
     return output.str();
   }
 
-  D deserialize(const std::string& str) override {
+  D deserialize(std::string_view str) override {
     auto byteStream = TypeSerializer<D>::toByteStream(str.data(), str.size());
     VectorPtr vec;
     serde_->deserializeSingleColumn(
@@ -173,6 +194,40 @@ class ComplexVectorSerializer : public TypeSerializer<D> {
           "Vector type not valid, this complex vector seralizer can only suupport rowvector/arrayvector/mapvector.");
     }
   }
+};
+
+/// Serializes a shared value as a null flag byte followed by the inner
+/// serializer's payload, so a null pointee round-trips as nullptr. Used for
+/// value-state values, which are nullable pointer types.
+template <typename T>
+class SharedPtrSerializer : public TypeSerializer<std::shared_ptr<T>> {
+ public:
+  explicit SharedPtrSerializer(std::shared_ptr<TypeSerializer<T>> inner)
+      : inner_(std::move(inner)) {}
+
+  std::string schema() const override {
+    return "shared_ptr<" + inner_->schema() + ">";
+  }
+
+  std::string serialize(const std::shared_ptr<T>& value) override {
+    if (value == nullptr) {
+      return std::string(1, static_cast<char>(0));
+    }
+    return std::string(1, static_cast<char>(1)) + inner_->serialize(*value);
+  }
+
+  std::shared_ptr<T> deserialize(std::string_view str) override {
+    VELOX_CHECK(!str.empty(), "Missing null flag in the shared value payload");
+    if (str[0] != 1) {
+      return nullptr;
+    }
+    // string_view::substr is O(1): the inner serializer reads the payload
+    // straight out of the checkpoint buffer.
+    return std::make_shared<T>(inner_->deserialize(str.substr(1)));
+  }
+
+ private:
+  const std::shared_ptr<TypeSerializer<T>> inner_;
 };
 
 inline TypeSerializerPtr createSerializer(
@@ -222,6 +277,9 @@ inline TypeSerializerPtr createSerializer(
   } else if (kind == TypeKind::VARCHAR) {
     using T8 = TypeTraits<TypeKind::VARCHAR>::NativeType;
     return std::make_shared<ValueSerializer<T8>>();
+  } else if (kind == TypeKind::VARBINARY) {
+    using T10 = TypeTraits<TypeKind::VARBINARY>::NativeType;
+    return std::make_shared<ValueSerializer<T10>>();
   } else if (kind == TypeKind::TIMESTAMP) {
     using T9 = TypeTraits<TypeKind::TIMESTAMP>::NativeType;
     return std::make_shared<ValueSerializer<T9>>();

@@ -94,7 +94,12 @@ class StatefulOperator {
 
   virtual void initializeState();
 
-  void initializeStateBackend(StateBackend* stateBackend);
+  /// hands the task-level StateBackend to the operator tree. The default
+  /// implementation recursively forwards the call to downstream targets;
+  /// operators with keyed state override this to create their own keyed
+  /// state backend (the key type is a compile-time parameter only the
+  /// operator can name).
+  virtual void initializeStateBackend(StateBackend* stateBackend);
 
   std::vector<std::string> snapshotState(int64_t checkpointId);
 

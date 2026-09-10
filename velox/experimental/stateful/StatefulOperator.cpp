@@ -220,10 +220,6 @@ void StatefulOperator::checkWatermarkStatus(int64_t now) {
 }
 
 void StatefulOperator::initializeStateBackend(StateBackend* stateBackend) {
-  if (!stateHandler_) {
-    stateHandler_ = std::make_shared<StreamOperatorStateHandler>(
-        op()->operatorId(), stateBackend->createKeyedStateBackend());
-  }
   auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
   if (snapshotable) {
     // TODO: Flink restore is a separated logic.
