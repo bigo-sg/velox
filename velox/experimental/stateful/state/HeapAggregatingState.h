@@ -32,7 +32,7 @@
 
 namespace facebook::velox::stateful {
 
-/// AccState on the heap storage: the value is a char* row of a value
+/// AggregatingState on the heap storage: the value is a char* row of a value
 /// RowContainer whose layout is derived once from the descriptor's acc
 /// types. On a miss the state materializes a fresh row, initializes it
 /// through the descriptor's callback (the operator wraps
@@ -42,11 +42,11 @@ namespace facebook::velox::stateful {
 /// @param <K> type of key, a StateKey subclass
 /// @param <N> type of namespace, a Namespace subclass
 template <typename K, typename N>
-class HeapAccState : public AccState<K, N> {
+class HeapAggregatingState : public AggregatingState<K, N> {
  public:
-  HeapAccState(
+  HeapAggregatingState(
       std::shared_ptr<StateTable<K, N, char*>> stateTable,
-      const AccStateDescriptor& descriptor,
+      const AggregatingStateDescriptor& descriptor,
       std::shared_ptr<TypeSerializer<K>> keySerializer)
       : stateTable_(std::move(stateTable)),
         valueRows_(std::make_unique<exec::RowContainer>(
@@ -145,7 +145,7 @@ class HeapAccState : public AccState<K, N> {
 
   std::shared_ptr<StateTable<K, N, char*>> stateTable_;
   std::unique_ptr<exec::RowContainer> valueRows_;
-  AccStateDescriptor::InitRowCallback initializeRow_;
+  AggregatingStateDescriptor::InitRowCallback initializeRow_;
   memory::MemoryPool* pool_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
   std::shared_ptr<TypeSerializer<N>> nsSerializer_;

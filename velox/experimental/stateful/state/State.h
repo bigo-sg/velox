@@ -76,7 +76,7 @@ using StatePtr = std::shared_ptr<State>;
 /// build / rank / sorted aggregation). A single implementation covers both
 /// granularities; repeated keys return the same row pointer.
 template <typename K, typename N>
-class AccState : public State {
+class AggregatingState : public State {
  public:
   /// Batch lookup of value row pointers under namespace 'ns'. outRows[i]
   /// receives the value row for keys[i]; a miss creates a new row in the
