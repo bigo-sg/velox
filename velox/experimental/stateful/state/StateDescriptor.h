@@ -53,7 +53,7 @@ class StateDescriptor {
   memory::MemoryPool* pool_;
 };
 
-// Descriptor of an AccState: pure description of the acc value — the value
+// Descriptor of an AggregatingState: pure description of the acc value — the value
 // row layout (accTypes, the intermediate type of each aggregate) plus how a
 // fresh row is initialized (an operator-registered callback wrapping
 // Aggregate::initializeNewGroups over the operator's own aggregates).
@@ -61,14 +61,14 @@ class StateDescriptor {
 // state layer has zero dependency on AggregateInfo: it derives the value
 // RowContainer layout from accTypes once at creation time and invokes the
 // callback on miss.
-class AccStateDescriptor : public StateDescriptor {
+class AggregatingStateDescriptor : public StateDescriptor {
  public:
   // Initializes a freshly materialized value row; invoked by the state on
   // each miss. Operator-supplied so that the state never calls any Aggregate
   // method itself.
   using InitRowCallback = std::function<void(char* row)>;
 
-  AccStateDescriptor(
+  AggregatingStateDescriptor(
       const std::string& name,
       std::vector<TypePtr> accTypes,
       InitRowCallback initializeRow,

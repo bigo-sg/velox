@@ -333,10 +333,10 @@ TEST_F(StateBackendTest, stateTableCollisionPairStaysApart) {
   EXPECT_EQ(&valueA, table.get(keys[2], ns));
 }
 
-// AccState: misses materialize + initialize fresh value rows, duplicate
+// AggregatingState: misses materialize + initialize fresh value rows, duplicate
 // keys share a row, the collision pair accumulates independently, and the
 // handle is idempotent per descriptor name.
-TEST_F(StateBackendTest, backendAccState) {
+TEST_F(StateBackendTest, backendAggregatingState) {
   KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   auto keys =
       probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
@@ -345,19 +345,19 @@ TEST_F(StateBackendTest, backendAccState) {
       selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
 
   int initCount = 0;
-  AccStateDescriptor descriptor(
+  AggregatingStateDescriptor descriptor(
       "acc",
       {BIGINT()},
       [&](char* row) {
         ++initCount;
-        // Single fixed-width acc column: value sits at offset 0.
+        // Single fixed-width accumulator column: value sits at offset 0.
         *reinterpret_cast<int64_t*>(row) = 0;
       },
       pool());
-  auto state = backend.getOrCreateAccState<VoidNamespace>(descriptor);
+  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(descriptor);
   EXPECT_EQ(
       state.get(),
-      backend.getOrCreateAccState<VoidNamespace>(descriptor).get());
+      backend.getOrCreateAggregatingState<VoidNamespace>(descriptor).get());
 
   std::vector<char*> rows(keys.size(), nullptr);
   state->rows(
@@ -460,16 +460,17 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
 
   int initCountA = 0;
-  AccStateDescriptor accDescriptor(
+  AggregatingStateDescriptor aggregatingDescriptor(
       "acc",
       {BIGINT()},
       [&](char* row) {
         ++initCountA;
-        // Single fixed-width acc column: value sits at offset 0.
+        // Single fixed-width accumulator column: value sits at offset 0.
         *reinterpret_cast<int64_t*>(row) = 0;
       },
       pool());
-  auto accState = backendA.getOrCreateAccState<VoidNamespace>(accDescriptor);
+  auto aggregatingState =
+      backendA.getOrCreateAggregatingState<VoidNamespace>(aggregatingDescriptor);
   auto valueState = backendA.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -481,14 +482,14 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
 
   // Accumulate 21 / 20 over the collision pair, as addRawInput would.
   std::vector<char*> rows(keysA.size(), nullptr);
-  accState->rows(
+  aggregatingState->rows(
       folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
       VoidNamespace::instance(),
       rows.data());
-  const auto accOffset = accState->valueRows()->columnAt(0).offset();
-  *reinterpret_cast<int64_t*>(rows[0] + accOffset) = 10;
-  *reinterpret_cast<int64_t*>(rows[1] + accOffset) = 20;
-  *reinterpret_cast<int64_t*>(rows[2] + accOffset) += 11;
+  const auto accumulatorOffset = aggregatingState->valueRows()->columnAt(0).offset();
+  *reinterpret_cast<int64_t*>(rows[0] + accumulatorOffset) = 10;
+  *reinterpret_cast<int64_t*>(rows[1] + accumulatorOffset) = 20;
+  *reinterpret_cast<int64_t*>(rows[2] + accumulatorOffset) += 11;
   EXPECT_EQ(2, initCountA);
 
   const VoidNamespace ns;
@@ -510,7 +511,7 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
   int initCountB = 0;
-  AccStateDescriptor accDescriptorB(
+  AggregatingStateDescriptor aggregatingDescriptorB(
       "acc",
       {BIGINT()},
       [&](char* row) {
@@ -518,7 +519,8 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
         *reinterpret_cast<int64_t*>(row) = 0;
       },
       pool());
-  auto accStateB = backendB.getOrCreateAccState<VoidNamespace>(accDescriptorB);
+  auto aggregatingStateB =
+      backendB.getOrCreateAggregatingState<VoidNamespace>(aggregatingDescriptorB);
   auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -530,14 +532,14 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   backendB.restore(bytes);
 
   std::vector<char*> rowsB(keysB.size(), nullptr);
-  accStateB->rows(
+  aggregatingStateB->rows(
       folly::Range<const RowContainerStateKey*>(keysB.data(), keysB.size()),
       VoidNamespace::instance(),
       rowsB.data());
   EXPECT_EQ(0, initCountB);
-  const auto accOffsetB = accStateB->valueRows()->columnAt(0).offset();
-  EXPECT_EQ(21, *reinterpret_cast<int64_t*>(rowsB[0] + accOffsetB));
-  EXPECT_EQ(20, *reinterpret_cast<int64_t*>(rowsB[1] + accOffsetB));
+  const auto accumulatorOffsetB = aggregatingStateB->valueRows()->columnAt(0).offset();
+  EXPECT_EQ(21, *reinterpret_cast<int64_t*>(rowsB[0] + accumulatorOffsetB));
+  EXPECT_EQ(20, *reinterpret_cast<int64_t*>(rowsB[1] + accumulatorOffsetB));
   EXPECT_EQ(rowsB[0], rowsB[2]);
   EXPECT_NE(rowsB[0], rowsB[1]);
 

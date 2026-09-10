@@ -25,7 +25,7 @@
 #include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
-#include "velox/experimental/stateful/state/HeapAccState.h"
+#include "velox/experimental/stateful/state/HeapAggregatingState.h"
 #include "velox/experimental/stateful/state/HeapListState.h"
 #include "velox/experimental/stateful/state/HeapMapState.h"
 #include "velox/experimental/stateful/state/HeapValueState.h"
@@ -155,16 +155,16 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
 
   // --- Typed state API ---
 
-  /// Returns the AccState handle for the descriptor, creating the state
+  /// Returns the AggregatingState handle for the descriptor, creating the state
   /// table and the handle on the first call; a second call with the same
   /// name returns the same handle.
   template <typename N>
-  std::shared_ptr<AccState<K, N>> getOrCreateAccState(
-      const AccStateDescriptor& descriptor) {
-    if (auto state = findState<AccState<K, N>>(descriptor.name())) {
+  std::shared_ptr<AggregatingState<K, N>> getOrCreateAggregatingState(
+      const AggregatingStateDescriptor& descriptor) {
+    if (auto state = findState<AggregatingState<K, N>>(descriptor.name())) {
       return state;
     }
-    auto state = std::make_shared<HeapAccState<K, N>>(
+    auto state = std::make_shared<HeapAggregatingState<K, N>>(
         std::make_shared<StateTable<K, N, char*>>(
             startKeyGroup_, numKeyGroups_),
         descriptor,
