@@ -469,8 +469,8 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
         *reinterpret_cast<int64_t*>(row) = 0;
       },
       pool());
-  auto aggregatingState =
-      backendA.getOrCreateAggregatingState<VoidNamespace>(aggregatingDescriptor);
+  auto aggregatingState = backendA.getOrCreateAggregatingState<VoidNamespace>(
+      aggregatingDescriptor);
   auto valueState = backendA.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -486,7 +486,8 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
       VoidNamespace::instance(),
       rows.data());
-  const auto accumulatorOffset = aggregatingState->valueRows()->columnAt(0).offset();
+  const auto accumulatorOffset =
+      aggregatingState->valueRows()->columnAt(0).offset();
   *reinterpret_cast<int64_t*>(rows[0] + accumulatorOffset) = 10;
   *reinterpret_cast<int64_t*>(rows[1] + accumulatorOffset) = 20;
   *reinterpret_cast<int64_t*>(rows[2] + accumulatorOffset) += 11;
@@ -519,8 +520,8 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
         *reinterpret_cast<int64_t*>(row) = 0;
       },
       pool());
-  auto aggregatingStateB =
-      backendB.getOrCreateAggregatingState<VoidNamespace>(aggregatingDescriptorB);
+  auto aggregatingStateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
+      aggregatingDescriptorB);
   auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -537,7 +538,8 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       VoidNamespace::instance(),
       rowsB.data());
   EXPECT_EQ(0, initCountB);
-  const auto accumulatorOffsetB = aggregatingStateB->valueRows()->columnAt(0).offset();
+  const auto accumulatorOffsetB =
+      aggregatingStateB->valueRows()->columnAt(0).offset();
   EXPECT_EQ(21, *reinterpret_cast<int64_t*>(rowsB[0] + accumulatorOffsetB));
   EXPECT_EQ(20, *reinterpret_cast<int64_t*>(rowsB[1] + accumulatorOffsetB));
   EXPECT_EQ(rowsB[0], rowsB[2]);
