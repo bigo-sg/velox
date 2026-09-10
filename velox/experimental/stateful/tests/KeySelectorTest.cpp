@@ -123,12 +123,16 @@ TEST_F(KeySelectorTest, probesAreIncremental) {
   selector.probe(makeInput({kCollisionKeyA}));
   auto firstRows = selector.keys();
   ASSERT_EQ(1, firstRows.size());
+  // The keys() view is only valid until the next probe (the underlying
+  // vector may reallocate); the row itself never moves, so capture the row
+  // pointer by value for the cross-probe comparisons below.
+  const char* firstRow = firstRows[0].row();
   ASSERT_EQ(1, selector.newGroups().size());
 
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
   auto keys = selector.keys();
   ASSERT_EQ(2, keys.size());
-  EXPECT_EQ(firstRows[0].row(), keys[0].row());
+  EXPECT_EQ(firstRow, keys[0].row());
   auto newGroups = selector.newGroups();
   ASSERT_EQ(1, newGroups.size());
   EXPECT_EQ(1, newGroups[0]);
@@ -136,7 +140,7 @@ TEST_F(KeySelectorTest, probesAreIncremental) {
   // Everything exists now: no new groups, pointers unchanged.
   selector.probe(makeInput({kCollisionKeyB, kCollisionKeyA}));
   keys = selector.keys();
-  EXPECT_EQ(firstRows[0].row(), keys[1].row());
+  EXPECT_EQ(firstRow, keys[1].row());
   EXPECT_TRUE(selector.newGroups().empty());
   EXPECT_EQ(2, selector.distinctKeys().size());
 }
