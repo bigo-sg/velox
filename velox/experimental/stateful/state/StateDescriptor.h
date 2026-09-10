@@ -53,9 +53,9 @@ class StateDescriptor {
   memory::MemoryPool* pool_;
 };
 
-// Descriptor of an AggregatingState: pure description of the acc value — the value
-// row layout (accTypes, the intermediate type of each aggregate) plus how a
-// fresh row is initialized (an operator-registered callback wrapping
+// Descriptor of an AggregatingState: pure description of the acc value — the
+// value row layout (accTypes, the intermediate type of each aggregate) plus how
+// a fresh row is initialized (an operator-registered callback wrapping
 // Aggregate::initializeNewGroups over the operator's own aggregates).
 // Mirrors Flink AggregatingStateDescriptor holding createAccumulator. The
 // state layer has zero dependency on AggregateInfo: it derives the value
