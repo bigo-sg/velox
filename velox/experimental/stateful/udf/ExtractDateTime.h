@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "velox/functions/Macros.h"
+#include "velox/functions/lib/TimeUtils.h"
 
 #include <algorithm>
 #include <ctime>
@@ -45,6 +46,8 @@ struct ExtractFunction {
       result = timeInfo.tm_year + 1900;
     } else if (fieldLower == "month") {
       result = timeInfo.tm_mon + 1;
+    } else if (fieldLower == "quarter") {
+      result = functions::getQuarter(timeInfo);
     } else if (fieldLower == "day" || fieldLower == "day_of_month") {
       result = timeInfo.tm_mday;
     } else if (fieldLower == "hour") {
@@ -54,13 +57,26 @@ struct ExtractFunction {
     } else if (fieldLower == "second") {
       result = timeInfo.tm_sec;
     } else if (fieldLower == "day_of_week" || fieldLower == "dow") {
-      result = timeInfo.tm_wday == 0 ? 7 : timeInfo.tm_wday;
+      // Flink DAYOFWEEK: Sun=1..Sat=7. tm_wday is Sun=0..Sat=6 so shift +1.
+      result = timeInfo.tm_wday + 1;
+    } else if (fieldLower == "isodow") {
+      // ISO weekday: Mon=1..Sun=7. tm_wday is Sun=0..Sat=6.
+      result = (timeInfo.tm_wday == 0) ? 7 : timeInfo.tm_wday;
     } else if (fieldLower == "day_of_year" || fieldLower == "doy") {
       result = timeInfo.tm_yday + 1;
+    } else if (fieldLower == "week" || fieldLower == "week_of_year") {
+      result = functions::getWeek(timestamp, nullptr, false);
     } else {
       return false;
     }
     return true;
+  }
+
+  FOLLY_ALWAYS_INLINE bool call(
+      int64_t& result,
+      const arg_type<Varchar>& field,
+      const arg_type<Date>& date) {
+    return call(result, field, Timestamp::fromDate(date));
   }
 };
 
