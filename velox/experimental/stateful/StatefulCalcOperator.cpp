@@ -18,27 +18,11 @@
 #include "velox/core/Expressions.h"
 #include "velox/exec/FilterProject.h"
 #include "velox/experimental/stateful/RowKind.h"
+#include "velox/experimental/stateful/RowKindSchemaNode.h"
 
 namespace facebook::velox::stateful {
 
 namespace {
-
-// Returns a ProjectNode identical to 'projectNode' but with an extra trailing
-// $row_kind identity column. Lets the underlying FilterProject preserve the
-// $row_kind column through projection.
-std::shared_ptr<const core::ProjectNode> augmentProjectWithRowKind(
-    const std::shared_ptr<const core::ProjectNode>& projectNode) {
-  auto names = projectNode->names();
-  auto projections = projectNode->projections();
-  names.emplace_back(std::string(kRowKindColumnName));
-  projections.emplace_back(std::make_shared<const core::FieldAccessTypedExpr>(
-      TINYINT(), std::string(kRowKindColumnName)));
-  return std::make_shared<core::ProjectNode>(
-      projectNode->id(),
-      std::move(names),
-      std::move(projections),
-      projectNode->sources()[0]);
-}
 
 // Builds a synthetic ProjectNode that identity-projects every column of
 // 'inputType' plus a trailing $row_kind. Used for the Filter-only path so
@@ -64,6 +48,31 @@ std::shared_ptr<const core::ProjectNode> identityProjectWithRowKind(
       nodeId, std::move(names), std::move(projections), source);
 }
 
+// Wraps 'source' in a RowKindSchemaNode (see RowKindSchemaNode.h) so its
+// declared output type gains a trailing $row_kind.
+std::shared_ptr<const core::PlanNode> rowKindSchemaSource(
+    const core::PlanNodePtr& source) {
+  return std::make_shared<const RowKindSchemaNode>(
+      source->id() + "-rowkind-schema", source);
+}
+
+// Returns a ProjectNode identical to 'projectNode' but with an extra trailing
+// $row_kind identity column. Lets the underlying FilterProject preserve the
+// $row_kind column through projection.
+std::shared_ptr<const core::ProjectNode> augmentProjectWithRowKind(
+    const std::shared_ptr<const core::ProjectNode>& projectNode) {
+  auto names = projectNode->names();
+  auto projections = projectNode->projections();
+  names.emplace_back(std::string(kRowKindColumnName));
+  projections.emplace_back(std::make_shared<const core::FieldAccessTypedExpr>(
+      TINYINT(), std::string(kRowKindColumnName)));
+  return std::make_shared<core::ProjectNode>(
+      projectNode->id(),
+      std::move(names),
+      std::move(projections),
+      rowKindSchemaSource(projectNode->sources()[0]));
+}
+
 // Builds the underlying FilterProject with an augmented project so $row_kind
 // survives the projection. 'projectNode' may be null only when 'filterNode'
 // is non-null (Filter-only path); in that case a synthetic identity project
@@ -78,7 +87,9 @@ std::unique_ptr<exec::FilterProject> buildCalcFilterProject(
     augmentedProject = augmentProjectWithRowKind(projectNode);
   } else {
     augmentedProject = identityProjectWithRowKind(
-        filterNode->id(), filterNode->outputType(), filterNode->sources()[0]);
+        filterNode->id(),
+        filterNode->outputType(),
+        rowKindSchemaSource(filterNode->sources()[0]));
   }
   return std::make_unique<exec::FilterProject>(
       operatorId, driverCtx, filterNode, augmentedProject);

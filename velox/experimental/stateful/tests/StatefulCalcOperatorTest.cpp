@@ -20,6 +20,7 @@
 #include <gtest/gtest.h>
 
 #include "velox/common/base/tests/GTestUtils.h"
+#include "velox/core/Expressions.h"
 #include "velox/core/PlanFragment.h"
 #include "velox/exec/Driver.h"
 #include "velox/exec/Task.h"
@@ -152,6 +153,26 @@ class StatefulCalcOperatorTest : public exec::test::OperatorTestBase {
     return makeFlatVector<int8_t>({0, 1, 2, 3});
   }
 
+  RowVectorPtr fourRowValues() {
+    return makeRowVector({"c"}, {makeFlatVector<int64_t>({10, 20, 30, 40})});
+  }
+
+  // Upstream plan node with schema ROW< c BIGINT > for real-ctor tests.
+  core::PlanNodePtr valuesSource() {
+    return std::make_shared<core::ValuesNode>(
+        core::PlanNodeId{"vals"},
+        std::vector<RowVectorPtr>{
+            makeRowVector({"c"}, {makeFlatVector<int64_t>({1})})});
+  }
+
+  core::TypedExprPtr fieldC() {
+    return std::make_shared<core::FieldAccessTypedExpr>(BIGINT(), "c");
+  }
+
+  core::TypedExprPtr bigintConstant(int64_t value) {
+    return std::make_shared<core::ConstantTypedExpr>(BIGINT(), variant(value));
+  }
+
   std::shared_ptr<folly::CPUThreadPoolExecutor> executor_;
   std::shared_ptr<exec::Task> task_;
   std::shared_ptr<exec::Driver> driver_;
@@ -282,6 +303,150 @@ TEST_F(StatefulCalcOperatorTest, testAdvanceHandlesPlainRowVector) {
   EXPECT_EQ(record->rowKind(), nullptr);
   EXPECT_EQ(record->record()->type()->size(), 1);
   EXPECT_EQ(record->size(), 4);
+}
+
+// Project-only: real ProjectNode passthrough + computed column; rowKind must
+// survive the projection.
+TEST_F(StatefulCalcOperatorTest, testRealCtorProjectOnlyCarriesRowKind) {
+  auto project = std::make_shared<core::ProjectNode>(
+      core::PlanNodeId{"proj"},
+      std::vector<std::string>{"c", "c2"},
+      std::vector<core::TypedExprPtr>{
+          fieldC(),
+          std::make_shared<core::CallTypedExpr>(
+              BIGINT(),
+              std::vector<core::TypedExprPtr>{fieldC(), bigintConstant(2)},
+              "multiply")},
+      valuesSource());
+
+  auto capture = std::make_unique<CaptureTarget>(driverCtx_.get());
+  auto* capturePtr = capture.get();
+  std::vector<StatefulOperatorPtr> targets;
+  targets.push_back(std::move(capture));
+
+  StatefulCalcOperator calcOp(
+      0, driverCtx_.get(), nullptr, project, std::move(targets));
+  calcOp.initialize();
+
+  calcOp.addInput(std::make_shared<StreamRecord>(
+      "calc", fourRowValues(), fourKindVector()));
+  calcOp.advance();
+
+  auto* record = capturePtr->lastRecord();
+  ASSERT_NE(record, nullptr);
+  EXPECT_FALSE(record->appendOnly());
+  ASSERT_NE(record->rowKind(), nullptr);
+  EXPECT_EQ(record->rowKind()->valueAt(0), 0);
+  EXPECT_EQ(record->rowKind()->valueAt(1), 1);
+  EXPECT_EQ(record->rowKind()->valueAt(2), 2);
+  EXPECT_EQ(record->rowKind()->valueAt(3), 3);
+  ASSERT_EQ(record->record()->type()->size(), 2);
+  EXPECT_EQ(asRowType(record->record()->type())->nameOf(0), "c");
+  EXPECT_EQ(asRowType(record->record()->type())->nameOf(1), "c2");
+  auto c = record->record()->childAt(0)->asFlatVector<int64_t>();
+  EXPECT_EQ(c->valueAt(0), 10);
+  EXPECT_EQ(c->valueAt(1), 20);
+  EXPECT_EQ(c->valueAt(2), 30);
+  EXPECT_EQ(c->valueAt(3), 40);
+  auto c2 = record->record()->childAt(1)->asFlatVector<int64_t>();
+  EXPECT_EQ(c2->valueAt(0), 20);
+  EXPECT_EQ(c2->valueAt(1), 40);
+  EXPECT_EQ(c2->valueAt(2), 60);
+  EXPECT_EQ(c2->valueAt(3), 80);
+}
+
+// Filter-only: real FilterNode; rowKind must be re-indexed to the rows that
+// survive the filter.
+TEST_F(StatefulCalcOperatorTest, testRealCtorFilterOnlyReIndexesRowKind) {
+  auto filter = std::make_shared<core::FilterNode>(
+      core::PlanNodeId{"filt"},
+      std::make_shared<core::CallTypedExpr>(
+          BOOLEAN(),
+          std::vector<core::TypedExprPtr>{fieldC(), bigintConstant(25)},
+          "gt"),
+      valuesSource());
+
+  auto capture = std::make_unique<CaptureTarget>(driverCtx_.get());
+  auto* capturePtr = capture.get();
+  std::vector<StatefulOperatorPtr> targets;
+  targets.push_back(std::move(capture));
+
+  StatefulCalcOperator calcOp(
+      1, driverCtx_.get(), filter, nullptr, std::move(targets));
+  calcOp.initialize();
+
+  calcOp.addInput(std::make_shared<StreamRecord>(
+      "calc", fourRowValues(), fourKindVector()));
+  calcOp.advance();
+
+  auto* record = capturePtr->lastRecord();
+  ASSERT_NE(record, nullptr);
+  EXPECT_FALSE(record->appendOnly());
+  ASSERT_NE(record->rowKind(), nullptr);
+  // c > 25 keeps values 30, 40 whose kinds are UPDATE_AFTER, DELETE.
+  EXPECT_EQ(record->size(), 2);
+  EXPECT_EQ(
+      record->rowKind()->valueAt(0),
+      static_cast<int8_t>(RowKind::UPDATE_AFTER));
+  EXPECT_EQ(
+      record->rowKind()->valueAt(1), static_cast<int8_t>(RowKind::DELETE));
+  ASSERT_EQ(record->record()->type()->size(), 1);
+  // The surviving rows come out dictionary-encoded over the input column.
+  facebook::velox::test::assertEqualVectors(
+      makeFlatVector<int64_t>({30, 40}), record->record()->childAt(0));
+}
+
+// Combined filter + project built from a real FilterNode over ProjectNode
+// chain.
+TEST_F(StatefulCalcOperatorTest, testRealCtorFilterAndProject) {
+  auto filter = std::make_shared<core::FilterNode>(
+      core::PlanNodeId{"filt"},
+      std::make_shared<core::CallTypedExpr>(
+          BOOLEAN(),
+          std::vector<core::TypedExprPtr>{fieldC(), bigintConstant(20)},
+          "gte"),
+      valuesSource());
+  auto project = std::make_shared<core::ProjectNode>(
+      core::PlanNodeId{"proj"},
+      std::vector<std::string>{"c10"},
+      std::vector<core::TypedExprPtr>{std::make_shared<core::CallTypedExpr>(
+          BIGINT(),
+          std::vector<core::TypedExprPtr>{fieldC(), bigintConstant(10)},
+          "multiply")},
+      filter);
+
+  auto capture = std::make_unique<CaptureTarget>(driverCtx_.get());
+  auto* capturePtr = capture.get();
+  std::vector<StatefulOperatorPtr> targets;
+  targets.push_back(std::move(capture));
+
+  StatefulCalcOperator calcOp(
+      2, driverCtx_.get(), filter, project, std::move(targets));
+  calcOp.initialize();
+
+  calcOp.addInput(std::make_shared<StreamRecord>(
+      "calc", fourRowValues(), fourKindVector()));
+  calcOp.advance();
+
+  auto* record = capturePtr->lastRecord();
+  ASSERT_NE(record, nullptr);
+  EXPECT_FALSE(record->appendOnly());
+  ASSERT_NE(record->rowKind(), nullptr);
+  // c >= 20 keeps 20, 30, 40 whose kinds are UPDATE_BEFORE(1)/UPDATE_AFTER(2)/
+  // DELETE(3).
+  EXPECT_EQ(record->size(), 3);
+  EXPECT_EQ(
+      record->rowKind()->valueAt(0),
+      static_cast<int8_t>(RowKind::UPDATE_BEFORE));
+  EXPECT_EQ(
+      record->rowKind()->valueAt(1),
+      static_cast<int8_t>(RowKind::UPDATE_AFTER));
+  EXPECT_EQ(
+      record->rowKind()->valueAt(2), static_cast<int8_t>(RowKind::DELETE));
+  ASSERT_EQ(record->record()->type()->size(), 1);
+  EXPECT_EQ(asRowType(record->record()->type())->nameOf(0), "c10");
+  facebook::velox::test::assertEqualVectors(
+      makeFlatVector<int64_t>({200, 300, 400}), record->record()->childAt(0));
 }
 
 } // namespace
