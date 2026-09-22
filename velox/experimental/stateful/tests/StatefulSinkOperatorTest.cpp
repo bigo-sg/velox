@@ -16,18 +16,25 @@
 
 #include "velox/experimental/stateful/StatefulSinkOperator.h"
 
+#include <folly/dynamic.h>
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 
 #include "velox/common/base/tests/GTestUtils.h"
+#include "velox/connectors/Connector.h"
 #include "velox/core/PlanFragment.h"
+#include "velox/core/PlanNode.h"
 #include "velox/exec/Driver.h"
+#include "velox/exec/TableWriter.h"
 #include "velox/exec/Task.h"
 #include "velox/exec/Values.h"
 #include "velox/exec/tests/utils/OperatorTestBase.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StreamElement.h"
+#include "velox/vector/FlatVector.h"
 #include "velox/vector/SimpleVector.h"
 
 namespace facebook::velox::stateful::test {
@@ -67,6 +74,82 @@ class SpyOperator : public exec::Operator {
 
  private:
   RowVectorPtr captured_;
+};
+
+// A ConnectorInsertTableHandle that declares supportsRowKind, standing in for
+// changelog-aware sinks such as print.
+class CaptureInsertTableHandle : public connector::ConnectorInsertTableHandle {
+ public:
+  bool supportsRowKind() const override {
+    return true;
+  }
+
+  std::string toString() const override {
+    return "CaptureInsertTableHandle";
+  }
+
+  folly::dynamic serialize() const override {
+    return folly::dynamic::object;
+  }
+};
+
+// Records every RowVector appended, so tests can assert what the real
+// TableWriter delivered to the connector sink.
+class CaptureDataSink : public connector::DataSink {
+ public:
+  explicit CaptureDataSink(std::shared_ptr<std::vector<RowVectorPtr>> inputs)
+      : inputs_(std::move(inputs)) {}
+
+  void appendData(RowVectorPtr input) override {
+    inputs_->push_back(std::move(input));
+  }
+
+  bool finish() override {
+    return true;
+  }
+
+  std::vector<std::string> close() override {
+    return {};
+  }
+
+  void abort() override {}
+
+  Stats stats() const override {
+    return {};
+  }
+
+ private:
+  std::shared_ptr<std::vector<RowVectorPtr>> inputs_;
+};
+
+class CaptureConnector : public connector::Connector {
+ public:
+  CaptureConnector(
+      const std::string& id,
+      std::shared_ptr<std::vector<RowVectorPtr>> inputs)
+      : Connector(id), inputs_(std::move(inputs)) {}
+
+  std::unique_ptr<connector::DataSource> createDataSource(
+      const RowTypePtr& /*outputType*/,
+      const std::shared_ptr<connector::ConnectorTableHandle>& /*tableHandle*/,
+      const std::unordered_map<
+          std::string,
+          std::shared_ptr<connector::ColumnHandle>>& /*columnHandles*/,
+      connector::ConnectorQueryCtx* /*connectorQueryCtx*/) override {
+    VELOX_NYI();
+  }
+
+  std::unique_ptr<connector::DataSink> createDataSink(
+      RowTypePtr /*inputType*/,
+      std::shared_ptr<connector::ConnectorInsertTableHandle>
+      /*connectorInsertTableHandle*/,
+      connector::ConnectorQueryCtx* /*connectorQueryCtx*/,
+      connector::CommitStrategy /*commitStrategy*/) override {
+    return std::make_unique<CaptureDataSink>(inputs_);
+  }
+
+ private:
+  std::shared_ptr<std::vector<RowVectorPtr>> inputs_;
 };
 
 class StatefulSinkOperatorTest : public exec::test::OperatorTestBase {
@@ -184,6 +267,67 @@ TEST_F(StatefulSinkOperatorTest, addInputAppendsConstantInsertForAppendOnly) {
   EXPECT_EQ(rowKindCol->valueAt(0), static_cast<int8_t>(RowKind::INSERT));
   EXPECT_EQ(rowKindCol->valueAt(1), static_cast<int8_t>(RowKind::INSERT));
   EXPECT_EQ(rowKindCol->valueAt(2), static_cast<int8_t>(RowKind::INSERT));
+}
+
+// Real-path: StatefulPlanner::plan over a real TableWriteNode whose
+// ConnectorInsertTableHandle declares supportsRowKind. The real
+// exec::TableWriter resolves every column name against
+// sources()[0]->outputType() in its ctor, so planning alone fails if
+// augmentTableWriteForRowKind ever stops keeping the augmented columns and
+// the source schema consistent. addInput then threads the merged RowVector
+// through TableWriter's name-based mapping into the connector DataSink.
+TEST_F(StatefulSinkOperatorTest, realPlannerPathThreadsRowKindIntoDataSink) {
+  const std::string connectorId = "stateful-sink-capture";
+  auto sinkInputs = std::make_shared<std::vector<RowVectorPtr>>();
+  connector::registerConnector(
+      std::make_shared<CaptureConnector>(connectorId, sinkInputs));
+
+  auto insertHandle = std::make_shared<core::InsertTableHandle>(
+      connectorId, std::make_shared<CaptureInsertTableHandle>());
+  auto source = std::make_shared<core::ValuesNode>(
+      core::PlanNodeId{"vals"},
+      std::vector<RowVectorPtr>{
+          makeRowVector({"c"}, {makeFlatVector<int64_t>({1})})});
+  auto tableWrite = std::make_shared<core::TableWriteNode>(
+      core::PlanNodeId{"write"},
+      ROW({"c"}, {BIGINT()}),
+      std::vector<std::string>{"c"},
+      nullptr /* aggregationNode */,
+      insertHandle,
+      false /* hasPartitioningScheme */,
+      exec::TableWriteTraits::outputType(nullptr),
+      connector::CommitStrategy::kNoCommit,
+      source);
+
+  core::PlanFragment planFragment;
+  planFragment.planNode = std::make_shared<StatefulPlanNode>(
+      tableWrite, std::vector<core::PlanNodePtr>{});
+  auto chain = StatefulPlanner::plan(planFragment, driverCtx_.get(), nullptr);
+
+  chain->initialize();
+  chain->addInput(StreamRecord::create("sink", mergedBatch()));
+  chain->finish();
+
+  connector::unregisterConnector(connectorId);
+
+  ASSERT_EQ(sinkInputs->size(), 1);
+  const auto& received = sinkInputs->at(0);
+  // User column plus trailing $row_kind, in TableWriter's mapped order.
+  ASSERT_EQ(received->type()->size(), 2);
+  EXPECT_EQ(asRowType(received->type())->nameOf(0), "c");
+  EXPECT_EQ(asRowType(received->type())->nameOf(1), "$row_kind");
+  auto values = received->childAt(0)->asFlatVector<int64_t>();
+  ASSERT_NE(values, nullptr);
+  EXPECT_EQ(values->valueAt(0), 10);
+  EXPECT_EQ(values->valueAt(1), 20);
+  EXPECT_EQ(values->valueAt(2), 30);
+  EXPECT_EQ(values->valueAt(3), 40);
+  auto kinds = received->childAt(1)->asFlatVector<int8_t>();
+  ASSERT_NE(kinds, nullptr);
+  EXPECT_EQ(kinds->valueAt(0), static_cast<int8_t>(RowKind::INSERT));
+  EXPECT_EQ(kinds->valueAt(1), static_cast<int8_t>(RowKind::UPDATE_BEFORE));
+  EXPECT_EQ(kinds->valueAt(2), static_cast<int8_t>(RowKind::UPDATE_AFTER));
+  EXPECT_EQ(kinds->valueAt(3), static_cast<int8_t>(RowKind::DELETE));
 }
 
 } // namespace
