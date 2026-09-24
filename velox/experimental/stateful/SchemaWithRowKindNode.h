@@ -33,9 +33,9 @@ namespace facebook::velox::stateful {
 /// project->sources()[0]->outputType(), while the real upstream plan node has
 /// no $row_kind column. The node never executes — operators driven directly
 /// via addInput bypass it — and is never serialized.
-class RowKindSchemaNode : public core::PlanNode {
+class SchemaWithRowKindNode : public core::PlanNode {
  public:
-  RowKindSchemaNode(const core::PlanNodeId& id, core::PlanNodePtr source)
+  SchemaWithRowKindNode(const core::PlanNodeId& id, core::PlanNodePtr source)
       : core::PlanNode(id),
         sources_{std::move(source)},
         outputType_{withRowKindColumn(sources_[0]->outputType())} {}
@@ -49,7 +49,7 @@ class RowKindSchemaNode : public core::PlanNode {
   }
 
   std::string_view name() const override {
-    return "RowKindSchema";
+    return "SchemaWithRowKind";
   }
 
  private:

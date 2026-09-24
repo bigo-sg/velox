@@ -18,7 +18,7 @@
 #include "velox/core/Expressions.h"
 #include "velox/exec/FilterProject.h"
 #include "velox/experimental/stateful/RowKind.h"
-#include "velox/experimental/stateful/RowKindSchemaNode.h"
+#include "velox/experimental/stateful/SchemaWithRowKindNode.h"
 
 namespace facebook::velox::stateful {
 
@@ -48,11 +48,11 @@ std::shared_ptr<const core::ProjectNode> identityProjectWithRowKind(
       nodeId, std::move(names), std::move(projections), source);
 }
 
-// Wraps 'source' in a RowKindSchemaNode (see RowKindSchemaNode.h) so its
-// declared output type gains a trailing $row_kind.
+// Wraps 'source' in a SchemaWithRowKindNode (see SchemaWithRowKindNode.h) so
+// its declared output type gains a trailing $row_kind.
 std::shared_ptr<const core::PlanNode> rowKindSchemaSource(
     const core::PlanNodePtr& source) {
-  return std::make_shared<const RowKindSchemaNode>(
+  return std::make_shared<const SchemaWithRowKindNode>(
       source->id() + "-rowkind-schema", source);
 }
 
@@ -122,6 +122,13 @@ void StatefulCalcOperator::addInput(StreamElementPtr input) {
 }
 
 void StatefulCalcOperator::advance() {
+  // Unlike StatefulOperator::advance(), this override deliberately does not
+  // touch sourceEmpty_. The flag is only read by StatefulTask::next() on the
+  // chain head (the source operator), and a calc node always sits mid-chain
+  // above a source, so this operator's flag has no reader. A null getOutput()
+  // here also means "no result batch is buffered right now", not "the input
+  // source is exhausted" — the calc cannot know that — so there is no
+  // meaningful value to report through the flag.
   auto out = op()->getOutput();
   if (!out) {
     return;
@@ -132,6 +139,10 @@ void StatefulCalcOperator::advance() {
 }
 
 void StatefulCalcOperator::finish() {
+  // Same as advance(): sourceEmpty_ is left untouched. Only the chain head's
+  // flag is consulted by StatefulTask::next(), and during finish() the
+  // pipeline is draining to completion, so the flag carries no meaning for
+  // this mid-chain operator either.
   if (needsFinishDrain()) {
     op()->noMoreInput();
     do {
