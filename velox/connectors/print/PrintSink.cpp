@@ -15,6 +15,7 @@
  */
 #include "velox/connectors/print/PrintSink.h"
 #include "velox/connectors/utils/StringFormatter.h"
+#include "velox/experimental/stateful/RowKind.h"
 #include "velox/type/tz/TimeZoneMap.h"
 #include "velox/vector/SimpleVector.h"
 
@@ -33,31 +34,17 @@ std::mutex& printSinkWriteMutex() {
   return m;
 }
 
-// Name of the synthetic trailing TINYINT column carrying per-row RowKind.
-// Mirrors velox/experimental/stateful/RowKind.h::kRowKindColumnName so the
-// print connector stays decoupled from the stateful library.
-constexpr std::string_view kRowKindColumnName = "$row_kind";
-
-// Flink RowKind byte ordinals (org.apache.flink.types.RowKind.toByteValue()).
-// Mirrors velox/experimental/stateful/RowKind.h::RowKind.
-enum class RowKind : int8_t {
-  INSERT = 0,
-  UPDATE_BEFORE = 1,
-  UPDATE_AFTER = 2,
-  DELETE = 3,
-};
-
 // Matches Flink RowKind.shortString(): 0=INSERT -> "+I",
 // 1=UPDATE_BEFORE -> "-U", 2=UPDATE_AFTER -> "+U", 3=DELETE -> "-D".
 const char* rowKindPrefix(int8_t kind) {
-  switch (static_cast<RowKind>(kind)) {
-    case RowKind::INSERT:
+  switch (static_cast<stateful::RowKind>(kind)) {
+    case stateful::RowKind::INSERT:
       return "+I";
-    case RowKind::UPDATE_BEFORE:
+    case stateful::RowKind::UPDATE_BEFORE:
       return "-U";
-    case RowKind::UPDATE_AFTER:
+    case stateful::RowKind::UPDATE_AFTER:
       return "+U";
-    case RowKind::DELETE:
+    case stateful::RowKind::DELETE:
       return "-D";
   }
   VELOX_FAIL("Unknown RowKind byte: {}", static_cast<int>(kind));
@@ -76,7 +63,7 @@ PrintSink::PrintSink(
         // reaches this sink).
         if (inputType->size() > 0 &&
             inputType->nameOf(inputType->size() - 1) ==
-                std::string(kRowKindColumnName)) {
+                std::string(stateful::kRowKindColumnName)) {
           std::vector<std::string> names;
           std::vector<TypePtr> types;
           auto n = inputType->size() - 1;
