@@ -45,6 +45,7 @@
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/RowKind.h"
+#include "velox/experimental/stateful/SchemaWithRowKindNode.h"
 #include "velox/experimental/stateful/StatefulCalcOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StatefulSinkOperator.h"
@@ -74,9 +75,9 @@ static int nextOperatorId() {
 namespace {
 
 // Returns a new TableWriteNode identical to 'node' but with columns and the
-// (EmptyNode) source outputType extended by a trailing $row_kind TINYINT
-// column. Lets the underlying exec::TableWriter's name-based inputMapping_
-// pick up $row_kind so per-row RowKind flows into the connector DataSink.
+// source outputType extended by a trailing $row_kind TINYINT column. Lets
+// the underlying exec::TableWriter's name-based inputMapping_ pick up
+// $row_kind so per-row RowKind flows into the connector DataSink.
 // StatefulSinkOperator::addInput re-merges $row_kind into the RowVector on the
 // sink path via StreamRecord::toMergedRowVector. Only invoked when the sink's
 // ConnectorInsertTableHandle declares supportsRowKind().
@@ -89,9 +90,13 @@ std::shared_ptr<const core::TableWriteNode> augmentTableWriteForRowKind(
   types.emplace_back(TINYINT());
   auto augmentedColumns = ROW(std::move(names), std::move(types));
 
-  // EmptyNode outputType must contain every column name; the TableWriteNode
-  // constructor enforces name containment.
-  auto augmentedSource = std::make_shared<EmptyNode>(augmentedColumns);
+  // The source schema must resolve every column name; the TableWriteNode
+  // constructor enforces name containment. Wrap the original source in
+  // SchemaWithRowKindNode, a schema-declaration-only wrapper whose output
+  // type is the source's plus the trailing $row_kind column. The wrapper
+  // never executes — the operator chain is driven via addInput.
+  auto augmentedSource = std::make_shared<SchemaWithRowKindNode>(
+      node->sources()[0]->id() + "-rowkind-schema", node->sources()[0]);
 
   return std::make_shared<core::TableWriteNode>(
       node->id(),
