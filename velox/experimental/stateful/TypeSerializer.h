@@ -218,7 +218,12 @@ class SharedPtrSerializer : public TypeSerializer<std::shared_ptr<T>> {
 
   std::shared_ptr<T> deserialize(std::string_view str) override {
     VELOX_CHECK(!str.empty(), "Missing null flag in the shared value payload");
-    if (str[0] != 1) {
+    const char flag = str[0];
+    VELOX_CHECK(
+        flag == 0 || flag == 1,
+        "Corrupt checkpoint: shared value null flag must be 0 or 1, got {}",
+        static_cast<int>(flag));
+    if (flag == 0) {
       return nullptr;
     }
     // string_view::substr is O(1): the inner serializer reads the payload

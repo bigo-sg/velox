@@ -16,9 +16,11 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
+#include "velox/common/base/Exceptions.h"
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/KeySelector.h"
@@ -246,6 +248,86 @@ TEST_F(KeySelectorTest, probeHashMatchesSerializerChain) {
     EXPECT_TRUE(key.equals(restored));
     EXPECT_TRUE(restored.equals(key));
   }
+}
+
+// Float key columns follow the table's grouping semantics: NaN equals NaN
+// (one group, mirroring the NaN-aware hash chain), -0.0 equals +0.0 and
+// null equals null. Verified across hash-mode transitions and through the
+// serializer round trip.
+TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
+  const auto nan = std::numeric_limits<double>::quiet_NaN();
+  KeySelector selector({0}, {DOUBLE()}, 128, pool());
+
+  selector.probe(makeRowVector({makeNullableFlatVector<double>(
+      {nan, nan, -0.0, 0.0, std::nullopt, std::nullopt, 1.5})}));
+  auto keys = selector.keys();
+  ASSERT_EQ(7, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[1].row());
+  EXPECT_TRUE(keys[0].equals(keys[1]));
+  EXPECT_EQ(keys[0].hash(), keys[1].hash());
+  EXPECT_EQ(keys[0].keyGroup(), keys[1].keyGroup());
+  EXPECT_EQ(keys[2].row(), keys[3].row());
+  EXPECT_TRUE(keys[2].equals(keys[3]));
+  EXPECT_EQ(keys[2].hash(), keys[3].hash());
+  EXPECT_EQ(keys[4].row(), keys[5].row());
+  EXPECT_TRUE(keys[4].equals(keys[5]));
+  EXPECT_NE(keys[0].row(), keys[2].row());
+  EXPECT_NE(keys[0].row(), keys[4].row());
+  EXPECT_NE(keys[2].row(), keys[4].row());
+  EXPECT_EQ(4, selector.distinctKeys().size());
+
+  const char* nanRow = keys[0].row();
+  const char* zeroRow = keys[2].row();
+  const char* nullRow = keys[4].row();
+
+  // Many distinct values force the table out of its array mode into the
+  // generic hash modes; the float grouping must survive the transition.
+  std::vector<std::optional<double>> many;
+  many.reserve(2000);
+  for (int i = 0; i < 2000; ++i) {
+    many.push_back(i * 1e6 + 0.5);
+  }
+  selector.probe(makeRowVector({makeNullableFlatVector<double>(many)}));
+  EXPECT_EQ(2000, selector.newGroups().size());
+
+  selector.probe(makeRowVector({makeNullableFlatVector<double>(
+      {nan, 0.0, -0.0, std::nullopt, 1.5})}));
+  keys = selector.keys();
+  ASSERT_EQ(5, keys.size());
+  EXPECT_EQ(nanRow, keys[0].row());
+  EXPECT_EQ(zeroRow, keys[1].row());
+  EXPECT_EQ(zeroRow, keys[2].row());
+  EXPECT_EQ(nullRow, keys[3].row());
+  EXPECT_TRUE(selector.newGroups().empty());
+
+  // The serializer round trip lands on the same rows with the same hashes
+  // and key groups, NaN and signed zeros included.
+  auto serializer = selector.keySerializer();
+  for (const auto& key : selector.distinctKeys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+  }
+
+  // REAL keys follow the same rules.
+  const auto nanFloat = std::numeric_limits<float>::quiet_NaN();
+  KeySelector floatSelector({0}, {REAL()}, 128, pool());
+  floatSelector.probe(makeRowVector(
+      {makeNullableFlatVector<float>({nanFloat, nanFloat, -0.0f, 0.0f})}));
+  auto floatKeys = floatSelector.keys();
+  ASSERT_EQ(4, floatKeys.size());
+  EXPECT_EQ(floatKeys[0].row(), floatKeys[1].row());
+  EXPECT_TRUE(floatKeys[0].equals(floatKeys[1]));
+  EXPECT_EQ(floatKeys[2].row(), floatKeys[3].row());
+  EXPECT_TRUE(floatKeys[2].equals(floatKeys[3]));
+}
+
+// Unsupported key column types fail at construction instead of midway
+// through a probe, a comparison or a serialization.
+TEST_F(KeySelectorTest, unsupportedKeyTypeFailsAtConstruction) {
+  EXPECT_THROW(KeySelector({0}, {ARRAY(BIGINT())}, 128, pool()), VeloxException);
 }
 
 } // namespace

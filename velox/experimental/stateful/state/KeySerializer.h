@@ -61,6 +61,9 @@ class RowContainerStateKeySerializer
       memory::MemoryPool* pool,
       Probe probe)
       : schema_(schema), pool_(pool), probe_(std::move(probe)) {
+    // Unsupported key column types fail here, at construction, rather than
+    // midway through a serialization or a deserialization.
+    checkStateKeyTypes(schema_->keyTypes());
     columnSerializers_.reserve(schema_->keyTypes().size());
     for (const auto& type : schema_->keyTypes()) {
       columnSerializers_.push_back(createSerializer(type, false, pool_));

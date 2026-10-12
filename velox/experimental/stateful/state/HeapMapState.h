@@ -29,9 +29,10 @@ namespace facebook::velox::stateful {
 /// MapState on the heap storage: the value is a shared std::map, created on
 /// the first put, overwritten on put of an existing user key and read as an
 /// empty map when absent, as in Flink HeapMapState. Removing from an absent
-/// map does not materialize one. The checkpoint payload of one entry is the
-/// user-entry count followed by the length-prefixed serialization of each
-/// user key and user value.
+/// map does not materialize one, and removing the last user entry drops the
+/// stored map itself, so empty maps never reach a checkpoint. The
+/// checkpoint payload of one entry is the user-entry count followed by the
+/// length-prefixed serialization of each user key and user value.
 /// @param <K> type of key, a StateKey subclass
 /// @param <N> type of namespace, a Namespace subclass
 /// @param <UK> type of the user keys of the map
@@ -83,6 +84,11 @@ class HeapMapState : public MapState<K, N, UK, UV> {
   void remove(const K& key, const N& ns, const UK& userKey) override {
     if (auto currentMap = stateTable_->get(key, ns)) {
       currentMap->erase(userKey);
+      if (currentMap->empty()) {
+        // An empty map carries no state: dropping the entry keeps empty maps
+        // out of the checkpoints.
+        stateTable_->remove(key, ns);
+      }
     }
   }
 

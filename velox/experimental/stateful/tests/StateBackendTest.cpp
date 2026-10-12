@@ -22,6 +22,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string_view>
 #include <vector>
 
 #include <folly/dynamic.h>
@@ -844,6 +845,63 @@ TEST_F(StateBackendTest, backendParametersRoundTrip) {
   EXPECT_EQ(128, legacyRestored->getMaxParallelism());
   EXPECT_EQ(0, legacyRestored->getStartKeyGroup());
   EXPECT_EQ(128, legacyRestored->getNumKeyGroups());
+}
+
+// Removing the last user entry of a map drops the stored map itself: the
+// checkpoint bytes equal those of a backend that never stored a map for
+// that key, so empty maps never reach a checkpoint.
+TEST_F(StateBackendTest, mapRemoveLastUserEntryDropsStoredMap) {
+  const VoidNamespace ns;
+
+  KeySelector selectorX({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysX = probeKeys(selectorX, {kCollisionKeyA, kCollisionKeyB});
+  HeapKeyedStateBackend<RowContainerStateKey> backendX(
+      selectorX.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto mapX = backendX.getOrCreateMapState<VoidNamespace>(
+      MapStateDescriptor<int64_t, int64_t>(
+          "map", int64Serializer(), int64Serializer(), pool()));
+  mapX->put(keysX[0], ns, 10, 100);
+  mapX->put(keysX[1], ns, 30, 300);
+  mapX->remove(keysX[0], ns, 10);
+
+  KeySelector selectorY({0}, {BIGINT()}, kMaxParallelism, pool());
+  auto keysY = probeKeys(selectorY, {kCollisionKeyA, kCollisionKeyB});
+  HeapKeyedStateBackend<RowContainerStateKey> backendY(
+      selectorY.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+  auto mapY = backendY.getOrCreateMapState<VoidNamespace>(
+      MapStateDescriptor<int64_t, int64_t>(
+          "map", int64Serializer(), int64Serializer(), pool()));
+  mapY->put(keysY[1], ns, 30, 300);
+
+  EXPECT_EQ(backendY.snapshot(), backendX.snapshot());
+}
+
+// The key serializer rejects unsupported key column types at construction
+// instead of midway through a serialization.
+TEST_F(StateBackendTest, serializerRejectsUnsupportedKeyType) {
+  exec::RowContainer container({ARRAY(BIGINT())}, pool());
+  RowContainerKeySchema schema(&container, {ARRAY(BIGINT())});
+  EXPECT_THROW(
+      (RowContainerStateKeySerializer(&schema, pool(), nullptr)),
+      VeloxException);
+}
+
+// A corrupted shared-value null flag fails loudly instead of silently
+// deserializing to null.
+TEST_F(StateBackendTest, sharedValueCorruptNullFlagFailsLoud) {
+  SharedPtrSerializer<int64_t> serializer(
+      std::make_shared<ValueSerializer<int64_t>>());
+
+  EXPECT_EQ(nullptr, serializer.deserialize(std::string(1, '\x00')));
+
+  std::string payload(1, '\x01');
+  const int64_t value = 7;
+  payload.append(reinterpret_cast<const char*>(&value), sizeof(value));
+  auto restored = serializer.deserialize(payload);
+  ASSERT_NE(nullptr, restored);
+  EXPECT_EQ(7, *restored);
+
+  EXPECT_THROW(serializer.deserialize(std::string(1, '\x02')), VeloxException);
 }
 
 } // namespace

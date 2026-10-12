@@ -55,6 +55,9 @@ KeySelector::KeySelector(
       keyChannels_.size(),
       keyTypes_.size(),
       "One key type per key channel is required");
+  // Unsupported key column types fail here, at construction, rather than
+  // midway through a probe, a comparison or a serialization.
+  checkStateKeyTypes(keyTypes_);
 
   // The probe hashers are handed to the table and follow its internal hash
   // mode evolution (kArray / kNormalizedKey / kHash). Both hasher sets read

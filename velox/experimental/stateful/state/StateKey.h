@@ -19,6 +19,7 @@
 #include <cstring>
 #include <vector>
 #include "velox/exec/RowContainer.h"
+#include "velox/type/FloatingPointUtil.h"
 #include "velox/type/HugeInt.h"
 #include "velox/type/StringView.h"
 #include "velox/type/Timestamp.h"
@@ -82,6 +83,12 @@ class RowContainerKeySchema {
 /// Immutable view over one row of the key RowContainer. The row is owned by
 /// the container (view semantics). hash and keyGroup are computed once, at
 /// construction, and cached. Instances are cheap to copy.
+///
+/// Lifetime discipline: a view is valid as long as its row is valid. Key
+/// rows are append-only today; when key reclamation is added, rows may only
+/// be erased at batch boundaries - never between a probe and the consumption
+/// of its results - so views obtained from a probe are always safe to use
+/// within the batch that produced them.
 ///
 /// Note: the design doc's constructor (row, hash, maxParallelism) is
 /// extended with the schema pointer because value equality needs the column
@@ -155,16 +162,31 @@ inline bool RowContainerKeySchema::rowsEqual(const char* lhs, const char* rhs)
     }                                                 \
     break;                                            \
   }
+#define VELOX_STATEFUL_COMPARE_FLOAT(KIND)                         \
+  case TypeKind::KIND: {                                           \
+    using T = TypeTraits<TypeKind::KIND>::NativeType;              \
+    /* Mirrors the probe-side grouping semantics: NaN equals NaN   \
+       (one group) and -0.0 equals +0.0, the same rules the        \
+       NaN-aware hash chain applies, so equality never disagrees   \
+       with the hash. */                                           \
+    if (!util::floating_point::NaNAwareEquals<T>{}(                \
+            *reinterpret_cast<const T*>(lhsValue),                 \
+            *reinterpret_cast<const T*>(rhsValue))) {              \
+      return false;                                                \
+    }                                                              \
+    break;                                                         \
+  }
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(BOOLEAN)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(TINYINT)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(SMALLINT)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(INTEGER)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(BIGINT)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(HUGEINT)
-      VELOX_STATEFUL_COMPARE_FIXED_WIDTH(REAL)
-      VELOX_STATEFUL_COMPARE_FIXED_WIDTH(DOUBLE)
+      VELOX_STATEFUL_COMPARE_FLOAT(REAL)
+      VELOX_STATEFUL_COMPARE_FLOAT(DOUBLE)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(TIMESTAMP)
 #undef VELOX_STATEFUL_COMPARE_FIXED_WIDTH
+#undef VELOX_STATEFUL_COMPARE_FLOAT
       case TypeKind::VARCHAR:
       case TypeKind::VARBINARY: {
         const auto& lhsView = *reinterpret_cast<const StringView*>(lhsValue);
@@ -182,6 +204,33 @@ inline bool RowContainerKeySchema::rowsEqual(const char* lhs, const char* rhs)
     }
   }
   return true;
+}
+
+/// Checks that every key column type is one of the supported key identity
+/// types (see RowContainerKeySchema::rowsEqual and the key serializer), so
+/// unsupported key shapes fail at the API entry points - at construction -
+/// instead of midway through a comparison or a serialization.
+inline void checkStateKeyTypes(const std::vector<TypePtr>& keyTypes) {
+  for (const auto& type : keyTypes) {
+    switch (type->kind()) {
+      case TypeKind::BOOLEAN:
+      case TypeKind::TINYINT:
+      case TypeKind::SMALLINT:
+      case TypeKind::INTEGER:
+      case TypeKind::BIGINT:
+      case TypeKind::HUGEINT:
+      case TypeKind::REAL:
+      case TypeKind::DOUBLE:
+      case TypeKind::TIMESTAMP:
+      case TypeKind::VARCHAR:
+      case TypeKind::VARBINARY:
+        break;
+      default:
+        VELOX_NYI(
+            "State key column type {} is not supported yet",
+            type->kindName());
+    }
+  }
 }
 
 } // namespace facebook::velox::stateful
