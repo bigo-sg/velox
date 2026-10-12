@@ -82,6 +82,12 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     stateTable_->clear();
   }
 
+  // Synchronous snapshots only: entries are serialized inline while the
+  // caller guarantees no concurrent mutation. The copy-on-write machinery
+  // in StateMap does not copy values (see the deep-copy TODO in
+  // StateMap::get), so an asynchronous snapshot could observe partially
+  // updated values; enabling one requires implementing the value copy
+  // first.
   void snapshotKeyGroup(int32_t keyGroupId, CheckpointWriter& writer) override {
     auto& map =
         stateTable_->stateMapForKeyGroup(static_cast<uint32_t>(keyGroupId));

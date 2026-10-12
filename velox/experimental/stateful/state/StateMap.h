@@ -153,6 +153,11 @@ class StateMap {
             e = handleChainedEntryCopyOnWrite(tab, hash & (tab.size() - 1), e);
           }
           e->stateVersion_ = stateMapVersion_;
+          // Values are not copied on write. All snapshots are synchronous:
+          // each snapshot is fully serialized before any further mutation,
+          // so this copy-on-write branch never observes a live snapshot.
+          // Supporting asynchronous snapshots would require copying the
+          // value here first.
           /// TODO: use type serializer to copy a state
           // e->state_ =
         }
