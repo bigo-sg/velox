@@ -29,6 +29,7 @@ velox_add_library(
   StatefulCalcOperator.cpp
   StreamPartition.cpp
   StreamJoin.cpp
+  StreamKeyedOperator.cpp
   WindowJoin.cpp
   KeySelector.cpp
   CombinedWatermarkStatus.cpp

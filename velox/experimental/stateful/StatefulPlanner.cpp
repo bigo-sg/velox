@@ -51,6 +51,7 @@
 #include "velox/experimental/stateful/StatefulSinkOperator.h"
 #include "velox/experimental/stateful/StatefulSourceOperator.h"
 #include "velox/experimental/stateful/StreamJoin.h"
+#include "velox/experimental/stateful/StreamKeyedOperator.h"
 #include "velox/experimental/stateful/StreamPartition.h"
 #include "velox/experimental/stateful/StreamRecordTimestampInserter.h"
 #include "velox/experimental/stateful/WatermarkAssigner.h"
@@ -411,8 +412,21 @@ StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(
 }
 
 StatefulOperatorPtr StatefulPlanner::transformStreamRankOperator(
-    const StatefulPlanNode& /*planNode*/) {
-  VELOX_NYI("StreamRank operator is not supported yet");
+    const StatefulPlanNode& planNode) {
+  std::vector<StatefulOperatorPtr> targets =
+      transformStatefulOperators(planNode.targets());
+
+  auto rankNode =
+      std::dynamic_pointer_cast<const StreamRankNode>(planNode.node());
+  VELOX_CHECK(rankNode, "Failed to cast to StreamRankNode");
+
+  auto op = transformOperator(rankNode->ranker());
+
+  std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
+      rankNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
+
+  return std::make_unique<StreamKeyedOperator>(
+      std::move(op), std::move(keySelector), std::move(targets));
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGroupAggregationOperator(
