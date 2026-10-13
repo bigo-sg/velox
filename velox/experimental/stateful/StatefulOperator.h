@@ -41,12 +41,8 @@ class StatefulOperator {
  public:
   StatefulOperator(
       std::unique_ptr<exec::Operator> op,
-      std::vector<std::unique_ptr<StatefulOperator>> targets,
-      std::shared_ptr<const KeyedStateBackendParameters>
-          keyedStateBackendParameters = nullptr)
-      : keyedStateBackendParameters_(keyedStateBackendParameters),
-        operator_(std::move(op)),
-        targets_(std::move(targets)) {
+      std::vector<std::unique_ptr<StatefulOperator>> targets)
+      : operator_(std::move(op)), targets_(std::move(targets)) {
     sink_ = operator_->operatorType() == "TableWrite";
   }
 
@@ -169,9 +165,6 @@ class StatefulOperator {
   virtual int numInputs() const {
     return 1;
   }
-
-  std::shared_ptr<const KeyedStateBackendParameters>
-      keyedStateBackendParameters_;
 
  private:
   bool isSink() {

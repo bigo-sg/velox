@@ -31,7 +31,9 @@
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
+#include "velox/experimental/stateful/state/HashMapStateBackend.h"
 #include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/KeyTable.h"
@@ -880,6 +882,78 @@ TEST_F(StateBackendTest, backendParametersRoundTrip) {
   EXPECT_EQ(128, legacyRestored->getMaxParallelism());
   EXPECT_EQ(0, legacyRestored->getStartKeyGroup());
   EXPECT_EQ(128, legacyRestored->getNumKeyGroups());
+}
+
+// The keyed-state construction path an operator's initializeStateBackend
+// runs: the plan contributes pure configuration (the KeyedStateSpec - key
+// channels and key types), the task's state backend contributes the
+// key-group numbers, and the keyed backend and its KeySelector are built
+// at initialize time, in that order, from those two sources. The nine V1
+// operators keep their plan-time partition() selectors until they migrate.
+TEST_F(StateBackendTest, keyedStateBuiltAtInitializeFromSpecAndParameters) {
+  const auto spec = std::make_shared<const KeyedStateSpec>(
+      std::vector<column_index_t>{0}, std::vector<TypePtr>{BIGINT()});
+
+  // The task-level backend, as StatefulTask::initStateBackend builds it.
+  // The key-group configuration lives here and nowhere else.
+  HashMapStateBackend taskBackend(
+      std::make_shared<const KeyedStateBackendParameters>(
+          StateBackendType::HEAP,
+          "job",
+          "op",
+          kMaxParallelism,
+          0,
+          kMaxParallelism));
+  const auto& parameters = taskBackend.parameters();
+
+  // The operator side, in construction order: the keyed backend first
+  // (the spec's key types, the parameters' key-group range), then a
+  // selector bound to the backend's key table over the spec's channels.
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      spec->keyTypes(),
+      parameters->getMaxParallelism(),
+      parameters->getStartKeyGroup(),
+      parameters->getNumKeyGroups(),
+      pool());
+  KeySelector selector(backend.keyIndex(), spec->keyChannels());
+
+  // One source: maxParallelism exists only in the parameters; the
+  // backend and its key table carry that number, and the selector keeps
+  // no copy of its own - every key it hands out is built from the bound
+  // table's value.
+  EXPECT_EQ(parameters->getMaxParallelism(), backend.maxParallelism());
+  EXPECT_EQ(
+      parameters->getMaxParallelism(), backend.keyIndex().maxParallelism());
+  // The selector probes the backend's own key table.
+  EXPECT_EQ(backend.keyIndex().keyRows(), selector.keyRowContainer());
+
+  auto keys =
+      probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
+  ASSERT_EQ(3, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[2].row());
+  EXPECT_NE(keys[0].row(), keys[1].row());
+}
+
+// The keyed-state spec is plan data: it round-trips through the serde
+// with its key channels and key column types intact.
+TEST_F(StateBackendTest, keyedStateSpecRoundTrip) {
+  const KeyedStateSpec spec(
+      std::vector<column_index_t>{0, 2},
+      std::vector<TypePtr>{BIGINT(), VARCHAR()});
+  const auto restored = KeyedStateSpec::create(spec.serialize(), nullptr);
+  ASSERT_EQ(2, restored->keyChannels().size());
+  EXPECT_EQ(0, restored->keyChannels()[0]);
+  EXPECT_EQ(2, restored->keyChannels()[1]);
+  ASSERT_EQ(2, restored->keyTypes().size());
+  EXPECT_TRUE(spec.keyTypes()[0]->equivalent(*restored->keyTypes()[0]));
+  EXPECT_TRUE(spec.keyTypes()[1]->equivalent(*restored->keyTypes()[1]));
+
+  // A spec whose channels and types disagree is rejected at construction,
+  // not midway through a probe.
+  EXPECT_THROW(
+      (KeyedStateSpec(
+          std::vector<column_index_t>{0, 1}, std::vector<TypePtr>{BIGINT()})),
+      VeloxException);
 }
 
 // Removing the last user entry of a map drops the stored map itself: the

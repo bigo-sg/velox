@@ -32,6 +32,15 @@ class StateBackend : public ISerializable {
 
   virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() = 0;
 
+  /// The parameters this state backend was built from. The keyed
+  /// operators' initializeStateBackend reads the key-group configuration
+  /// (maxParallelism and this backend's key-group sub-range) from here
+  /// when they build their keyed state backend - the one place those
+  /// numbers exist at runtime.
+  const std::shared_ptr<const KeyedStateBackendParameters>& parameters() const {
+    return parameters_;
+  }
+
  protected:
   const std::shared_ptr<const KeyedStateBackendParameters> parameters_;
 };
