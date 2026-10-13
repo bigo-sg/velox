@@ -25,7 +25,7 @@ namespace facebook::velox::stateful {
 /// empty and all instances are equal.
 class VoidNamespaceSerializer : public TypeSerializer<VoidNamespace> {
  public:
-  std::string schema() const override {
+  std::string schemaId() const override {
     return "void";
   }
 

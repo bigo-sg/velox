@@ -37,10 +37,10 @@ class State {
   virtual void clear() = 0;
 
   /// Checkpoint plane of the heap storage: serializes this state's entries
-  /// of one key group / deserializes one entry, and reports the schema
-  /// strings the backend cross-checks against the checkpoint header.
-  /// Implemented by the heap state handles; states that predate the typed
-  /// API keep the defaults and never take part in heap checkpoints.
+  /// of one key group / deserializes one entry, and reports the schema ids
+  /// the backend cross-checks against the checkpoint header. Implemented by
+  /// the heap state handles; states that predate the typed API keep the
+  /// defaults and never take part in heap checkpoints.
   virtual void snapshotKeyGroup(
       int32_t /* keyGroupId */,
       CheckpointWriter& /* writer */) {
@@ -51,11 +51,11 @@ class State {
     VELOX_NYI("This state does not support entry restore");
   }
 
-  virtual std::string namespaceSchema() const {
+  virtual std::string namespaceSchemaId() const {
     return "";
   }
 
-  virtual std::string valueSchema() const {
+  virtual std::string valueSchemaId() const {
     return "";
   }
 };

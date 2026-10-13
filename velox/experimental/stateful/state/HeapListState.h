@@ -77,9 +77,11 @@ class HeapListState : public ListState<K, N, T> {
     int32_t entryCount = 0;
     for (const auto& head : snapshot.heads) {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
-        writer.writeBytes(nsSerializer_->serialize(entry->namespace_));
-        writer.writeBytes(keySerializer_->serialize(entry->key_));
-        writer.writeBytes(serializeList(entry->state_));
+        writeEntryFrames(
+            writer,
+            nsSerializer_->serialize(entry->namespace_),
+            keySerializer_->serialize(entry->key_),
+            serializeList(entry->state_));
         ++entryCount;
       }
     }
@@ -88,10 +90,10 @@ class HeapListState : public ListState<K, N, T> {
   }
 
   void restoreEntry(CheckpointReader& reader) override {
-    const auto ns = nsSerializer_->deserialize(reader.readBytes());
-    const auto key = keySerializer_->deserialize(reader.readBytes());
-    const auto bytes = reader.readBytes();
-    CheckpointReader listReader(bytes.data(), bytes.size());
+    const auto frames = readEntryFrames(reader);
+    const auto ns = nsSerializer_->deserialize(frames.ns);
+    const auto key = keySerializer_->deserialize(frames.key);
+    CheckpointReader listReader(frames.payload.data(), frames.payload.size());
     const auto size = listReader.readInt32();
     VELOX_CHECK_GE(size, 0, "Corrupt checkpoint: negative list size {}", size);
     auto list = std::make_shared<std::vector<T>>();
@@ -105,12 +107,12 @@ class HeapListState : public ListState<K, N, T> {
     stateTable_->put(key, ns, list);
   }
 
-  std::string namespaceSchema() const override {
-    return nsSerializer_->schema();
+  std::string namespaceSchemaId() const override {
+    return nsSerializer_->schemaId();
   }
 
-  std::string valueSchema() const override {
-    return "list<" + elementSerializer_->schema() + ">";
+  std::string valueSchemaId() const override {
+    return "list<" + elementSerializer_->schemaId() + ">";
   }
 
  private:

@@ -56,7 +56,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
         nsSerializer_(NamespaceSerializerTraits<N>::create()),
-        valueSchema_(accTypesSchema(descriptor.accTypes())) {}
+        valueSchemaId_(accTypesSchema(descriptor.accTypes())) {}
 
   void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
     for (size_t i = 0; i < keys.size(); ++i) {
@@ -96,9 +96,11 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     int32_t entryCount = 0;
     for (const auto& head : snapshot.heads) {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
-        writer.writeBytes(nsSerializer_->serialize(entry->namespace_));
-        writer.writeBytes(keySerializer_->serialize(entry->key_));
-        writer.writeBytes(serializeRow(entry->state_));
+        writeEntryFrames(
+            writer,
+            nsSerializer_->serialize(entry->namespace_),
+            keySerializer_->serialize(entry->key_),
+            serializeRow(entry->state_));
         ++entryCount;
       }
     }
@@ -107,23 +109,23 @@ class HeapAggregatingState : public AggregatingState<K, N> {
   }
 
   void restoreEntry(CheckpointReader& reader) override {
-    const auto ns = nsSerializer_->deserialize(reader.readBytes());
-    const auto key = keySerializer_->deserialize(reader.readBytes());
-    const auto bytes = reader.readBytes();
+    const auto frames = readEntryFrames(reader);
+    const auto ns = nsSerializer_->deserialize(frames.ns);
+    const auto key = keySerializer_->deserialize(frames.key);
     char* row = valueRows_->newRow();
     auto input = BaseVector::create(VARBINARY(), 1, pool_);
     auto* flat = input->as<FlatVector<StringView>>();
-    flat->set(0, StringView(bytes.data(), bytes.size()));
+    flat->set(0, StringView(frames.payload.data(), frames.payload.size()));
     valueRows_->storeSerializedRow(*flat, 0, row);
     stateTable_->put(key, ns, row);
   }
 
-  std::string namespaceSchema() const override {
-    return nsSerializer_->schema();
+  std::string namespaceSchemaId() const override {
+    return nsSerializer_->schemaId();
   }
 
-  std::string valueSchema() const override {
-    return valueSchema_;
+  std::string valueSchemaId() const override {
+    return valueSchemaId_;
   }
 
  private:
@@ -155,6 +157,6 @@ class HeapAggregatingState : public AggregatingState<K, N> {
   memory::MemoryPool* pool_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
   std::shared_ptr<TypeSerializer<N>> nsSerializer_;
-  const std::string valueSchema_;
+  const std::string valueSchemaId_;
 };
 } // namespace facebook::velox::stateful

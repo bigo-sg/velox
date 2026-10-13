@@ -104,9 +104,11 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     int32_t entryCount = 0;
     for (const auto& head : snapshot.heads) {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
-        writer.writeBytes(nsSerializer_->serialize(entry->namespace_));
-        writer.writeBytes(keySerializer_->serialize(entry->key_));
-        writer.writeBytes(serializeMap(entry->state_));
+        writeEntryFrames(
+            writer,
+            nsSerializer_->serialize(entry->namespace_),
+            keySerializer_->serialize(entry->key_),
+            serializeMap(entry->state_));
         ++entryCount;
       }
     }
@@ -115,10 +117,10 @@ class HeapMapState : public MapState<K, N, UK, UV> {
   }
 
   void restoreEntry(CheckpointReader& reader) override {
-    const auto ns = nsSerializer_->deserialize(reader.readBytes());
-    const auto key = keySerializer_->deserialize(reader.readBytes());
-    const auto bytes = reader.readBytes();
-    CheckpointReader mapReader(bytes.data(), bytes.size());
+    const auto frames = readEntryFrames(reader);
+    const auto ns = nsSerializer_->deserialize(frames.ns);
+    const auto key = keySerializer_->deserialize(frames.key);
+    CheckpointReader mapReader(frames.payload.data(), frames.payload.size());
     const auto size = mapReader.readInt32();
     VELOX_CHECK_GE(size, 0, "Corrupt checkpoint: negative map size {}", size);
     auto map = std::make_shared<std::map<UK, UV>>();
@@ -133,13 +135,13 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     stateTable_->put(key, ns, map);
   }
 
-  std::string namespaceSchema() const override {
-    return nsSerializer_->schema();
+  std::string namespaceSchemaId() const override {
+    return nsSerializer_->schemaId();
   }
 
-  std::string valueSchema() const override {
-    return "map<" + userKeySerializer_->schema() + "," +
-        userValueSerializer_->schema() + ">";
+  std::string valueSchemaId() const override {
+    return "map<" + userKeySerializer_->schemaId() + "," +
+        userValueSerializer_->schemaId() + ">";
   }
 
  private:

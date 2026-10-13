@@ -16,11 +16,9 @@
 #pragma once
 
 #include <cstdint>
-#include <cstring>
 #include <functional>
 #include <memory>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include "velox/common/memory/MemoryPool.h"
@@ -70,7 +68,7 @@ class RowContainerStateKeySerializer
     }
   }
 
-  std::string schema() const override {
+  std::string schemaId() const override {
     std::string schema;
     for (const auto& keyType : schema_->keyTypes()) {
       if (!schema.empty()) {
@@ -141,21 +139,10 @@ class RowContainerStateKeySerializer
     if (flat->isNullAt(0)) {
       return std::string(1, static_cast<char>(0));
     }
-    if constexpr (std::is_same_v<D, Timestamp>) {
-      // The raw (seconds, nanos) pair: the millis-rounded value encoding
-      // would change the key identity and, with it, the hash and key group.
-      static_assert(
-          std::is_trivially_copyable_v<Timestamp> && sizeof(Timestamp) == 16);
-      std::string bytes(1, static_cast<char>(1));
-      const auto& value = flat->valueAt(0);
-      bytes.append(reinterpret_cast<const char*>(&value), sizeof(Timestamp));
-      return bytes;
-    } else {
-      auto serializer = std::static_pointer_cast<TypeSerializer<D>>(
-          columnSerializers_[column]);
-      return std::string(1, static_cast<char>(1)) +
-          serializer->serialize(flat->valueAt(0));
-    }
+    auto serializer =
+        std::static_pointer_cast<TypeSerializer<D>>(columnSerializers_[column]);
+    return std::string(1, static_cast<char>(1)) +
+        serializer->serialize(flat->valueAt(0));
   }
 
   void
@@ -196,21 +183,11 @@ class RowContainerStateKeySerializer
       flat->setNull(0, true);
       return;
     }
-    if constexpr (std::is_same_v<D, Timestamp>) {
-      VELOX_CHECK_EQ(
-          bytes.size() - 1,
-          sizeof(Timestamp),
-          "Corrupt checkpoint: truncated timestamp key column");
-      D value;
-      std::memcpy(&value, bytes.data() + 1, sizeof(Timestamp));
-      flat->set(0, value);
-    } else {
-      auto serializer = std::static_pointer_cast<TypeSerializer<D>>(
-          columnSerializers_[column]);
-      // FlatVector::set copies non-inline strings out of the checkpoint
-      // buffer, so the borrowed StringView is safe here.
-      flat->set(0, serializer->deserialize(bytes.substr(1)));
-    }
+    auto serializer =
+        std::static_pointer_cast<TypeSerializer<D>>(columnSerializers_[column]);
+    // FlatVector::set copies non-inline strings out of the checkpoint
+    // buffer, so the borrowed StringView is safe here.
+    flat->set(0, serializer->deserialize(bytes.substr(1)));
   }
 
   const RowContainerKeySchema* schema_;

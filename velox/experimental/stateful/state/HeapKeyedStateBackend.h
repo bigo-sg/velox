@@ -220,147 +220,159 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   // --- Typed snapshot / restore plane ---
 
   /// Serializes the entries of all registered states into one checkpoint
-  /// stream: a header describing the states (name, schemas, key-group
-  /// range), then the entries grouped by key group (ascending); within one
-  /// key group each state writes its block in header order, addressed by
-  /// its int16 name id. States are visited in name order so the stream is
-  /// reproducible. The header plays the role of Flink's per-state metadata
-  /// snapshots: restore cross-checks it against the backend and its
-  /// registered states instead of relying on registration order.
+  /// stream. Layout: the fixed header (magic, version, flags, key-group
+  /// labels), the schema table (the backend's key schema id, then per state
+  /// its id with the namespace and value schema ids), the entry body — one
+  /// block per key group in ascending order, within a group one block per
+  /// state in schema-table order, each headed by the state id and the entry
+  /// count — and a CRC-32 trailer over everything before it. States are
+  /// visited in id order so the stream is reproducible. The schema table
+  /// plays the role of Flink's per-state metadata snapshots: restore
+  /// cross-checks it against the backend and its registered states instead
+  /// of relying on registration order.
   std::string snapshot() {
     std::vector<std::pair<std::string, StatePtr>> states(
         createdStates_.begin(), createdStates_.end());
     std::sort(states.begin(), states.end());
     std::string bytes;
     CheckpointWriter writer(bytes);
-    writer.writeInt32(kCheckpointFormatVersion);
-    writer.writeBytes(keySerializer_->schema());
-    writer.writeInt32(static_cast<int32_t>(states.size()));
+    CheckpointHeader header;
+    header.flags = kCheckpointFlagLittleEndian | kCheckpointFlagCrcTrailer;
+    header.maxParallelism = maxParallelism_;
+    header.startKeyGroup = startKeyGroup_;
+    header.numKeyGroups = numKeyGroups_;
+    writeCheckpointHeader(writer, header);
+    writer.writeBytes(keySerializer_->schemaId());
+    writer.writeUInt32(static_cast<uint32_t>(states.size()));
     for (const auto& [name, state] : states) {
       writer.writeBytes(name);
-      writer.writeBytes(state->namespaceSchema());
-      writer.writeBytes(state->valueSchema());
-      writer.writeInt32(static_cast<int32_t>(startKeyGroup_));
-      writer.writeInt32(static_cast<int32_t>(numKeyGroups_));
+      writer.writeBytes(state->namespaceSchemaId());
+      writer.writeBytes(state->valueSchemaId());
     }
     for (uint32_t keyGroup = startKeyGroup_;
          keyGroup < startKeyGroup_ + numKeyGroups_;
          ++keyGroup) {
-      writer.writeInt32(static_cast<int32_t>(keyGroup));
-      for (int32_t id = 0; id < static_cast<int32_t>(states.size()); ++id) {
-        writer.writeInt16(static_cast<int16_t>(id));
-        states[id].second->snapshotKeyGroup(
-            static_cast<int32_t>(keyGroup), writer);
+      writer.writeUInt32(keyGroup);
+      for (const auto& [name, state] : states) {
+        writer.writeBytes(name);
+        state->snapshotKeyGroup(static_cast<int32_t>(keyGroup), writer);
       }
     }
+    writer.writeUInt32(checkpointCrc32(bytes));
     return bytes;
   }
 
   /// Restores the stream written by snapshot() into the states this backend
-  /// has registered: every state of the checkpoint must already be
-  /// registered under the same name with a matching schema, and the
-  /// checkpoint's key-group range must overlap this backend's. Key groups
-  /// of the stream outside this backend's range are skipped, so a
-  /// checkpoint written under a different parallelism restores into this
-  /// backend — one covering stream at once, the disjoint-range pieces of a
-  /// scale-down in sequence — and only a stream with no overlap at all is
-  /// rejected. This is the reverse of Flink's order (restore before state
-  /// creation) and is what makes handle-owned state tables possible; the
-  /// byte layout of the entries is the same.
+  /// has registered. The header must carry this backend's maxParallelism —
+  /// it defines the key-group space and is stable across rescale, so
+  /// equality is required — and the schema table must match the registered
+  /// states one-for-one, same ids and same schema ids. The stream's
+  /// key-group range must overlap this backend's; key groups of the stream
+  /// outside the range are skipped, so a checkpoint written under a
+  /// different parallelism restores into this backend — one covering
+  /// stream at once, the disjoint-range pieces of a scale-down in
+  /// sequence — and only a stream with no overlap at all is rejected. This
+  /// is the reverse of Flink's order (restore before state creation) and
+  /// is what makes handle-owned state tables possible; the byte layout of
+  /// the entries is the same. When the flags announce a CRC-32 trailer it
+  /// is verified over the whole stream before any state is touched.
   void restore(const std::string& bytes) {
-    CheckpointReader reader(bytes.data(), bytes.size());
-    VELOX_CHECK_EQ(
-        reader.readInt32(),
-        kCheckpointFormatVersion,
-        "Unsupported checkpoint format version");
-    const auto keySchema = reader.readBytes();
-    VELOX_CHECK_EQ(
-        keySchema,
-        keySerializer_->schema(),
-        "Checkpoint key schema does not match this backend's key serializer");
-    const auto stateCount = reader.readInt32();
-    VELOX_CHECK_GE(stateCount, 0, "Corrupt checkpoint: negative state count");
-    std::vector<StatePtr> statesById(stateCount);
-    int32_t streamStartKeyGroup = 0;
-    int32_t streamNumKeyGroups = 0;
-    for (int32_t id = 0; id < stateCount; ++id) {
-      // One bounded copy per state (header only): the registry lookup needs
-      // an owning key.
-      const std::string name(reader.readBytes());
-      const auto nsSchema = reader.readBytes();
-      const auto valueSchema = reader.readBytes();
-      const auto startKeyGroup = reader.readInt32();
-      const auto numKeyGroups = reader.readInt32();
+    CheckpointReader headerReader(bytes.data(), bytes.size());
+    const auto header = readCheckpointHeader(headerReader);
+    size_t bodySize = bytes.size();
+    if ((header.flags & kCheckpointFlagCrcTrailer) != 0) {
       VELOX_CHECK_GE(
-          startKeyGroup, 0, "Corrupt checkpoint: negative key-group start");
-      VELOX_CHECK_GT(
-          numKeyGroups, 0, "Corrupt checkpoint: non-positive key-group count");
-      if (id == 0) {
-        streamStartKeyGroup = startKeyGroup;
-        streamNumKeyGroups = numKeyGroups;
-      } else {
-        VELOX_CHECK_EQ(
-            startKeyGroup,
-            streamStartKeyGroup,
-            "Corrupt checkpoint: states disagree on the key-group range");
-        VELOX_CHECK_EQ(
-            numKeyGroups,
-            streamNumKeyGroups,
-            "Corrupt checkpoint: states disagree on the key-group range");
-      }
-      auto it = createdStates_.find(name);
+          bytes.size(),
+          kCheckpointHeaderSize + sizeof(uint32_t),
+          "Corrupt checkpoint: too short for the announced CRC trailer");
+      bodySize = bytes.size() - sizeof(uint32_t);
+      VELOX_CHECK_EQ(
+          littleEndianValue<uint32_t>(
+              std::string_view(bytes.data() + bodySize, sizeof(uint32_t))),
+          checkpointCrc32(std::string_view(bytes.data(), bodySize)),
+          "Corrupt checkpoint: CRC-32 mismatch");
+    }
+    CheckpointReader reader(bytes.data(), bodySize);
+    readCheckpointHeader(reader);
+    VELOX_CHECK_EQ(
+        header.maxParallelism,
+        maxParallelism_,
+        "Checkpoint maxParallelism {} does not match this backend's {}; maxParallelism defines the key-group space and must not change",
+        header.maxParallelism,
+        maxParallelism_);
+    VELOX_CHECK_GT(
+        header.numKeyGroups,
+        0,
+        "Corrupt checkpoint: non-positive key-group count");
+    VELOX_CHECK(
+        static_cast<uint64_t>(header.startKeyGroup) + header.numKeyGroups <=
+            header.maxParallelism,
+        "Corrupt checkpoint: key-group range [{},{}) exceeds maxParallelism {}",
+        header.startKeyGroup,
+        header.startKeyGroup + header.numKeyGroups,
+        header.maxParallelism);
+    const auto keySchemaId = reader.readBytes();
+    VELOX_CHECK_EQ(
+        keySchemaId,
+        keySerializer_->schemaId(),
+        "Checkpoint key schema does not match this backend's key serializer");
+    const auto stateCount = reader.readUInt32();
+    std::vector<std::string> stateIds;
+    std::vector<StatePtr> statesById;
+    stateIds.reserve(stateCount);
+    statesById.reserve(stateCount);
+    for (uint32_t id = 0; id < stateCount; ++id) {
+      // One bounded copy per state (schema table only): the registry lookup
+      // needs an owning key, and the group blocks re-match the ids below.
+      const std::string stateId(reader.readBytes());
+      const auto nsSchemaId = reader.readBytes();
+      const auto valueSchemaId = reader.readBytes();
+      auto it = createdStates_.find(stateId);
       VELOX_CHECK(
           it != createdStates_.end(),
           "Checkpoint contains state '{}' which is not registered; states must be registered before restore",
-          name);
+          stateId);
       VELOX_CHECK_EQ(
-          it->second->namespaceSchema(),
-          nsSchema,
+          it->second->namespaceSchemaId(),
+          nsSchemaId,
           "Namespace schema of state '{}' changed since the checkpoint",
-          name);
+          stateId);
       VELOX_CHECK_EQ(
-          it->second->valueSchema(),
-          valueSchema,
+          it->second->valueSchemaId(),
+          valueSchemaId,
           "Value schema of state '{}' changed since the checkpoint",
-          name);
-      statesById[id] = it->second;
-    }
-    if (stateCount == 0) {
-      // A checkpoint of no states carries no range fields; its body is only
-      // the key-group ids, with an empty block per group.
-      while (!reader.atEnd()) {
-        reader.readInt32();
-      }
-      return;
+          stateId);
+      stateIds.push_back(stateId);
+      statesById.push_back(it->second);
     }
     // The stream must overlap this backend's range: this backend picks its
     // own key groups out of the stream and skips the rest (rescale
     // restore); no overlap at all is a mis-delivery.
-    const int64_t streamEndKeyGroup =
-        static_cast<int64_t>(streamStartKeyGroup) + streamNumKeyGroups;
-    const int64_t myStartKeyGroup = static_cast<int64_t>(startKeyGroup_);
-    const int64_t myEndKeyGroup =
-        static_cast<int64_t>(startKeyGroup_) + numKeyGroups_;
+    const uint64_t streamEndKeyGroup =
+        static_cast<uint64_t>(header.startKeyGroup) + header.numKeyGroups;
+    const uint64_t myStartKeyGroup = static_cast<uint64_t>(startKeyGroup_);
+    const uint64_t myEndKeyGroup =
+        static_cast<uint64_t>(startKeyGroup_) + numKeyGroups_;
     VELOX_CHECK(
-        streamStartKeyGroup < myEndKeyGroup &&
+        header.startKeyGroup < myEndKeyGroup &&
             streamEndKeyGroup > myStartKeyGroup,
         "Checkpoint key-group range [{},{}) does not overlap this backend's [{},{})",
-        streamStartKeyGroup,
+        header.startKeyGroup,
         streamEndKeyGroup,
         myStartKeyGroup,
         myEndKeyGroup);
-    for (int64_t keyGroup = streamStartKeyGroup; keyGroup < streamEndKeyGroup;
+    for (uint64_t keyGroup = header.startKeyGroup; keyGroup < streamEndKeyGroup;
          ++keyGroup) {
       VELOX_CHECK_EQ(
-          reader.readInt32(),
+          reader.readUInt32(),
           keyGroup,
           "Corrupt checkpoint: key groups are not ascending");
       const bool mine = keyGroup >= myStartKeyGroup && keyGroup < myEndKeyGroup;
-      for (int32_t id = 0; id < stateCount; ++id) {
+      for (uint32_t id = 0; id < stateCount; ++id) {
         VELOX_CHECK_EQ(
-            reader.readInt16(),
-            static_cast<int16_t>(id),
-            "Corrupt checkpoint: state blocks out of header order");
+            reader.readBytes(),
+            stateIds[id],
+            "Corrupt checkpoint: state blocks out of schema-table order");
         const auto entryCount = reader.readInt32();
         VELOX_CHECK_GE(
             entryCount, 0, "Corrupt checkpoint: negative entry count");
@@ -368,12 +380,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
           if (mine) {
             statesById[id]->restoreEntry(reader);
           } else {
-            // An entry is always three length-prefixed components
-            // (namespace, key, payload) whatever the state kind, so skipping
-            // one is three bounds-checked advances.
-            reader.readBytes();
-            reader.readBytes();
-            reader.readBytes();
+            readEntryFrames(reader);
           }
         }
       }

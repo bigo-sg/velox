@@ -15,7 +15,6 @@
  */
 #pragma once
 
-#include <folly/Demangle.h>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -23,6 +22,7 @@
 #include <typeinfo>
 #include <vector>
 #include "velox/common/memory/MemoryPool.h"
+#include "velox/experimental/stateful/state/CheckpointStream.h"
 #include "velox/serializers/PrestoSerializer.h"
 #include "velox/type/HugeInt.h"
 #include "velox/type/StringView.h"
@@ -37,11 +37,14 @@ class TypeBaseSerializer {
   TypeBaseSerializer() {}
   virtual ~TypeBaseSerializer() = default;
 
-  /// Identity of the serialized layout, compared by the heap backend
-  /// against the checkpoint header to reject a checkpoint whose layout does
-  /// not match the registered states.
-  virtual std::string schema() const {
-    return "";
+  /// Identity of the serialized layout: a canonical, host-independent
+  /// string naming the type and its encoding (for instance
+  /// "timestamp(raw:i64,i32)"). The checkpoint header carries it and
+  /// restore cross-checks it against the registered states' serializers.
+  /// Serializers without a declared id fail here rather than silently
+  /// matching every other undeclared serializer.
+  virtual std::string schemaId() const {
+    VELOX_NYI("This serializer does not declare a schema id");
   }
 };
 
@@ -78,8 +81,40 @@ class ValueSerializer : public TypeSerializer<D> {
  public:
   ValueSerializer() : TypeSerializer<D>() {}
 
-  std::string schema() const override {
-    return folly::demangle(typeid(D).name()).c_str();
+  std::string schemaId() const override {
+    if constexpr (std::is_same_v<D, int8_t>) {
+      return "i8";
+    } else if constexpr (std::is_same_v<D, uint8_t>) {
+      return "u8";
+    } else if constexpr (std::is_same_v<D, int16_t>) {
+      return "i16";
+    } else if constexpr (std::is_same_v<D, uint16_t>) {
+      return "u16";
+    } else if constexpr (std::is_same_v<D, int32_t>) {
+      return "i32";
+    } else if constexpr (std::is_same_v<D, uint32_t>) {
+      return "u32";
+    } else if constexpr (std::is_same_v<D, int64_t>) {
+      return "i64";
+    } else if constexpr (std::is_same_v<D, uint64_t>) {
+      return "u64";
+    } else if constexpr (std::is_same_v<D, int128_t>) {
+      return "i128";
+    } else if constexpr (std::is_same_v<D, uint128_t>) {
+      return "u128";
+    } else if constexpr (std::is_same_v<D, float>) {
+      return "f32";
+    } else if constexpr (std::is_same_v<D, double>) {
+      return "f64";
+    } else if constexpr (std::is_same_v<D, bool>) {
+      return "bool";
+    } else if constexpr (std::is_same_v<D, StringView>) {
+      return "varchar";
+    } else if constexpr (std::is_same_v<D, Timestamp>) {
+      return "timestamp(raw:i64,i32)";
+    } else {
+      VELOX_FAIL("Type {} is not supported", typeid(D).name());
+    }
   }
 
   std::string serialize(const D& t) override {
@@ -90,21 +125,16 @@ class ValueSerializer : public TypeSerializer<D> {
         std::is_same_v<D, uint16_t> || std::is_same_v<D, uint32_t> ||
         std::is_same_v<D, uint64_t> || std::is_same_v<D, uint128_t> ||
         std::is_same_v<D, float> || std::is_same_v<D, double>) {
-      std::vector<char> buffer(sizeof(D));
-      std::memcpy(buffer.data(), &t, sizeof(D));
-      return std::string(buffer.data(), buffer.size());
+      return littleEndianBytes(t);
     } else if constexpr (std::is_same_v<D, bool>) {
-      uint8_t byteValue = t ? 1 : 0;
-      std::vector<char> buffer(sizeof(uint8_t));
-      std::memcpy(buffer.data(), &byteValue, sizeof(uint8_t));
-      return std::string(buffer.data(), buffer.size());
+      return std::string(1, t ? '\x01' : '\x00');
     } else if constexpr (std::is_same_v<D, StringView>) {
       return std::string(t.data(), t.size());
     } else if constexpr (std::is_same_v<D, Timestamp>) {
-      int64_t mills = t.toMillis();
-      std::vector<char> buffer(sizeof(int64_t));
-      std::memcpy(buffer.data(), &mills, sizeof(int64_t));
-      return std::string(buffer.data(), buffer.size());
+      // The raw (seconds, nanos) pair, little-endian: the full nanosecond
+      // precision round-trips, the same raw pair the key path carries.
+      return littleEndianBytes(t.getSeconds()) +
+          littleEndianBytes(static_cast<uint32_t>(t.getNanos()));
     } else {
       VELOX_FAIL("Type {} is not supported", typeid(D).name());
     }
@@ -118,22 +148,24 @@ class ValueSerializer : public TypeSerializer<D> {
         std::is_same_v<D, uint16_t> || std::is_same_v<D, uint32_t> ||
         std::is_same_v<D, uint64_t> || std::is_same_v<D, uint128_t> ||
         std::is_same_v<D, float> || std::is_same_v<D, double>) {
-      D t;
-      std::memcpy(&t, str.data(), str.size());
-      return t;
+      return littleEndianValue<D>(str);
     } else if constexpr (std::is_same_v<D, bool>) {
-      uint8_t byteValue;
-      std::memcpy(&byteValue, str.data(), str.size());
-      return byteValue > 0 ? true : false;
+      VELOX_CHECK_EQ(
+          str.size(), 1, "Corrupt checkpoint: truncated boolean value");
+      return str[0] != '\x00';
     } else if constexpr (std::is_same_v<D, StringView>) {
       // Borrowed result: the StringView points into 'str'; the caller must
       // copy it (as FlatVector::set does) if it outlives the checkpoint
       // buffer.
       return StringView(str.data(), str.size());
     } else if constexpr (std::is_same_v<D, Timestamp>) {
-      int64_t mills;
-      std::memcpy(&mills, str.data(), str.size());
-      return Timestamp::fromMillis(mills);
+      VELOX_CHECK_EQ(
+          str.size(),
+          sizeof(int64_t) + sizeof(uint32_t),
+          "Corrupt checkpoint: truncated timestamp value");
+      return Timestamp(
+          littleEndianValue<int64_t>(str.substr(0, sizeof(int64_t))),
+          littleEndianValue<uint32_t>(str.substr(sizeof(int64_t))));
     } else {
       VELOX_FAIL("Type {} is not supported", typeid(D).name());
     }
@@ -150,8 +182,8 @@ class ComplexVectorSerializer : public TypeSerializer<D> {
     checkTypes();
   }
 
-  std::string schema() const override {
-    return dataType_->toString();
+  std::string schemaId() const override {
+    return "presto:" + dataType_->toString();
   }
 
   std::string serialize(const D& t) override {
@@ -205,8 +237,8 @@ class SharedPtrSerializer : public TypeSerializer<std::shared_ptr<T>> {
   explicit SharedPtrSerializer(std::shared_ptr<TypeSerializer<T>> inner)
       : inner_(std::move(inner)) {}
 
-  std::string schema() const override {
-    return "shared_ptr<" + inner_->schema() + ">";
+  std::string schemaId() const override {
+    return "shared_ptr<" + inner_->schemaId() + ">";
   }
 
   std::string serialize(const std::shared_ptr<T>& value) override {

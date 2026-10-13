@@ -669,26 +669,24 @@ TEST_F(StateBackendTest, restoreRejectsKeyGroupRangeMismatch) {
   EXPECT_THROW(backendB.restore(bytes), VeloxException);
 }
 
-// A states-bearing header with a zero key-group count is corruption, not an
-// empty range: [64, 64) inside the local range would otherwise sneak past
-// the overlap check (an empty range overlaps nothing) and restore nothing.
+// A header with a zero key-group count is corruption, not an empty range:
+// [64, 64) inside the local range would otherwise sneak past the overlap
+// check (an empty range overlaps nothing) and restore nothing.
 TEST_F(StateBackendTest, restoreRejectsZeroKeyGroupCount) {
   KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
       selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
-  auto list = backend.getOrCreateListState<VoidNamespace>(
+  backend.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
 
   std::string bytes;
   CheckpointWriter writer(bytes);
-  writer.writeInt32(kCheckpointFormatVersion);
-  writer.writeBytes(selector.keySerializer()->schema());
-  writer.writeInt32(1);
-  writer.writeBytes("list");
-  writer.writeBytes(list->namespaceSchema());
-  writer.writeBytes(list->valueSchema());
-  writer.writeInt32(kMaxParallelism / 2);
-  writer.writeInt32(0);
+  CheckpointHeader header;
+  header.flags = kCheckpointFlagLittleEndian;
+  header.maxParallelism = kMaxParallelism;
+  header.startKeyGroup = kMaxParallelism / 2;
+  header.numKeyGroups = 0;
+  writeCheckpointHeader(writer, header);
   EXPECT_THROW(backend.restore(bytes), VeloxException);
 }
 

@@ -74,9 +74,11 @@ class HeapValueState : public ValueState<K, N, V> {
     int32_t entryCount = 0;
     for (const auto& head : snapshot.heads) {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
-        writer.writeBytes(nsSerializer_->serialize(entry->namespace_));
-        writer.writeBytes(keySerializer_->serialize(entry->key_));
-        writer.writeBytes(valueSerializer_->serialize(entry->state_));
+        writeEntryFrames(
+            writer,
+            nsSerializer_->serialize(entry->namespace_),
+            keySerializer_->serialize(entry->key_),
+            valueSerializer_->serialize(entry->state_));
         ++entryCount;
       }
     }
@@ -85,18 +87,19 @@ class HeapValueState : public ValueState<K, N, V> {
   }
 
   void restoreEntry(CheckpointReader& reader) override {
-    const auto ns = nsSerializer_->deserialize(reader.readBytes());
-    const auto key = keySerializer_->deserialize(reader.readBytes());
-    const auto value = valueSerializer_->deserialize(reader.readBytes());
+    const auto frames = readEntryFrames(reader);
+    const auto ns = nsSerializer_->deserialize(frames.ns);
+    const auto key = keySerializer_->deserialize(frames.key);
+    const auto value = valueSerializer_->deserialize(frames.payload);
     stateTable_->put(key, ns, value);
   }
 
-  std::string namespaceSchema() const override {
-    return nsSerializer_->schema();
+  std::string namespaceSchemaId() const override {
+    return nsSerializer_->schemaId();
   }
 
-  std::string valueSchema() const override {
-    return valueSerializer_->schema();
+  std::string valueSchemaId() const override {
+    return valueSerializer_->schemaId();
   }
 
  private:
