@@ -29,6 +29,8 @@
 #include "velox/experimental/stateful/state/HeapListState.h"
 #include "velox/experimental/stateful/state/HeapMapState.h"
 #include "velox/experimental/stateful/state/HeapValueState.h"
+#include "velox/experimental/stateful/state/KeyIndex.h"
+#include "velox/experimental/stateful/state/KeyTable.h"
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
@@ -41,6 +43,13 @@ namespace facebook::velox::stateful {
 /// every member of the generic API is a template (a virtual function cannot
 /// be a template, so the generic API is non-virtual; it is called through
 /// the concrete backend type held by the operator).
+///
+/// The backend owns its key table (KeyTable, built at construction from the
+/// plan-declared key types) and is instantiated over RowContainerStateKey,
+/// the row-view key of that table: every state handle, every KeySelector
+/// bound through keyIndex() and every restored key probes this one table,
+/// so a key restored from a checkpoint and a key probed at runtime are the
+/// same row and the same bucket entry.
 ///
 /// The backend keeps one by-name registry of state handles (createdStates_,
 /// relevant to Flink createdKVStates); registration, snapshot and restore
@@ -57,18 +66,26 @@ namespace facebook::velox::stateful {
 template <typename K>
 class HeapKeyedStateBackend : public KeyedStateBackend {
  public:
-  /// 'keySerializer' serializes keys into checkpoints and cross-checks the
-  /// checkpoint header, as in Flink's backend-held key serializer;
+  /// 'keyTypes' are the key column types as declared by the plan; the key
+  /// table (the key RowContainer, the hash table behind probe, the stable
+  /// hash chain, the key serializer) is built here, at construction, and
+  /// owned by this backend for its lifetime - keys can be restored before
+  /// the first input arrives, and everything that derives key identity
+  /// probes this one table. 'maxParallelism' defines the key-group space,
+  /// hash % maxParallelism, and stays stable across rescale;
   /// 'startKeyGroup' and 'numKeyGroups' describe this backend's key-group
-  /// sub-range (all state tables bucket over exactly this range);
-  /// 'maxParallelism' defines the key-group space, hash % maxParallelism,
-  /// and stays stable across rescale.
+  /// sub-range (all state tables bucket over exactly this range).
   HeapKeyedStateBackend(
-      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::vector<TypePtr> keyTypes,
       uint32_t maxParallelism,
       uint32_t startKeyGroup,
-      uint32_t numKeyGroups)
-      : keySerializer_(std::move(keySerializer)),
+      uint32_t numKeyGroups,
+      memory::MemoryPool* pool)
+      : keyTable_(std::make_unique<KeyTable>(
+            std::move(keyTypes),
+            maxParallelism,
+            pool)),
+        keySerializer_(keyTable_->keySerializer()),
         maxParallelism_(maxParallelism),
         startKeyGroup_(startKeyGroup),
         numKeyGroups_(numKeyGroups) {
@@ -81,6 +98,12 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
         maxParallelism);
   }
 
+  /// The backend-owned key table; KeySelectors bind to it and probe
+  /// through their own scratch, restore goes through its private door.
+  KeyIndex& keyIndex() {
+    return *keyTable_;
+  }
+
   uint32_t maxParallelism() const {
     return maxParallelism_;
   }
@@ -91,10 +114,6 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
 
   uint32_t numKeyGroups() const {
     return numKeyGroups_;
-  }
-
-  const std::shared_ptr<TypeSerializer<K>>& keySerializer() const {
-    return keySerializer_;
   }
 
   // The pre-generic interface of the base; the stateful operators migrate
@@ -404,6 +423,9 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     return state;
   }
 
+  // Declared before the members seeded from it: the table is the single
+  // owner of the key container, the probe machinery and the serializer.
+  std::unique_ptr<KeyTable> keyTable_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
   const uint32_t maxParallelism_;
   const uint32_t startKeyGroup_;

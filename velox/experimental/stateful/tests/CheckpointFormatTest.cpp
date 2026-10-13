@@ -179,10 +179,10 @@ TEST_F(CheckpointFormatTest, timestampValueEncoding) {
 // nullable shared value: precision survives on both sides of the checkpoint
 // and a null shared value round-trips through its flag byte.
 TEST_F(CheckpointFormatTest, roundTripTimestampNanosAndSharedNull) {
-  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
-  auto keysA = probeKeys(selectorA, {17, 34, 51});
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
+  auto keysA = probeKeys(selectorA, {17, 34, 51});
   auto tsList = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<Timestamp>(
           "ts-list", std::make_shared<ValueSerializer<Timestamp>>(), pool()));
@@ -202,10 +202,10 @@ TEST_F(CheckpointFormatTest, roundTripTimestampNanosAndSharedNull) {
 
   const auto bytes = backendA.snapshot();
 
-  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
-  auto keysB = probeKeys(selectorB, {17, 34, 51});
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
-      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {0});
+  auto keysB = probeKeys(selectorB, {17, 34, 51});
   auto tsListB = backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<Timestamp>(
           "ts-list", std::make_shared<ValueSerializer<Timestamp>>(), pool()));
@@ -241,12 +241,11 @@ TEST_F(CheckpointFormatTest, roundTripTimestampNanosAndSharedNull) {
 // 42. Restoring it proves the layout — not just the writer's own calls — is
 // what the reader consumes.
 TEST_F(CheckpointFormatTest, crossProducerStreamRestores) {
-  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
   auto key = probeKeys(selector, {42})[0];
   const auto group = key.keyGroup();
-
-  HeapKeyedStateBackend<RowContainerStateKey> backend(
-      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
   auto list = backend.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
 
@@ -282,20 +281,19 @@ TEST_F(CheckpointFormatTest, crossProducerStreamRestores) {
 // A flipped byte anywhere before the trailer, or in the trailer itself,
 // fails the CRC check before any state is restored.
 TEST_F(CheckpointFormatTest, restoreRejectsCrcMismatch) {
-  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
-  auto keysA = probeKeys(selectorA, {42});
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
+  auto keysA = probeKeys(selectorA, {42});
   auto listA = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listA->add(keysA[0], VoidNamespace(), 7);
   const auto bytes = backendA.snapshot();
   ASSERT_GT(bytes.size(), kCheckpointHeaderSize + 4);
 
-  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
   auto makeBackendB = [&] {
     HeapKeyedStateBackend<RowContainerStateKey> backend(
-        selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+        {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
     backend.getOrCreateListState<VoidNamespace>(
         ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
     return backend;
@@ -314,10 +312,10 @@ TEST_F(CheckpointFormatTest, restoreRejectsCrcMismatch) {
 // layer that verifies integrity itself may strip both the flag and the
 // four trailer bytes.
 TEST_F(CheckpointFormatTest, restoreWorksWithoutCrcTrailer) {
-  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
-  auto keysA = probeKeys(selectorA, {42});
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
+  auto keysA = probeKeys(selectorA, {42});
   auto listA = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listA->add(keysA[0], VoidNamespace(), 7);
@@ -329,10 +327,10 @@ TEST_F(CheckpointFormatTest, restoreWorksWithoutCrcTrailer) {
   auto stripped = withTrailer.substr(0, withTrailer.size() - 4);
   stripped[5] = static_cast<char>(kCheckpointFlagLittleEndian);
 
-  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
-  auto keysB = probeKeys(selectorB, {42});
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
-      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {0});
+  auto keysB = probeKeys(selectorB, {42});
   auto listB = backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   backendB.restore(stripped);
@@ -342,16 +340,14 @@ TEST_F(CheckpointFormatTest, restoreWorksWithoutCrcTrailer) {
 // Registering the same state id under a different value schema fails the
 // schema-table cross-check: the ids are the checkpoint's contract.
 TEST_F(CheckpointFormatTest, restoreRejectsSchemaChange) {
-  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   const auto bytes = backendA.snapshot();
 
-  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
-      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "list",
@@ -365,16 +361,14 @@ TEST_F(CheckpointFormatTest, restoreRejectsSchemaChange) {
 // a checkpoint from a different space is rejected by equality, not by the
 // range overlap check.
 TEST_F(CheckpointFormatTest, restoreRejectsMaxParallelismChange) {
-  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   const auto bytes = backendA.snapshot();
 
-  KeySelector selectorB({0}, {BIGINT()}, 64, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
-      selectorB.keySerializer(), 64, 0, 64);
+      {BIGINT()}, 64, 0, 64, pool());
   backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   EXPECT_THROW(backendB.restore(bytes), VeloxException);
@@ -383,9 +377,8 @@ TEST_F(CheckpointFormatTest, restoreRejectsMaxParallelismChange) {
 // The body's group ids must ascend from the header's startKeyGroup; a
 // stream that starts elsewhere or goes back is corruption.
 TEST_F(CheckpointFormatTest, restoreRejectsNonAscendingGroups) {
-  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
-      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backend.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
 
@@ -412,9 +405,8 @@ TEST_F(CheckpointFormatTest, restoreRejectsNonAscendingGroups) {
 // header, empty schema table, empty group blocks — and restores into
 // another empty backend byte-identically.
 TEST_F(CheckpointFormatTest, emptyBackendRoundTrip) {
-  KeySelector selectorA({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   const auto bytes = backendA.snapshot();
   // Header, the "(BIGINT)" key schema id, a zero state count, one group id
   // per key group, the trailer.
@@ -426,9 +418,8 @@ TEST_F(CheckpointFormatTest, emptyBackendRoundTrip) {
       checkpointCrc32(bytes.substr(0, bytes.size() - sizeof(uint32_t))));
   EXPECT_EQ(0, bytes.compare(bytes.size() - 4, 4, expectedTrailer));
 
-  KeySelector selectorB({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
-      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendB.restore(bytes);
   EXPECT_EQ(bytes, backendB.snapshot());
 }
@@ -436,9 +427,8 @@ TEST_F(CheckpointFormatTest, emptyBackendRoundTrip) {
 // Streams that are not keyed-state checkpoints — wrong magic, wrong
 // version — fail at the header, before anything is read.
 TEST_F(CheckpointFormatTest, restoreRejectsForeignMagicAndVersion) {
-  KeySelector selector({0}, {BIGINT()}, kMaxParallelism, pool());
   HeapKeyedStateBackend<RowContainerStateKey> backend(
-      selector.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backend.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   const auto bytes = backend.snapshot();
@@ -456,26 +446,26 @@ TEST_F(CheckpointFormatTest, restoreRejectsForeignMagicAndVersion) {
 // the same raw little-endian (seconds, nanos) encoding the value path
 // carries: one portable Timestamp encoding on both paths.
 TEST_F(CheckpointFormatTest, timestampKeyColumnRoundTrip) {
-  KeySelector selectorA({0}, {TIMESTAMP()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      {TIMESTAMP()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
   selectorA.probe(makeRowVector(
       {makeNullableFlatVector<Timestamp>({Timestamp(1700000000, 123456789)})}));
   auto keysA = std::vector<RowContainerStateKey>(
       selectorA.keys().begin(), selectorA.keys().end());
   ASSERT_EQ(1, keysA.size());
-  HeapKeyedStateBackend<RowContainerStateKey> backendA(
-      selectorA.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
   auto listA = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listA->add(keysA[0], VoidNamespace(), 7);
   const auto bytes = backendA.snapshot();
 
-  KeySelector selectorB({0}, {TIMESTAMP()}, kMaxParallelism, pool());
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      {TIMESTAMP()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {0});
   selectorB.probe(makeRowVector(
       {makeNullableFlatVector<Timestamp>({Timestamp(1700000000, 123456789)})}));
   auto keysB = std::vector<RowContainerStateKey>(
       selectorB.keys().begin(), selectorB.keys().end());
-  HeapKeyedStateBackend<RowContainerStateKey> backendB(
-      selectorB.keySerializer(), kMaxParallelism, 0, kMaxParallelism);
   auto listB = backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   backendB.restore(bytes);

@@ -24,7 +24,9 @@
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/KeySerializer.h"
+#include "velox/experimental/stateful/state/KeyTable.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/type/Type.h"
 #include "velox/vector/tests/utils/VectorTestBase.h"
@@ -53,7 +55,8 @@ class KeySelectorTest : public testing::Test, public test::VectorTestBase {
 
 // The collision pair lands on two different rows; nothing merges.
 TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
 
   auto keys = selector.keys();
@@ -79,7 +82,8 @@ TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
 // Usage 1 (per-row): keys are 1:1 with input rows, equal keys share the row
 // pointer, and repeated probes are idempotent.
 TEST_F(KeySelectorTest, perRowKeys) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(makeInput(
       {kCollisionKeyA,
        kCollisionKeyB,
@@ -120,7 +124,8 @@ TEST_F(KeySelectorTest, perRowKeys) {
 // Row pointers stay stable and newGroups only reports first occurrences
 // across probes.
 TEST_F(KeySelectorTest, probesAreIncremental) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
 
   selector.probe(makeInput({kCollisionKeyA}));
   auto firstRows = selector.keys();
@@ -149,7 +154,8 @@ TEST_F(KeySelectorTest, probesAreIncremental) {
 
 // Null keys form their own group: null equals null, one distinct key.
 TEST_F(KeySelectorTest, nullKeysFormOneGroup) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(makeInput({std::nullopt, kCollisionKeyA, std::nullopt}));
 
   auto keys = selector.keys();
@@ -171,7 +177,8 @@ TEST_F(KeySelectorTest, compositeKey) {
       {makeNullableFlatVector<std::string>({"a", "b", "a", "a"}),
        makeNullableFlatVector<int64_t>({1, 1, 1, 2})});
 
-  KeySelector selector({0, 1}, {VARCHAR(), BIGINT()}, 128, pool());
+  KeyTable keyTable({VARCHAR(), BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0, 1});
   selector.probe(input);
 
   auto keys = selector.keys();
@@ -192,7 +199,8 @@ TEST_F(KeySelectorTest, compositeKey) {
 // kHash on rehash). Previously returned row pointers must survive such
 // transitions and the collision pair must stay distinct afterwards.
 TEST_F(KeySelectorTest, rowPointersSurviveHashModeTransitions) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
 
   // Small non-negative values keep the table in kArray mode.
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
@@ -217,7 +225,8 @@ TEST_F(KeySelectorTest, rowPointersSurviveHashModeTransitions) {
 
 // Empty input is a no-op probe with empty results.
 TEST_F(KeySelectorTest, emptyInput) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(makeInput({}));
 
   EXPECT_TRUE(selector.keys().empty());
@@ -234,7 +243,8 @@ TEST_F(KeySelectorTest, emptyInput) {
 // hash and keyGroup are identical at probe time and after a restart, and a
 // restored key lands on the very row it had at probe time.
 TEST_F(KeySelectorTest, probeHashMatchesSerializerChain) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB, kCollisionKeyA}));
 
   auto distinct = selector.distinctKeys();
@@ -256,7 +266,8 @@ TEST_F(KeySelectorTest, probeHashMatchesSerializerChain) {
 // serializer round trip.
 TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
   const auto nan = std::numeric_limits<double>::quiet_NaN();
-  KeySelector selector({0}, {DOUBLE()}, 128, pool());
+  KeyTable doubleTable({DOUBLE()}, 128, pool());
+  KeySelector selector(doubleTable, {0});
 
   selector.probe(makeRowVector({makeNullableFlatVector<double>(
       {nan, nan, -0.0, 0.0, std::nullopt, std::nullopt, 1.5})}));
@@ -290,8 +301,8 @@ TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
   selector.probe(makeRowVector({makeNullableFlatVector<double>(many)}));
   EXPECT_EQ(2000, selector.newGroups().size());
 
-  selector.probe(makeRowVector({makeNullableFlatVector<double>(
-      {nan, 0.0, -0.0, std::nullopt, 1.5})}));
+  selector.probe(makeRowVector(
+      {makeNullableFlatVector<double>({nan, 0.0, -0.0, std::nullopt, 1.5})}));
   keys = selector.keys();
   ASSERT_EQ(5, keys.size());
   EXPECT_EQ(nanRow, keys[0].row());
@@ -313,7 +324,8 @@ TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
 
   // REAL keys follow the same rules.
   const auto nanFloat = std::numeric_limits<float>::quiet_NaN();
-  KeySelector floatSelector({0}, {REAL()}, 128, pool());
+  KeyTable floatTable({REAL()}, 128, pool());
+  KeySelector floatSelector(floatTable, {0});
   floatSelector.probe(makeRowVector(
       {makeNullableFlatVector<float>({nanFloat, nanFloat, -0.0f, 0.0f})}));
   auto floatKeys = floatSelector.keys();
@@ -324,10 +336,72 @@ TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
   EXPECT_TRUE(floatKeys[2].equals(floatKeys[3]));
 }
 
-// Unsupported key column types fail at construction instead of midway
-// through a probe, a comparison or a serialization.
+// Unsupported key column types fail at construction of the key table
+// instead of midway through a probe, a comparison or a serialization.
 TEST_F(KeySelectorTest, unsupportedKeyTypeFailsAtConstruction) {
-  EXPECT_THROW(KeySelector({0}, {ARRAY(BIGINT())}, 128, pool()), VeloxException);
+  EXPECT_THROW(KeyTable({ARRAY(BIGINT())}, 128, pool()), VeloxException);
+}
+
+// Two selectors bound to one backend's key table probe through their own
+// scratch: one selector's cached results (keys, newGroups) survive the
+// other's probes, and both see the same rows through the shared table.
+TEST_F(KeySelectorTest, boundSelectorsDoNotDisturbEachOther) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, 128, 0, 128, pool());
+  KeySelector selectorA(backend.keyIndex(), {0});
+  KeySelector selectorB(backend.keyIndex(), {0});
+
+  selectorA.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
+  ASSERT_EQ(2, selectorA.newGroups().size());
+  const char* rowA = selectorA.keys()[0].row();
+
+  selectorB.probe(makeInput({kCollisionKeyB, 7}));
+  EXPECT_EQ(1, selectorB.newGroups().size());
+
+  // A's cached results were untouched by B's probe.
+  auto keysA = selectorA.keys();
+  ASSERT_EQ(2, keysA.size());
+  EXPECT_EQ(rowA, keysA[0].row());
+  EXPECT_EQ(2, selectorA.newGroups().size());
+
+  // Both selectors see the same rows through the shared table: 7 already
+  // exists for A, and equal keys resolve to equal row pointers.
+  selectorA.probe(makeInput({kCollisionKeyB, 7}));
+  EXPECT_TRUE(selectorA.newGroups().empty());
+  EXPECT_EQ(selectorB.keys()[1].row(), selectorA.keys()[1].row());
+  EXPECT_EQ(2, selectorA.distinctKeys().size());
+}
+
+// The key serializer belongs to the bound table (the backend), not to any
+// selector: one instance serves every bound selector across their probes.
+TEST_F(KeySelectorTest, keySerializerIsOwnedByTheTable) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, 128, 0, 128, pool());
+  EXPECT_EQ(
+      backend.keyIndex().keySerializer().get(),
+      backend.keyIndex().keySerializer().get());
+
+  KeySelector selectorA(backend.keyIndex(), {0});
+  KeySelector selectorB(backend.keyIndex(), {0});
+  selectorA.probe(makeInput({kCollisionKeyA}));
+  selectorB.probe(makeInput({kCollisionKeyB}));
+
+  auto serializer = selectorA.keySerializer();
+  EXPECT_EQ(serializer.get(), selectorB.keySerializer().get());
+  for (const auto& key : selectorA.distinctKeys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+  }
+  for (const auto& key : selectorB.distinctKeys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+  }
 }
 
 } // namespace

@@ -39,18 +39,19 @@ namespace facebook::velox::stateful {
 /// later.
 ///
 /// deserialize() does not build the key row itself: it reassembles the
-/// columns into one-row vectors and hands them to 'probe', the grouping
-/// entry supplied by the KeySelector that owns the key container. The row
-/// comes back from the hash table, so a restored key and a runtime-probed
-/// key of the same value are the same row and the same bucket entry (no
-/// duplicate rows after restore), and the hash / key group are computed by
-/// the same stable hasher chain as at probe time. Snapshot / restore path
-/// only, not the hot path.
+/// columns into one-row vectors and hands them to 'probe', the restore
+/// door supplied by the owner of the key container (the state backend's
+/// key table). The row comes back from the hash table, so a restored key
+/// and a runtime-probed key of the same value are the same row and the
+/// same bucket entry (no duplicate rows after restore), and the hash /
+/// key group are computed by the same stable hasher chain as at probe
+/// time. Snapshot / restore path only, not the hot path.
 class RowContainerStateKeySerializer
     : public TypeSerializer<RowContainerStateKey> {
  public:
   /// Probes the one-row key columns and returns the resulting table row as
-  /// a StateKey; supplied by the owning KeySelector.
+  /// a StateKey; supplied by the owning key table, whose private restore
+  /// lookup it runs through.
   using Probe =
       std::function<RowContainerStateKey(std::vector<VectorPtr> keyColumns)>;
 

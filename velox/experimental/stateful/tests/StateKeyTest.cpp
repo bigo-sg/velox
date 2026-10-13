@@ -24,6 +24,7 @@
 #include "velox/exec/VectorHasher.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/state/KeySerializer.h"
+#include "velox/experimental/stateful/state/KeyTable.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
@@ -278,12 +279,13 @@ TEST(VoidNamespaceTest, singleton) {
 
 class RowContainerStateKeySerializerTest : public StateKeyTest {};
 
-// Every round trip goes through the owning selector: serialize() writes the
+// Every round trip goes through the owning key table: serialize() writes the
 // column values, deserialize() reassembles them and probes them back through
-// the selector, so a restored key must land on the very row it had at probe
+// the table, so a restored key must land on the very row it had at probe
 // time, with the same hash and key group.
 TEST_F(RowContainerStateKeySerializerTest, bigintRoundtrip) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(
       makeRowVector({makeNullableFlatVector<int64_t>({391, 32728, -1, 0})}));
   auto serializer = selector.keySerializer();
@@ -297,7 +299,8 @@ TEST_F(RowContainerStateKeySerializerTest, bigintRoundtrip) {
 }
 
 TEST_F(RowContainerStateKeySerializerTest, collisionPairRoundtrip) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(
       makeRowVector({makeNullableFlatVector<int64_t>({391, 32728})}));
   auto keys = selector.keys();
@@ -314,7 +317,8 @@ TEST_F(RowContainerStateKeySerializerTest, collisionPairRoundtrip) {
 }
 
 TEST_F(RowContainerStateKeySerializerTest, varcharRoundtrip) {
-  KeySelector selector({0}, {VARCHAR()}, 128, pool());
+  KeyTable keyTable({VARCHAR()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(makeRowVector({makeNullableFlatVector<std::string>(
       {"", "a", "hello world", std::string(500, 'x')})}));
   auto serializer = selector.keySerializer();
@@ -328,7 +332,8 @@ TEST_F(RowContainerStateKeySerializerTest, varcharRoundtrip) {
 }
 
 TEST_F(RowContainerStateKeySerializerTest, nullColumnRoundtrip) {
-  KeySelector selector({0}, {BIGINT()}, 128, pool());
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
   selector.probe(
       makeRowVector({makeNullableFlatVector<int64_t>({std::nullopt, 5})}));
   auto keys = selector.keys();
@@ -345,7 +350,8 @@ TEST_F(RowContainerStateKeySerializerTest, nullColumnRoundtrip) {
 }
 
 TEST_F(RowContainerStateKeySerializerTest, multiColumnRoundtrip) {
-  KeySelector selector({0, 1}, {BIGINT(), VARCHAR()}, 64, pool());
+  KeyTable keyTable({BIGINT(), VARCHAR()}, 64, pool());
+  KeySelector selector(keyTable, {0, 1});
   selector.probe(makeRowVector(
       {makeNullableFlatVector<int64_t>({3}),
        makeNullableFlatVector<std::string>({"k"})}));
