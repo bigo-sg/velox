@@ -116,6 +116,14 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     return numKeyGroups_;
   }
 
+  /// Batch-boundary key reclamation: erases key rows no state entry
+  /// references any more (see KeyTable::advance). Operators call this at
+  /// the end of each input batch; snapshot() runs it first, so dead key
+  /// rows never sit across a checkpoint barrier.
+  void advance() {
+    keyTable_->advance();
+  }
+
   // The pre-generic interface of the base; the stateful operators migrate
   // to the typed API below.
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
@@ -185,7 +193,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     }
     auto state = std::make_shared<HeapAggregatingState<K, N>>(
         std::make_shared<StateTable<K, N, char*>>(
-            startKeyGroup_, numKeyGroups_),
+            startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
         keySerializer_);
     createdStates_.emplace(descriptor.name(), state);
@@ -199,7 +207,8 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       return state;
     }
     auto state = std::make_shared<HeapValueState<K, N, V>>(
-        std::make_shared<StateTable<K, N, V>>(startKeyGroup_, numKeyGroups_),
+        std::make_shared<StateTable<K, N, V>>(
+            startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
         keySerializer_);
     createdStates_.emplace(descriptor.name(), state);
@@ -214,7 +223,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     }
     auto state = std::make_shared<HeapListState<K, N, T>>(
         std::make_shared<StateTable<K, N, std::shared_ptr<std::vector<T>>>>(
-            startKeyGroup_, numKeyGroups_),
+            startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
         keySerializer_);
     createdStates_.emplace(descriptor.name(), state);
@@ -229,7 +238,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     }
     auto state = std::make_shared<HeapMapState<K, N, UK, UV>>(
         std::make_shared<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>(
-            startKeyGroup_, numKeyGroups_),
+            startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
         keySerializer_);
     createdStates_.emplace(descriptor.name(), state);
@@ -250,6 +259,8 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   /// cross-checks it against the backend and its registered states instead
   /// of relying on registration order.
   std::string snapshot() {
+    // Dead key rows do not cross the checkpoint barrier: reclaim first.
+    advance();
     std::vector<std::pair<std::string, StatePtr>> states(
         createdStates_.begin(), createdStates_.end());
     std::sort(states.begin(), states.end());

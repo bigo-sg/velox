@@ -17,7 +17,9 @@
 
 #include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/state/KeyRowLifecycleObserver.h"
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <functional>
@@ -139,6 +141,12 @@ class StateMap {
     primaryTable_ = makeTable(capacity);
   }
 
+  /// Sets the entry-existence observer; null (the default) means no
+  /// bookkeeping. The observer must outlive this map.
+  void setObserver(KeyRowLifecycleObserver<K>* observer) {
+    observer_ = observer;
+  }
+
   /// Returns the state for (key, ns) or nullptr on a miss.
   S get(const K& key, const N& ns) {
     uint64_t hash = computeHashForOperationAndDoIncrementalRehash(key, ns);
@@ -187,11 +195,38 @@ class StateMap {
   }
 
   void remove(const K& key, const N& ns) {
-    removeEntry(key, ns);
+    if (auto removed = removeEntry(key, ns); removed != nullptr && observer_) {
+      observer_->onEntryRemoved(removed->key_);
+    }
   }
 
   size_t size() const {
     return primaryTableSize_ + incrementalRehashTableSize_;
+  }
+
+  /// Drops all entries at once. When an observer is set, every entry is
+  /// reported removed, so the key-row bookkeeping stays exact through a
+  /// table-level clear; open snapshots keep their captured chains, as with
+  /// per-entry removals.
+  void clear() {
+    if (observer_) {
+      for (const auto& head : primaryTable_) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          observer_->onEntryRemoved(entry->key_);
+        }
+      }
+      for (const auto& head : incrementalRehashTable_) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          observer_->onEntryRemoved(entry->key_);
+        }
+      }
+    }
+    incrementalRehashTable_ = empty_;
+    rehashIndex_ = 0;
+    incrementalRehashTableSize_ = 0;
+    primaryTableSize_ = 0;
+    std::fill(primaryTable_.begin(), primaryTable_.end(), nullptr);
+    ++modCount_;
   }
 
   /// Immutable view over the map for the snapshot path: the combined
@@ -253,6 +288,7 @@ class StateMap {
   }
 
  private:
+  KeyRowLifecycleObserver<K>* observer_{nullptr};
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> primaryTable_;
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> incrementalRehashTable_;
   std::vector<std::shared_ptr<StateMapEntry<K, N, S>>> empty_;
@@ -284,7 +320,11 @@ class StateMap {
     if (size() > threshold_) {
       doubleCapacity();
     }
-    return addNewStateMapEntry(tab, key, ns, hash);
+    auto entry = addNewStateMapEntry(tab, key, ns, hash);
+    if (observer_) {
+      observer_->onEntryAdded(key);
+    }
+    return entry;
   }
 
   std::shared_ptr<StateMapEntry<K, N, S>> removeEntry(

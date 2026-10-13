@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -28,6 +29,7 @@
 #include "velox/exec/HashTable.h"
 #include "velox/exec/VectorHasher.h"
 #include "velox/experimental/stateful/state/KeyIndex.h"
+#include "velox/experimental/stateful/state/KeyRowLifecycleObserver.h"
 #include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/type/Type.h"
@@ -45,11 +47,22 @@ namespace facebook::velox::stateful {
 /// never merge, not even under hash collisions - the same grouping
 /// semantics as batch HashAggregation.
 ///
+/// The key rows carry one trailing BIGINT column after the key columns:
+/// the number of state entries referencing the row across all states of
+/// the backend. The column is outside the hashers, so it never enters
+/// hashing or key identity - the same [key | payload] shape as an
+/// aggregation row. The state tables report entry existence to this table
+/// (as a KeyRowLifecycleObserver), and advance() reclaims, at a batch
+/// boundary, the rows whose count is zero: probing a key alone never leaks
+/// a row past the boundary, and removing the last entry of a key retires
+/// the row at the next one.
+///
 /// Owned by the state backend for its lifetime. KeySelectors bind to it
 /// through KeyIndex and hold only per-client probe scratch; restore probes
 /// through probeKey() on the table's private lookup, so it never disturbs
 /// any client's results.
-class KeyTable : public KeyIndex {
+class KeyTable : public KeyIndex,
+                 public KeyRowLifecycleObserver<RowContainerStateKey> {
  public:
   /// 'keyTypes' are the key column types as declared by the plan; the
   /// container, the hash table, the hashers and the schema are built here,
@@ -81,8 +94,22 @@ class KeyTable : public KeyIndex {
     for (auto i = 0; i < keyTypes_.size(); ++i) {
       probeHashers.push_back(exec::VectorHasher::create(keyTypes_[i], i));
     }
-    hashTable_ = exec::HashTable<false>::createForAggregation(
-        std::move(probeHashers), {}, pool_);
+    // The rows are the key columns plus the trailing BIGINT entry-refcount
+    // column (see the class comment): a dependent column, hashed by none of
+    // the hashers. Built through the full constructor because the
+    // aggregation factory takes Accumulators, not plain payload types.
+    hashTable_ = std::make_unique<exec::HashTable<false>>(
+        std::move(probeHashers),
+        std::vector<exec::Accumulator>{}, // no accumulators
+        std::vector<TypePtr>{BIGINT()}, // the trailing refcount column
+        /*allowDuplicates=*/false,
+        /*isJoinBuild=*/false,
+        /*hasProbedFlag=*/false,
+        /*minTableSizeForParallelJoinBuild=*/0,
+        pool_);
+    refcountOffset_ = hashTable_->rows()
+                          ->columnAt(static_cast<int32_t>(keyTypes_.size()))
+                          .offset();
     for (auto i = 0; i < keyTypes_.size(); ++i) {
       stableHashers_.push_back(exec::VectorHasher::create(keyTypes_[i], i));
     }
@@ -126,6 +153,7 @@ class KeyTable : public KeyIndex {
     // input.
     hashTable_->groupProbe(
         lookup, exec::BaseHashTable::kNoSpillInputStartPartitionBit);
+    registerNewRows(lookup);
   }
 
   RowContainerStateKey probeKey(std::vector<VectorPtr> keyColumns) override {
@@ -147,6 +175,7 @@ class KeyTable : public KeyIndex {
         exec::BaseHashTable::kNoSpillInputStartPartitionBit);
     hashTable_->groupProbe(
         *probeKeyLookup_, exec::BaseHashTable::kNoSpillInputStartPartitionBit);
+    registerNewRows(*probeKeyLookup_);
     return RowContainerStateKey(
         schema_.get(), probeKeyLookup_->hits[0], hashes[0], maxParallelism_);
   }
@@ -172,11 +201,78 @@ class KeyTable : public KeyIndex {
   }
 
   void eraseKey(char* row) override {
+    // HashTable::erase unlinks the row from the hash structure and frees
+    // the container row (RowContainer::eraseRows) in one call; erasing the
+    // row separately here would double free it.
     hashTable_->erase(folly::Range<char**>(&row, 1));
-    hashTable_->rows()->eraseRows(folly::Range<char**>(&row, 1));
+  }
+
+  /// The lifecycle surface the backend's state tables report entry
+  /// existence to; it is this table, which owns the refcount column.
+  KeyRowLifecycleObserver<RowContainerStateKey>* keyLifecycle() {
+    return this;
+  }
+
+  // KeyRowLifecycleObserver<RowContainerStateKey>:
+  void onEntryAdded(const RowContainerStateKey& key) override {
+    ++refCount(key.row());
+  }
+
+  void onEntryRemoved(const RowContainerStateKey& key) override {
+    auto& count = refCount(key.row());
+    VELOX_CHECK_GT(
+        count,
+        0,
+        "Key row refcount underflow: an entry was removed without a matching add");
+    if (--count == 0) {
+      dirtyRows_.push_back(const_cast<char*>(key.row()));
+    }
+  }
+
+  /// Batch-boundary key reclamation. A key row is erased - from the hash
+  /// table and the row container - when no state entry references it any
+  /// more. Rows become candidates at birth and at every zero transition of
+  /// their refcount; here the candidates are deduplicated first (the same
+  /// row can appear several times: its birth plus repeated zero
+  /// transitions - erasing a row twice would be a double free) and then
+  /// re-verified, so a row that went to zero and back within the batch
+  /// (removed, then re-added) survives. Cached probe results are
+  /// invalidated, as a probe would invalidate them.
+  void advance() {
+    std::sort(dirtyRows_.begin(), dirtyRows_.end());
+    dirtyRows_.erase(
+        std::unique(dirtyRows_.begin(), dirtyRows_.end()), dirtyRows_.end());
+    for (char* row : dirtyRows_) {
+      if (refCount(row) == 0) {
+        eraseKey(row);
+      }
+    }
+    dirtyRows_.clear();
   }
 
  private:
+  // A freshly inserted key row starts with a zero entry refcount and goes
+  // on the dirty list at birth: a key that is probed but never written is
+  // reclaimable at the next boundary, exactly like a key whose entries
+  // were all removed. groupProbe leaves the new row uninitialized apart
+  // from the stored key columns.
+  void registerNewRows(const exec::HashLookup& lookup) {
+    for (const auto rowNumber : lookup.newGroups) {
+      char* row = lookup.hits[rowNumber];
+      refCount(row) = 0;
+      dirtyRows_.push_back(row);
+    }
+  }
+
+  // Direct access to the trailing refcount column of a key row; the column
+  // has no null semantics, it is always a live int64. The key view hands out
+  // a const row pointer (StateKey); the row memory is this table's own and
+  // mutable - every probe hands out the same row as char*.
+  int64_t& refCount(const char* row) {
+    return *reinterpret_cast<int64_t*>(
+        const_cast<char*>(row) + refcountOffset_);
+  }
+
   // The key columns re-packed as a row type (c0..cN over the plan-declared
   // key types): the layout every probe call feeds.
   static RowTypePtr makeKeyRowType(const std::vector<TypePtr>& keyTypes) {
@@ -220,6 +316,12 @@ class KeyTable : public KeyIndex {
   std::unique_ptr<RowContainerKeySchema> schema_;
   std::shared_ptr<RowContainerStateKeySerializer> keySerializer_;
   std::unique_ptr<exec::HashLookup> probeKeyLookup_;
+
+  // Key-row reclamation state: the offset of the trailing refcount column
+  // and the rows that may be unreferenced at the next advance() (born rows
+  // and rows whose refcount dropped to zero).
+  int32_t refcountOffset_{0};
+  std::vector<char*> dirtyRows_;
 };
 
 } // namespace facebook::velox::stateful

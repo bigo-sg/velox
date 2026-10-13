@@ -911,6 +911,235 @@ TEST_F(StateBackendTest, mapRemoveLastUserEntryDropsStoredMap) {
   EXPECT_EQ(backendY.snapshot(), backendX.snapshot());
 }
 
+// A key whose entries are all removed is physically reclaimed at the batch
+// boundary: the next probe reports it as a new group again, while a key that
+// still holds an entry survives the boundary. (RowContainer never shrinks
+// its row count; the observable for the physical erase is the new group on
+// re-probe, and the address reuse in the probeBorn test below.)
+TEST_F(StateBackendTest, advanceReclaimsRemovedKeyRows) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+  const VoidNamespace ns;
+  auto valueState = backend.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto stored = std::make_shared<int64_t>(7);
+  valueState->update(keys[0], ns, stored);
+  valueState->update(keys[1], ns, stored);
+  valueState->remove(keys[0], ns);
+
+  backend.advance();
+
+  // Key A (input row 0) lost its only entry and was erased; key B kept its
+  // entry. The state of B survives, A reads back empty over its fresh row.
+  auto rekeys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+  ASSERT_EQ(1, selector.newGroups().size());
+  EXPECT_EQ(0, selector.newGroups()[0]);
+  EXPECT_EQ(stored, valueState->value(rekeys[1], ns));
+  EXPECT_EQ(nullptr, valueState->value(rekeys[0], ns));
+}
+
+// A key row born at a probe but never written to any state is reclaimable at
+// the next boundary, exactly like a key whose entries were all removed. The
+// freed row is recycled through the container free list: the next distinct
+// key lands at the same address and the allocated row count does not grow.
+TEST_F(StateBackendTest, probeBornKeyNeverWrittenIsReclaimed) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA});
+  const auto* erasedRow = keys[0].row();
+  const auto numRowsBefore = backend.keyIndex().keyRows()->numRows();
+
+  backend.advance();
+
+  auto rekeys = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_EQ(1, selector.newGroups().size());
+  EXPECT_EQ(erasedRow, rekeys[0].row());
+  EXPECT_EQ(numRowsBefore, backend.keyIndex().keyRows()->numRows());
+}
+
+// A key that goes to zero and back within one batch (entry removed, then
+// re-added before the boundary) survives advance(): the dirty list is
+// re-verified, not blindly erased.
+TEST_F(StateBackendTest, removeAndReAddWithinBatchKeepsKey) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA});
+  const VoidNamespace ns;
+  auto valueState = backend.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  valueState->update(keys[0], ns, std::make_shared<int64_t>(7));
+  valueState->remove(keys[0], ns);
+  auto rewritten = std::make_shared<int64_t>(9);
+  valueState->update(keys[0], ns, rewritten);
+
+  backend.advance();
+
+  auto rekeys = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_TRUE(selector.newGroups().empty());
+  EXPECT_EQ(rewritten, valueState->value(rekeys[0], ns));
+}
+
+// A key removed in one batch and re-added in the next gets a fresh row with
+// a fresh refcount: after the re-add the row again survives boundaries.
+TEST_F(StateBackendTest, removedKeyReAddedNextBatchRebuildsRow) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA});
+  const VoidNamespace ns;
+  auto valueState = backend.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  valueState->update(keys[0], ns, std::make_shared<int64_t>(7));
+  valueState->remove(keys[0], ns);
+  backend.advance();
+
+  auto rekeys = probeKeys(selector, {kCollisionKeyA});
+  ASSERT_EQ(1, selector.newGroups().size());
+  auto rewritten = std::make_shared<int64_t>(9);
+  valueState->update(rekeys[0], ns, rewritten);
+  backend.advance();
+
+  auto rekeys2 = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_TRUE(selector.newGroups().empty());
+  EXPECT_EQ(rewritten, valueState->value(rekeys2[0], ns));
+}
+
+// The refcount spans all states of the backend: a key with entries in two
+// states is reclaimed only after both are gone.
+TEST_F(StateBackendTest, keyWithEntriesInTwoStatesReclaimsWhenAllRemoved) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA});
+  const VoidNamespace ns;
+  auto valueState = backend.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto mapState = backend.getOrCreateMapState<VoidNamespace>(
+      MapStateDescriptor<int64_t, int64_t>(
+          "map", int64Serializer(), int64Serializer(), pool()));
+  valueState->update(keys[0], ns, std::make_shared<int64_t>(7));
+  mapState->put(keys[0], ns, 10, 100);
+
+  valueState->remove(keys[0], ns);
+  backend.advance();
+  auto rekeys = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_TRUE(selector.newGroups().empty());
+
+  // Removing the last user entry drops the map's table entry (the commit-2
+  // behavior); that was the key's last reference.
+  mapState->remove(rekeys[0], ns, 10);
+  backend.advance();
+  auto rekeys2 = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_EQ(1, selector.newGroups().size());
+}
+
+// snapshot() runs the reclamation first: dead key rows never sit across a
+// checkpoint barrier. The key whose entry survives the snapshot keeps its
+// row; the key whose entry was removed before the snapshot is gone.
+TEST_F(StateBackendTest, snapshotReclaimsDeadKeyRowsFirst) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+  const VoidNamespace ns;
+  auto valueState = backend.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto stored = std::make_shared<int64_t>(7);
+  valueState->update(keys[0], ns, stored);
+  valueState->update(keys[1], ns, stored);
+  valueState->remove(keys[0], ns);
+
+  backend.snapshot();
+
+  auto rekeys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+  ASSERT_EQ(1, selector.newGroups().size());
+  EXPECT_EQ(0, selector.newGroups()[0]);
+  EXPECT_EQ(stored, valueState->value(rekeys[1], ns));
+}
+
+// Entries restored from a checkpoint count toward the key refcount like any
+// other entry: the restore-born row survives advance() with its entry, and
+// only removing the restored entry retires the row.
+TEST_F(StateBackendTest, restoredEntriesCountTowardKeyRefcount) {
+  HeapKeyedStateBackend<RowContainerStateKey> backendX(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorX(backendX.keyIndex(), {0});
+  auto keysX = probeKeys(selectorX, {kCollisionKeyA});
+  const VoidNamespace ns;
+  auto valueStateX = backendX.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  auto stored = std::make_shared<int64_t>(7);
+  valueStateX->update(keysX[0], ns, stored);
+  const auto bytes = backendX.snapshot();
+
+  // Side B never probes before restore; the restored key row is born through
+  // the restore door and its refcount comes from the restored entry alone.
+  HeapKeyedStateBackend<RowContainerStateKey> backendY(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  auto valueStateY = backendY.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  backendY.restore(bytes);
+  backendY.advance();
+
+  KeySelector selectorY(backendY.keyIndex(), {0});
+  auto keysY = probeKeys(selectorY, {kCollisionKeyA});
+  EXPECT_TRUE(selectorY.newGroups().empty());
+  auto restored = valueStateY->value(keysY[0], ns);
+  ASSERT_NE(nullptr, restored);
+  EXPECT_EQ(*stored, *restored);
+
+  valueStateY->remove(keysY[0], ns);
+  backendY.advance();
+  auto rekeysY = probeKeys(selectorY, {kCollisionKeyA});
+  EXPECT_EQ(1, selectorY.newGroups().size());
+}
+
+// Many add/remove cycles pile the same row up in the dirty list (its birth
+// plus every zero transition); one advance() must deduplicate before
+// erasing - erasing twice would be a double free - and a second advance()
+// over the emptied list is a no-op.
+TEST_F(StateBackendTest, repeatedRemoveAddCyclesAdvanceOnceSafely) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA});
+  const VoidNamespace ns;
+  auto valueState = backend.getOrCreateValueState<VoidNamespace>(
+      ValueStateDescriptor<std::shared_ptr<int64_t>>(
+          "value", sharedInt64Serializer(), pool()));
+  for (int i = 0; i < 5; ++i) {
+    valueState->update(keys[0], ns, std::make_shared<int64_t>(i));
+    valueState->remove(keys[0], ns);
+  }
+
+  backend.advance();
+  auto rekeys = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_EQ(1, selector.newGroups().size());
+
+  backend.advance();
+  auto rekeys2 = probeKeys(selector, {kCollisionKeyA});
+  EXPECT_EQ(1, selector.newGroups().size());
+}
+
+// The refcount is guarded: removing an entry that was never added underflows
+// and fails loudly instead of silently corrupting the count.
+TEST_F(StateBackendTest, keyRefcountUnderflowFailsLoud) {
+  KeyTable table({BIGINT()}, kMaxParallelism, pool());
+  auto key = table.probeKey({makeNullableFlatVector<int64_t>({5})});
+  EXPECT_THROW(table.onEntryRemoved(key), VeloxException);
+}
+
 // The key serializer rejects unsupported key column types at construction
 // instead of midway through a serialization.
 TEST_F(StateBackendTest, serializerRejectsUnsupportedKeyType) {

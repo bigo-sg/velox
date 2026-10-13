@@ -36,9 +36,18 @@ namespace facebook::velox::stateful {
 template <typename K, typename N, typename S>
 class StateTable {
  public:
-  StateTable(uint32_t startKeyGroup, uint32_t numKeyGroups)
+  /// 'observer', when set, is notified of every entry existence change in
+  /// every key group (see KeyRowLifecycleObserver); it must outlive this
+  /// table. Null means no bookkeeping.
+  StateTable(
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups,
+      KeyRowLifecycleObserver<K>* observer = nullptr)
       : startKeyGroup_(startKeyGroup), buckets_(numKeyGroups) {
     VELOX_CHECK(numKeyGroups > 0, "numKeyGroups must be greater than 0");
+    for (auto& bucket : buckets_) {
+      bucket.setObserver(observer);
+    }
   }
 
   /// Returns the state for (key, ns) or nullptr on a miss.
@@ -63,9 +72,12 @@ class StateTable {
     return total;
   }
 
-  /// Drops the entries of all key groups.
+  /// Drops the entries of all key groups; each dropped entry is reported
+  /// to the observer (when one is set), as a per-entry removal would be.
   void clear() {
-    buckets_.assign(buckets_.size(), StateMap<K, N, S>());
+    for (auto& bucket : buckets_) {
+      bucket.clear();
+    }
   }
 
   uint32_t startKeyGroup() const {
