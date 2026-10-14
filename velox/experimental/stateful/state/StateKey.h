@@ -162,19 +162,19 @@ inline bool RowContainerKeySchema::rowsEqual(const char* lhs, const char* rhs)
     }                                                 \
     break;                                            \
   }
-#define VELOX_STATEFUL_COMPARE_FLOAT(KIND)                         \
-  case TypeKind::KIND: {                                           \
-    using T = TypeTraits<TypeKind::KIND>::NativeType;              \
-    /* Mirrors the probe-side grouping semantics: NaN equals NaN   \
-       (one group) and -0.0 equals +0.0, the same rules the        \
-       NaN-aware hash chain applies, so equality never disagrees   \
-       with the hash. */                                           \
-    if (!util::floating_point::NaNAwareEquals<T>{}(                \
-            *reinterpret_cast<const T*>(lhsValue),                 \
-            *reinterpret_cast<const T*>(rhsValue))) {              \
-      return false;                                                \
-    }                                                              \
-    break;                                                         \
+#define VELOX_STATEFUL_COMPARE_FLOAT(KIND)                       \
+  case TypeKind::KIND: {                                         \
+    using T = TypeTraits<TypeKind::KIND>::NativeType;            \
+    /* Mirrors the probe-side grouping semantics: NaN equals NaN \
+       (one group) and -0.0 equals +0.0, the same rules the      \
+       NaN-aware hash chain applies, so equality never disagrees \
+       with the hash. */                                         \
+    if (!util::floating_point::NaNAwareEquals<T>{}(              \
+            *reinterpret_cast<const T*>(lhsValue),               \
+            *reinterpret_cast<const T*>(rhsValue))) {            \
+      return false;                                              \
+    }                                                            \
+    break;                                                       \
   }
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(BOOLEAN)
       VELOX_STATEFUL_COMPARE_FIXED_WIDTH(TINYINT)
@@ -227,8 +227,7 @@ inline void checkStateKeyTypes(const std::vector<TypePtr>& keyTypes) {
         break;
       default:
         VELOX_NYI(
-            "State key column type {} is not supported yet",
-            type->kindName());
+            "State key column type {} is not supported yet", type->kindName());
     }
   }
 }
