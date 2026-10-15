@@ -17,15 +17,19 @@
 
 #include <folly/Range.h>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "velox/common/memory/ByteStream.h"
 #include "velox/exec/RowContainer.h"
+#include "velox/experimental/stateful/state/CheckpointStream.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
+#include "velox/serializers/PrestoSerializer.h"
 #include "velox/type/Type.h"
 #include "velox/vector/BaseVector.h"
 #include "velox/vector/FlatVector.h"
@@ -33,12 +37,14 @@
 namespace facebook::velox::stateful {
 
 /// AggregatingState on the heap storage: the value is a char* row of a value
-/// RowContainer whose layout is derived once from the descriptor's acc
-/// types. On a miss the state materializes a fresh row, initializes it
-/// through the descriptor's callback (the operator wraps
-/// Aggregate::initializeNewGroups over its own aggregates) and inserts it
-/// into the state table. The state never calls any Aggregate method itself.
-/// Relevant to Flink HeapAggregatingState.
+/// RowContainer in accumulator layout, built from the descriptor's
+/// accumulator array so that aggregate functions read and write their slots
+/// in place (the same layout HashAggregation rows use). On a miss the state
+/// materializes a fresh row, constructs the accumulators through the
+/// descriptor's init callback (the operator wraps
+/// Aggregate::initializeNewGroups over its own aggregates) and inserts the
+/// row into the state table. The state never calls any Aggregate method
+/// itself. Relevant to Flink HeapAggregatingState.
 /// @param <K> type of key, a StateKey subclass
 /// @param <N> type of namespace, a Namespace subclass
 template <typename K, typename N>
@@ -50,13 +56,24 @@ class HeapAggregatingState : public AggregatingState<K, N> {
       std::shared_ptr<TypeSerializer<K>> keySerializer)
       : stateTable_(std::move(stateTable)),
         valueRows_(std::make_unique<exec::RowContainer>(
-            descriptor.accTypes(),
+            // No key or dependent columns: keys live in the backend's key
+            // table and the value rows host nothing but accumulators.
+            std::vector<TypePtr>{},
+            true,
+            descriptor.accumulators(),
+            std::vector<TypePtr>{},
+            false,
+            false,
+            false,
+            false,
             descriptor.memoryPool())),
         initializeRow_(descriptor.initializeRow()),
+        mergeRow_(descriptor.mergeRow()),
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
         nsSerializer_(NamespaceSerializerTraits<N>::create()),
-        valueSchemaId_(accTypesSchema(descriptor.accTypes())) {}
+        valueSchemaId_("presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {
+  }
 
   void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
     for (size_t i = 0; i < keys.size(); ++i) {
@@ -112,11 +129,40 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     const auto frames = readEntryFrames(reader);
     const auto ns = nsSerializer_->deserialize(frames.ns);
     const auto key = keySerializer_->deserialize(frames.key);
+    // Decode the payload into one-row intermediate columns, then rebuild the
+    // row exactly like a spilled-input merge: construct fresh accumulators,
+    // then merge the intermediates in (there is no byte-level inverse —
+    // accumulator slots hold live objects).
+    std::vector<VectorPtr> columns;
+    columns.reserve(valueRows_->accumulators().size());
+    size_t offset = 0;
+    for (const auto& accumulator : valueRows_->accumulators()) {
+      VELOX_CHECK_LE(
+          offset + sizeof(uint32_t),
+          frames.payload.size(),
+          "Corrupt checkpoint: truncated accumulator column frame");
+      const auto size = littleEndianValue<uint32_t>(
+          frames.payload.substr(offset, sizeof(uint32_t)));
+      offset += sizeof(uint32_t);
+      VELOX_CHECK_LE(
+          offset + size,
+          frames.payload.size(),
+          "Corrupt checkpoint: truncated accumulator column frame");
+      const auto data = frames.payload.substr(offset, size);
+      offset += size;
+      ByteRange range{
+          reinterpret_cast<uint8_t*>(const_cast<char*>(data.data())),
+          static_cast<int64_t>(size),
+          0};
+      BufferInputStream stream(std::vector<ByteRange>{{range}});
+      VectorPtr column;
+      serde_.deserializeSingleColumn(
+          &stream, pool_, accumulator.spillType(), &column, nullptr);
+      columns.push_back(std::move(column));
+    }
     char* row = valueRows_->newRow();
-    auto input = BaseVector::create(VARBINARY(), 1, pool_);
-    auto* flat = input->as<FlatVector<StringView>>();
-    flat->set(0, StringView(frames.payload.data(), frames.payload.size()));
-    valueRows_->storeSerializedRow(*flat, 0, row);
+    initializeRow_(row);
+    mergeRow_(row, columns);
     stateTable_->put(key, ns, row);
   }
 
@@ -129,24 +175,37 @@ class HeapAggregatingState : public AggregatingState<K, N> {
   }
 
  private:
-  /// Serializes one value row through the container's row serialization
-  /// (the same format as spilling), which is column-wise typed and handles
-  /// fixed-width, variable-width and nested accumulator columns.
+  /// Serializes one value row: each accumulator column is extracted into a
+  /// one-row intermediate vector (Accumulator::extractForSpill — the same
+  /// extraction spilling uses) and framed as [4-byte little-endian length +
+  /// presto-serde bytes], concatenated in accumulator order.
   std::string serializeRow(const char* row) {
-    auto result = BaseVector::create(VARBINARY(), 1, pool_);
     char* rowPtr = const_cast<char*>(row);
-    valueRows_->extractSerializedRows(folly::Range<char**>(&rowPtr, 1), result);
-    const auto& value = result->as<FlatVector<StringView>>()->valueAt(0);
-    return std::string(value.data(), value.size());
+    const folly::Range<char**> rows(&rowPtr, 1);
+    std::string payload;
+    for (const auto& accumulator : valueRows_->accumulators()) {
+      // Like SpillerBase::extractSpill: the extraction requires a
+      // pre-allocated result vector of the accumulator's spill type.
+      VectorPtr intermediate =
+          BaseVector::create(accumulator.spillType(), rows.size(), pool_);
+      accumulator.extractForSpill(rows, intermediate);
+      std::ostringstream output;
+      serde_.serializeSingleColumn(intermediate, nullptr, pool_, &output);
+      const auto bytes = output.str();
+      payload += littleEndianBytes(static_cast<uint32_t>(bytes.size()));
+      payload += bytes;
+    }
+    return payload;
   }
 
-  static std::string accTypesSchema(const std::vector<TypePtr>& accTypes) {
+  static std::string spillTypesSchema(
+      const std::vector<TypePtr>& spillTypes) {
     std::string schema;
-    for (const auto& accType : accTypes) {
+    for (const auto& spillType : spillTypes) {
       if (!schema.empty()) {
         schema += ",";
       }
-      schema += accType->toString();
+      schema += spillType->toString();
     }
     return "(" + schema + ")";
   }
@@ -154,6 +213,8 @@ class HeapAggregatingState : public AggregatingState<K, N> {
   std::shared_ptr<StateTable<K, N, char*>> stateTable_;
   std::unique_ptr<exec::RowContainer> valueRows_;
   AggregatingStateDescriptor::InitRowCallback initializeRow_;
+  AggregatingStateDescriptor::MergeRowCallback mergeRow_;
+  serializer::presto::PrestoVectorSerde serde_;
   memory::MemoryPool* pool_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
   std::shared_ptr<TypeSerializer<N>> nsSerializer_;

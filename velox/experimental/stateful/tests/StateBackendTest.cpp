@@ -29,6 +29,9 @@
 
 #include "velox/common/base/Exceptions.h"
 #include "velox/common/memory/MemoryPool.h"
+#include "velox/core/PlanNode.h"
+#include "velox/core/QueryConfig.h"
+#include "velox/exec/Aggregate.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/KeyedStateSpec.h"
@@ -43,7 +46,10 @@
 #include "velox/experimental/stateful/state/StateMap.h"
 #include "velox/experimental/stateful/state/StateTable.h"
 #include "velox/experimental/stateful/state/StreamOperatorStateHandler.h"
+#include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/type/Type.h"
+#include "velox/vector/FlatVector.h"
+#include "velox/vector/SelectivityVector.h"
 #include "velox/vector/tests/utils/VectorTestBase.h"
 
 namespace facebook::velox::stateful {
@@ -98,6 +104,208 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
       *(row + column.nullByte()) &= ~column.nullMask();
       *reinterpret_cast<int64_t*>(row + column.offset()) = value;
       return RowContainerStateKey(&schema, row, hash(value), kMaxParallelism);
+    }
+  };
+
+  // A real partial sum(BIGINT) aggregate wired the way StreamingAggregation
+  // wires HashAggregation rows: the descriptor's accumulator array, the init
+  // callback (initializeNewGroups) and the merge callback
+  // (addSingleGroupIntermediateResults) all come from the aggregate, so the
+  // tests exercise the production accumulator layout instead of hand-written
+  // row offsets. The counters record callback runs for assertions. An
+  // instance must be declared before the backend and outlive it: the
+  // accumulator closures capture 'function' by raw pointer and the value
+  // container destroys accumulators through them.
+  struct SumAggregate {
+    // Registration must precede the create call in the member initializer,
+    // hence the static factory.
+    static std::unique_ptr<exec::Aggregate> makeFunction() {
+      aggregate::prestosql::registerAllAggregateFunctions();
+      return exec::Aggregate::create(
+          "sum",
+          core::AggregationNode::Step::kPartial,
+          {BIGINT()},
+          BIGINT(),
+          core::QueryConfig({}));
+    }
+
+    std::unique_ptr<exec::Aggregate> function = makeFunction();
+
+    int initCount = 0;
+    int mergeCount = 0;
+
+    // Wires the aggregate to the first accumulator column of the state's
+    // value container. Must run before the first rows() call (and before
+    // restore, which also constructs rows) so the callbacks write the
+    // offsets the container actually laid out.
+    void wire(exec::RowContainer* valueRows) {
+      function->setAllocator(&valueRows->stringAllocator());
+      const auto column = valueRows->columnAt(0);
+      function->setOffsets(
+          column.offset(),
+          column.nullByte(),
+          column.nullMask(),
+          column.initializedByte(),
+          column.initializedMask(),
+          valueRows->rowSizeOffset());
+    }
+
+    AggregatingStateDescriptor descriptor(memory::MemoryPool* pool) {
+      return AggregatingStateDescriptor(
+          "acc",
+          {exec::Accumulator(function.get(), BIGINT())},
+          [this](char* row) {
+            ++initCount;
+            char* groups[1] = {row};
+            const std::vector<vector_size_t> indices{0};
+            function->initializeNewGroups(
+                groups,
+                folly::Range<const vector_size_t*>(
+                    indices.data(), indices.size()));
+          },
+          [this](char* row, const std::vector<VectorPtr>& columns) {
+            ++mergeCount;
+            function->addSingleGroupIntermediateResults(
+                row, SelectivityVector(1), columns, false);
+          },
+          pool);
+    }
+
+    // Adds 'input' (a single-row BIGINT vector) to 'row' as the operator's
+    // addRawInput would.
+    void add(char* row, const VectorPtr& input) {
+      function->addSingleGroupRawInput(
+          row, SelectivityVector(1), {input}, false);
+    }
+
+    // The current intermediate value (running total) of 'row', the same
+    // extraction the snapshot path performs. extractAccumulators requires a
+    // pre-allocated flat result vector, like HashAggregation's extract.
+    int64_t valueOf(char* row, memory::MemoryPool* pool) {
+      char* groups[1] = {row};
+      VectorPtr result = BaseVector::create(BIGINT(), 1, pool);
+      function->extractAccumulators(groups, 1, &result);
+      return result->asFlatVector<int64_t>()->valueAt(0);
+    }
+  };
+
+  // sum(BIGINT) + avg(BIGINT) + min(BIGINT) in one descriptor: unlike
+  // SumAggregate this exercises a multi-accumulator array (descriptor order
+  // against column order, checkpoint frame order and merge dispatch), a
+  // complex intermediate type (avg: row(double, bigint) through the presto
+  // serde) and the null-accumulator lifecycle (aggregates of no non-null
+  // input snapshot as null and restore as null). Same wiring pattern and
+  // lifecycle rules as SumAggregate.
+  struct SumAvgMin {
+    static std::unique_ptr<exec::Aggregate> makeFunction(
+        const std::string& name,
+        const TypePtr& resultType) {
+      aggregate::prestosql::registerAllAggregateFunctions();
+      return exec::Aggregate::create(
+          name,
+          core::AggregationNode::Step::kPartial,
+          {BIGINT()},
+          resultType,
+          core::QueryConfig({}));
+    }
+
+    std::unique_ptr<exec::Aggregate> sum = makeFunction("sum", BIGINT());
+    std::unique_ptr<exec::Aggregate> avg = makeFunction("avg", DOUBLE());
+    std::unique_ptr<exec::Aggregate> min = makeFunction("min", BIGINT());
+
+    // The avg accumulator serializes as row(double, bigint): (total, count).
+    static TypePtr avgIntermediateType() {
+      return ROW({DOUBLE(), BIGINT()});
+    }
+
+    int initCount = 0;
+    int mergeCount = 0;
+
+    void wire(exec::RowContainer* valueRows) {
+      exec::Aggregate* functions[] = {sum.get(), avg.get(), min.get()};
+      for (size_t i = 0; i < std::size(functions); ++i) {
+        functions[i]->setAllocator(&valueRows->stringAllocator());
+        const auto column = valueRows->columnAt(static_cast<int32_t>(i));
+        functions[i]->setOffsets(
+            column.offset(),
+            column.nullByte(),
+            column.nullMask(),
+            column.initializedByte(),
+            column.initializedMask(),
+            valueRows->rowSizeOffset());
+      }
+    }
+
+    AggregatingStateDescriptor descriptor(memory::MemoryPool* pool) {
+      std::vector<exec::Accumulator> accumulators;
+      accumulators.emplace_back(sum.get(), BIGINT());
+      accumulators.emplace_back(avg.get(), avgIntermediateType());
+      accumulators.emplace_back(min.get(), BIGINT());
+      return AggregatingStateDescriptor(
+          "acc",
+          std::move(accumulators),
+          [this](char* row) {
+            ++initCount;
+            for (auto* function : {sum.get(), avg.get(), min.get()}) {
+              char* groups[1] = {row};
+              const std::vector<vector_size_t> indices{0};
+              function->initializeNewGroups(
+                  groups,
+                  folly::Range<const vector_size_t*>(
+                      indices.data(), indices.size()));
+            }
+          },
+          [this](char* row, const std::vector<VectorPtr>& columns) {
+            ++mergeCount;
+            exec::Aggregate* functions[] = {sum.get(), avg.get(), min.get()};
+            for (size_t i = 0; i < std::size(functions); ++i) {
+              functions[i]->addSingleGroupIntermediateResults(
+                  row, SelectivityVector(1), {columns[i]}, false);
+            }
+          },
+          pool);
+    }
+
+    // Adds 'input' (a one-row nullable BIGINT vector) to every aggregate, as
+    // the operator's addRawInput would.
+    void add(char* row, const VectorPtr& input) {
+      for (auto* function : {sum.get(), avg.get(), min.get()}) {
+        function->addSingleGroupRawInput(
+            row, SelectivityVector(1), {input}, false);
+      }
+    }
+
+    // The current intermediate state of 'row', one extractor per aggregate —
+    // the same extraction the snapshot path performs.
+    int64_t sumOf(char* row, memory::MemoryPool* pool) {
+      char* groups[1] = {row};
+      VectorPtr result = BaseVector::create(BIGINT(), 1, pool);
+      sum->extractAccumulators(groups, 1, &result);
+      return result->asFlatVector<int64_t>()->valueAt(0);
+    }
+
+    std::pair<double, int64_t> avgOf(char* row, memory::MemoryPool* pool) {
+      char* groups[1] = {row};
+      VectorPtr result = BaseVector::create(avgIntermediateType(), 1, pool);
+      avg->extractAccumulators(groups, 1, &result);
+      const auto* intermediate = result->as<RowVector>();
+      return {
+          intermediate->childAt(0)->asFlatVector<double>()->valueAt(0),
+          intermediate->childAt(1)->asFlatVector<int64_t>()->valueAt(0)};
+    }
+
+    bool minIsNull(char* row, memory::MemoryPool* pool) {
+      char* groups[1] = {row};
+      VectorPtr result = BaseVector::create(BIGINT(), 1, pool);
+      min->extractAccumulators(groups, 1, &result);
+      return result->asFlatVector<int64_t>()->isNullAt(0);
+    }
+
+    int64_t minOf(char* row, memory::MemoryPool* pool) {
+      char* groups[1] = {row};
+      VectorPtr result = BaseVector::create(BIGINT(), 1, pool);
+      min->extractAccumulators(groups, 1, &result);
+      return result->asFlatVector<int64_t>()->valueAt(0);
     }
   };
 
@@ -340,8 +548,10 @@ TEST_F(StateBackendTest, stateTableCollisionPairStaysApart) {
 
 // AggregatingState: misses materialize + initialize fresh value rows, duplicate
 // keys share a row, the collision pair accumulates independently, and the
-// handle is idempotent per descriptor name.
+// handle is idempotent per descriptor name. Accumulation runs through a real
+// partial sum(BIGINT) aggregate over the accumulator-layout value rows.
 TEST_F(StateBackendTest, backendAggregatingState) {
+  SumAggregate sum;
   HeapKeyedStateBackend<RowContainerStateKey> backend(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   KeySelector selector(backend.keyIndex(), {0});
@@ -349,38 +559,30 @@ TEST_F(StateBackendTest, backendAggregatingState) {
       probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
   ASSERT_EQ(3, keys.size());
 
-  int initCount = 0;
-  AggregatingStateDescriptor descriptor(
-      "acc",
-      {BIGINT()},
-      [&](char* row) {
-        ++initCount;
-        // Single fixed-width accumulator column: value sits at offset 0.
-        *reinterpret_cast<int64_t*>(row) = 0;
-      },
-      pool());
-  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(descriptor);
+  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(
+      sum.descriptor(pool()));
+  sum.wire(state->valueRows());
   EXPECT_EQ(
       state.get(),
-      backend.getOrCreateAggregatingState<VoidNamespace>(descriptor).get());
+      backend.getOrCreateAggregatingState<VoidNamespace>(sum.descriptor(pool()))
+          .get());
 
   std::vector<char*> rows(keys.size(), nullptr);
   state->rows(
       folly::Range<const RowContainerStateKey*>(keys.data(), keys.size()),
       VoidNamespace::instance(),
       rows.data());
-  EXPECT_EQ(2, initCount);
+  EXPECT_EQ(2, sum.initCount);
   EXPECT_EQ(rows[0], rows[2]);
   EXPECT_NE(rows[0], rows[1]);
 
-  // Accumulate through the raw row pointers, as addRawInput would.
-  const auto offsetOf = [&] {
-    const auto column = state->valueRows()->columnAt(0);
-    return column.offset();
-  };
-  *reinterpret_cast<int64_t*>(rows[0] + offsetOf()) = 10;
-  *reinterpret_cast<int64_t*>(rows[1] + offsetOf()) = 20;
-  *reinterpret_cast<int64_t*>(rows[2] + offsetOf()) += 11;
+  // Accumulate through the aggregate, as the operator's addRawInput would.
+  // Note the explicit one-element vectors: a braced {N} literal would resolve
+  // to the makeFlatVector<T>(size_t size) overload and build an N-element
+  // uninitialized vector.
+  sum.add(rows[0], makeNullableFlatVector<int64_t>({10}));
+  sum.add(rows[1], makeNullableFlatVector<int64_t>({20}));
+  sum.add(rows[2], makeNullableFlatVector<int64_t>({11}));
 
   // Fresh key instances resolve to the same rows with the accumulated
   // values; nothing crossed between the collision pair.
@@ -391,11 +593,11 @@ TEST_F(StateBackendTest, backendAggregatingState) {
           readKeys.data(), readKeys.size()),
       VoidNamespace::instance(),
       readRows.data());
-  EXPECT_EQ(2, initCount);
+  EXPECT_EQ(2, sum.initCount);
   EXPECT_EQ(rows[0], readRows[0]);
   EXPECT_EQ(rows[1], readRows[1]);
-  EXPECT_EQ(21, *reinterpret_cast<int64_t*>(readRows[0] + offsetOf()));
-  EXPECT_EQ(20, *reinterpret_cast<int64_t*>(readRows[1] + offsetOf()));
+  EXPECT_EQ(21, sum.valueOf(readRows[0], pool()));
+  EXPECT_EQ(20, sum.valueOf(readRows[1], pool()));
 }
 
 // Value / List / Map states on the same backend: Flink read semantics
@@ -454,9 +656,11 @@ TEST_F(StateBackendTest, backendValueListMapStates) {
 // A full checkpoint round trip through all four state kinds: backend A
 // populates, backend B restores the stream into freshly registered states
 // and reads the same entries back. The collision pair stays independent,
-// restore does not re-initialize acc rows, and snapshotting unchanged
+// aggregating entries restore through the same construct-then-merge sequence
+// used to reload spilled aggregation state, and snapshotting unchanged
 // state twice yields identical bytes.
 TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
+  SumAggregate sumA;
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   KeySelector selectorA(backendA.keyIndex(), {0});
@@ -464,18 +668,9 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
   ASSERT_EQ(3, keysA.size());
 
-  int initCountA = 0;
-  AggregatingStateDescriptor aggregatingDescriptor(
-      "acc",
-      {BIGINT()},
-      [&](char* row) {
-        ++initCountA;
-        // Single fixed-width accumulator column: value sits at offset 0.
-        *reinterpret_cast<int64_t*>(row) = 0;
-      },
-      pool());
   auto aggregatingState = backendA.getOrCreateAggregatingState<VoidNamespace>(
-      aggregatingDescriptor);
+      sumA.descriptor(pool()));
+  sumA.wire(aggregatingState->valueRows());
   auto valueState = backendA.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -485,18 +680,17 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       MapStateDescriptor<int64_t, int64_t>(
           "map", int64Serializer(), int64Serializer(), pool()));
 
-  // Accumulate 21 / 20 over the collision pair, as addRawInput would.
+  // Accumulate 21 / 20 over the collision pair through the aggregate, as
+  // addRawInput would.
   std::vector<char*> rows(keysA.size(), nullptr);
   aggregatingState->rows(
       folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
       VoidNamespace::instance(),
       rows.data());
-  const auto accumulatorOffset =
-      aggregatingState->valueRows()->columnAt(0).offset();
-  *reinterpret_cast<int64_t*>(rows[0] + accumulatorOffset) = 10;
-  *reinterpret_cast<int64_t*>(rows[1] + accumulatorOffset) = 20;
-  *reinterpret_cast<int64_t*>(rows[2] + accumulatorOffset) += 11;
-  EXPECT_EQ(2, initCountA);
+  sumA.add(rows[0], makeNullableFlatVector<int64_t>({10}));
+  sumA.add(rows[1], makeNullableFlatVector<int64_t>({20}));
+  sumA.add(rows[2], makeNullableFlatVector<int64_t>({11}));
+  EXPECT_EQ(2, sumA.initCount);
 
   const VoidNamespace ns;
   valueState->update(keysA[0], ns, std::make_shared<int64_t>(7));
@@ -509,24 +703,19 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   const auto bytes = backendA.snapshot();
   EXPECT_EQ(bytes, backendA.snapshot());
 
-  // Side B: a fresh backend over its own key container; restoring writes
-  // the entries without touching the init callback.
+  // Side B: a fresh backend over its own key container. Each restored
+  // aggregating entry runs the init callback on a fresh row and merges the
+  // intermediate payload in through the merge callback; a later lookup hits
+  // the restored rows without further initialization.
+  SumAggregate sumB;
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   KeySelector selectorB(backendB.keyIndex(), {0});
   auto keysB =
       probeKeys(selectorB, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
-  int initCountB = 0;
-  AggregatingStateDescriptor aggregatingDescriptorB(
-      "acc",
-      {BIGINT()},
-      [&](char* row) {
-        ++initCountB;
-        *reinterpret_cast<int64_t*>(row) = 0;
-      },
-      pool());
   auto aggregatingStateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
-      aggregatingDescriptorB);
+      sumB.descriptor(pool()));
+  sumB.wire(aggregatingStateB->valueRows());
   auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -536,17 +725,17 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       MapStateDescriptor<int64_t, int64_t>(
           "map", int64Serializer(), int64Serializer(), pool()));
   backendB.restore(bytes);
+  EXPECT_EQ(2, sumB.initCount);
+  EXPECT_EQ(2, sumB.mergeCount);
 
   std::vector<char*> rowsB(keysB.size(), nullptr);
   aggregatingStateB->rows(
       folly::Range<const RowContainerStateKey*>(keysB.data(), keysB.size()),
       VoidNamespace::instance(),
       rowsB.data());
-  EXPECT_EQ(0, initCountB);
-  const auto accumulatorOffsetB =
-      aggregatingStateB->valueRows()->columnAt(0).offset();
-  EXPECT_EQ(21, *reinterpret_cast<int64_t*>(rowsB[0] + accumulatorOffsetB));
-  EXPECT_EQ(20, *reinterpret_cast<int64_t*>(rowsB[1] + accumulatorOffsetB));
+  EXPECT_EQ(2, sumB.initCount);
+  EXPECT_EQ(21, sumB.valueOf(rowsB[0], pool()));
+  EXPECT_EQ(20, sumB.valueOf(rowsB[1], pool()));
   EXPECT_EQ(rowsB[0], rowsB[2]);
   EXPECT_NE(rowsB[0], rowsB[1]);
 
@@ -559,6 +748,66 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   EXPECT_EQ(111, mapStateB->get(keysB[0], ns, 10));
   EXPECT_EQ(0, mapStateB->get(keysB[0], ns, 99));
   EXPECT_EQ(300, mapStateB->get(keysB[1], ns, 30));
+}
+
+// sum + avg + min in one descriptor across a snapshot/restore round trip:
+// the three accumulator columns keep descriptor order through the checkpoint
+// frames and the merge dispatch (a mixed-up order would corrupt values or
+// crash the decode), avg's row(double, bigint) intermediate round-trips the
+// presto serde as a complex type, and an aggregate that saw only null input
+// (kCollisionKeyB) restores with a null accumulator.
+TEST_F(StateBackendTest, aggregatingStateMultipleAggregatesRoundTrip) {
+  SumAvgMin aggsA;
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
+  auto keysA = probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB});
+  ASSERT_EQ(2, keysA.size());
+
+  auto stateA = backendA.getOrCreateAggregatingState<VoidNamespace>(
+      aggsA.descriptor(pool()));
+  aggsA.wire(stateA->valueRows());
+  std::vector<char*> rows(keysA.size(), nullptr);
+  stateA->rows(
+      folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
+      VoidNamespace::instance(),
+      rows.data());
+  EXPECT_EQ(2, aggsA.initCount);
+
+  aggsA.add(rows[0], makeNullableFlatVector<int64_t>({10}));
+  aggsA.add(rows[0], makeNullableFlatVector<int64_t>({20}));
+  // Only null input: the min accumulator stays null.
+  aggsA.add(rows[1], makeNullableFlatVector<int64_t>({std::nullopt}));
+
+  const auto bytes = backendA.snapshot();
+
+  SumAvgMin aggsB;
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {0});
+  auto keysB = probeKeys(selectorB, {kCollisionKeyA, kCollisionKeyB});
+  auto stateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
+      aggsB.descriptor(pool()));
+  aggsB.wire(stateB->valueRows());
+  backendB.restore(bytes);
+  EXPECT_EQ(2, aggsB.initCount);
+  EXPECT_EQ(2, aggsB.mergeCount);
+
+  std::vector<char*> rowsB(keysB.size(), nullptr);
+  stateB->rows(
+      folly::Range<const RowContainerStateKey*>(keysB.data(), keysB.size()),
+      VoidNamespace::instance(),
+      rowsB.data());
+  // Restored rows are found without re-initialization.
+  EXPECT_EQ(2, aggsB.initCount);
+
+  EXPECT_EQ(30, aggsB.sumOf(rowsB[0], pool()));
+  const auto [total, count] = aggsB.avgOf(rowsB[0], pool());
+  EXPECT_EQ(30.0, total);
+  EXPECT_EQ(2, count);
+  EXPECT_EQ(10, aggsB.minOf(rowsB[0], pool()));
+
+  EXPECT_TRUE(aggsB.minIsNull(rowsB[1], pool()));
 }
 
 // Checkpointing registered but empty states round-trips as an empty

@@ -20,8 +20,10 @@
 #include <string>
 #include <vector>
 #include "velox/common/memory/MemoryPool.h"
+#include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
 #include "velox/type/Type.h"
+#include "velox/vector/BaseVector.h"
 
 namespace facebook::velox::stateful {
 
@@ -53,14 +55,15 @@ class StateDescriptor {
   memory::MemoryPool* pool_;
 };
 
-// Descriptor of an AggregatingState: pure description of the acc value — the
-// value row layout (accTypes, the intermediate type of each aggregate) plus how
-// a fresh row is initialized (an operator-registered callback wrapping
-// Aggregate::initializeNewGroups over the operator's own aggregates).
-// Mirrors Flink AggregatingStateDescriptor holding createAccumulator. The
-// state layer has zero dependency on AggregateInfo: it derives the value
-// RowContainer layout from accTypes once at creation time and invokes the
-// callback on miss.
+// Descriptor of an AggregatingState: the value rows are an accumulator
+// layout RowContainer built from 'accumulators' (one entry per aggregate, in
+// aggregate order), plus how rows are constructed and merged back from
+// intermediate results (operator-registered callbacks wrapping
+// Aggregate::initializeNewGroups / addSingleGroupIntermediateResults over the
+// operator's own aggregates). Mirrors Flink AggregatingStateDescriptor
+// holding createAccumulator. The state layer has zero dependency on
+// AggregateInfo: it drives construction and checkpoint round-trips entirely
+// through the accumulator array and the two callbacks.
 class AggregatingStateDescriptor : public StateDescriptor {
  public:
   // Initializes a freshly materialized value row; invoked by the state on
@@ -68,26 +71,61 @@ class AggregatingStateDescriptor : public StateDescriptor {
   // method itself.
   using InitRowCallback = std::function<void(char* row)>;
 
+  // Merges row 0 of 'columns' (one one-row intermediate column per
+  // accumulator, in descriptor order; produced by Accumulator::extractForSpill
+  // on the snapshot side) into the accumulators of 'row'. Invoked by the state
+  // on restore, after 'initializeRow' has constructed the fresh accumulators —
+  // the same construct-then-merge sequence velox uses to reload spilled
+  // aggregation state. One keyed entry restores one row, so the columns
+  // always carry exactly one row.
+  using MergeRowCallback = std::function<
+      void(char* row, const std::vector<VectorPtr>& columns)>;
+
   AggregatingStateDescriptor(
       const std::string& name,
-      std::vector<TypePtr> accTypes,
+      std::vector<exec::Accumulator> accumulators,
       InitRowCallback initializeRow,
+      MergeRowCallback mergeRow,
       memory::MemoryPool* pool = nullptr)
       : StateDescriptor(name, "", pool),
-        accTypes_(std::move(accTypes)),
-        initializeRow_(std::move(initializeRow)) {}
+        accumulators_(std::move(accumulators)),
+        initializeRow_(std::move(initializeRow)),
+        mergeRow_(std::move(mergeRow)) {}
 
-  const std::vector<TypePtr>& accTypes() const {
-    return accTypes_;
+  const std::vector<exec::Accumulator>& accumulators() const {
+    return accumulators_;
+  }
+
+  // The spill type of each accumulator, in descriptor order — the type of the
+  // serialized intermediate state the checkpoint stores per accumulator (the
+  // same type native spilling keys on; equal to the aggregate's intermediate
+  // type for plain aggregates).
+  std::vector<TypePtr> spillTypes() const {
+    std::vector<TypePtr> types;
+    types.reserve(accumulators_.size());
+    for (const auto& accumulator : accumulators_) {
+      types.push_back(accumulator.spillType());
+    }
+    return types;
   }
 
   const InitRowCallback& initializeRow() const {
     return initializeRow_;
   }
 
+  const MergeRowCallback& mergeRow() const {
+    return mergeRow_;
+  }
+
  private:
-  const std::vector<TypePtr> accTypes_;
+  // Non-owning: each entry's closures capture the operator's raw Aggregate
+  // pointers. The Aggregate objects must outlive every state handle created
+  // from this descriptor (the value container destroys accumulators through
+  // these closures) and must have setAllocator/setOffsets wired to the
+  // state's valueRows() container before the first rows() call.
+  const std::vector<exec::Accumulator> accumulators_;
   const InitRowCallback initializeRow_;
+  const MergeRowCallback mergeRow_;
 };
 
 // Descriptor of a ValueState: the value type V is serialized with
