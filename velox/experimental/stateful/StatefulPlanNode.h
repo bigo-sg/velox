@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "velox/core/PlanNode.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 
 namespace facebook::velox::stateful {
 
@@ -862,19 +863,36 @@ class StreamTopNNode : public core::PlanNode {
 
 class GroupAggsHandlerNode : public core::PlanNode {
  public:
-  // TODO: finish this class
   GroupAggsHandlerNode(
       const core::PlanNodeId& id,
+      const RowTypePtr& inputType,
       const RowTypePtr& outputType,
+      const std::vector<core::AggregationNode::Aggregate>& aggregates,
       bool generateUpdateBefore,
       bool needRetraction)
       : PlanNode(id),
+        inputType_(std::move(inputType)),
         outputType_(std::move(outputType)),
+        aggregates_(std::move(aggregates)),
         generateUpdateBefore_(generateUpdateBefore),
         needRetraction_(needRetraction) {}
 
+  /// The schema of the operator's input stream. The node has no source link
+  /// (records arrive one batch at a time through the streaming path), so the
+  /// aggregate arguments are resolved against this declared schema.
+  const RowTypePtr& inputType() const {
+    return inputType_;
+  }
+
   const RowTypePtr& outputType() const override {
     return outputType_;
+  }
+
+  /// The aggregate calls, in output order: the final value of entry i lands
+  /// in output channel numKeys + i (the leading channels are the key
+  /// columns).
+  const std::vector<core::AggregationNode::Aggregate>& aggregates() const {
+    return aggregates_;
   }
 
   bool generateUpdateBefore() const {
@@ -898,7 +916,9 @@ class GroupAggsHandlerNode : public core::PlanNode {
  private:
   void addDetails(std::stringstream& stream) const override;
 
+  const RowTypePtr inputType_;
   const RowTypePtr outputType_;
+  const std::vector<core::AggregationNode::Aggregate> aggregates_;
   bool generateUpdateBefore_;
   bool needRetraction_;
 };
@@ -909,10 +929,12 @@ class GroupAggregationNode : public core::PlanNode {
       const core::PlanNodeId& id,
       std::shared_ptr<const GroupAggsHandlerNode>& aggregationNode,
       const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
+      const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec,
       const RowTypePtr& outputType)
       : PlanNode(id),
         aggregation_(std::move(aggregationNode)),
         keySelectorSpec_(std::move(keySelectorSpec)),
+        keyedStateSpec_(std::move(keyedStateSpec)),
         outputType_(std::move(outputType)) {}
 
   const RowTypePtr& outputType() const override {
@@ -926,6 +948,15 @@ class GroupAggregationNode : public core::PlanNode {
   const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec()
       const {
     return keySelectorSpec_;
+  }
+
+  /// The keyed state configuration (the user key channels and their types)
+  /// the operator builds its keyed state backend from. The keySelectorSpec
+  /// above and this spec coexist during the migration of the stateful
+  /// operators to the keyed state backend: this node's keySelectorSpec has
+  /// no consumer, and this spec is the one the operator consumes.
+  const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec() const {
+    return keyedStateSpec_;
   }
 
   const std::vector<core::PlanNodePtr>& sources() const override;
@@ -943,6 +974,7 @@ class GroupAggregationNode : public core::PlanNode {
 
   const std::shared_ptr<const GroupAggsHandlerNode> aggregation_;
   const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
+  const std::shared_ptr<const KeyedStateSpec> keyedStateSpec_;
   const RowTypePtr outputType_;
 };
 
