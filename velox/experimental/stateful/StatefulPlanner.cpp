@@ -59,7 +59,6 @@
 #include "velox/experimental/stateful/WatermarkSource.h"
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include "velox/experimental/stateful/WindowJoin.h"
-#include "velox/experimental/stateful/agg/AggsHandleFunction.h"
 #include "velox/experimental/stateful/agg/GroupAggregator.h"
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
 #include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
@@ -430,8 +429,18 @@ StatefulOperatorPtr StatefulPlanner::transformStreamRankOperator(
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGroupAggregationOperator(
-    const StatefulPlanNode& /*planNode*/) {
-  VELOX_NYI("GroupAggregation operator is not supported yet");
+    const StatefulPlanNode& planNode) {
+  std::vector<StatefulOperatorPtr> targets =
+      transformStatefulOperators(planNode.targets());
+
+  auto aggNode =
+      std::dynamic_pointer_cast<const GroupAggregationNode>(planNode.node());
+  VELOX_CHECK(aggNode, "Failed to cast to GroupAggregationNode");
+
+  auto op = std::make_unique<EmptyOperator>(nextOperatorId(), ctx_, aggNode);
+
+  return std::make_unique<GroupAggregator>(
+      std::move(op), std::move(targets), aggNode);
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGenericOperator(
@@ -657,17 +666,6 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(
               planNode)) {
     return std::make_unique<GroupWindowAggsHandler>(
         nextOperatorId(), ctx_, aggsHandlerNode);
-  } else if (
-      auto aggsHandlerNode =
-          std::dynamic_pointer_cast<const GroupAggsHandlerNode>(planNode)) {
-    // FIXME: stateRetentionTime is not handled yet
-    return std::make_unique<GroupAggregator>(
-        nextOperatorId(),
-        ctx_,
-        aggsHandlerNode,
-        std::make_unique<AggsHandleFunction>(), // TODO: not complete yet
-        0,
-        aggsHandlerNode->generateUpdateBefore());
   } else if (
       auto deduplicateNode =
           std::dynamic_pointer_cast<const DeduplicateNode>(planNode)) {

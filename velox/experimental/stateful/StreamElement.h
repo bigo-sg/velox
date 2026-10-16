@@ -15,6 +15,7 @@
  */
 #pragma once
 #include <cstdint>
+#include <vector>
 
 #include "velox/core/PlanNode.h"
 #include "velox/vector/SimpleVector.h"
@@ -194,5 +195,12 @@ class StreamRecord : public StreamElement {
 };
 
 using StreamRecordPtr = std::shared_ptr<StreamRecord>;
+
+// Builds the rowKind column of a changelog record from per-row kind bytes.
+// Production code cannot use the test-only VectorMaker, so changelog-emitting
+// operators share this helper instead of filling the flat vector by hand.
+SimpleVectorPtr<int8_t> makeRowKindVector(
+    memory::MemoryPool* pool,
+    const std::vector<int8_t>& kinds);
 
 } // namespace facebook::velox::stateful
