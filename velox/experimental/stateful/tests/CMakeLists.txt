@@ -234,6 +234,7 @@ target_link_libraries(
   velox_stateful_state
   velox_stateful_window
   velox_stateful_udf
+  velox_functions_flink_aggregates
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
