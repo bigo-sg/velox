@@ -102,7 +102,11 @@ RowVectorPtr AppendOnlyTopNRanker::processElements(
 void AppendOnlyTopNRanker::close() {
   exec::Operator::close();
   veloxRanker_->close();
-  dataState_->clear();
-  dataState_.reset();
+  // dataState_ is created in open(), which no longer runs when the wrapping
+  // operator's initializeState fails fast; it can be null at close time.
+  if (dataState_) {
+    dataState_->clear();
+    dataState_.reset();
+  }
 }
 } // namespace facebook::velox::stateful
