@@ -314,9 +314,15 @@ void WindowAggregator::close() {
     localAggregator_->close();
   }
   input_.reset();
-  windowTimerService_->close();
+  // State members are created in initializeState(), which fails fast when the
+  // operator has no state handler; they can be null at close time.
+  if (windowTimerService_) {
+    windowTimerService_->close();
+  }
   windowBuffer_->clear();
-  windowState_->clear();
+  if (windowState_) {
+    windowState_->clear();
+  }
   currentProgress_ = 0;
   nextTriggerWatermark_ = 0;
 }

@@ -145,8 +145,14 @@ void GroupWindowAggregator::onEventTime(
 void GroupWindowAggregator::close() {
   StatefulOperator::close();
   input_.reset();
-  windowFunction_->close();
-  windowState_->clear();
+  // State members are created in initializeState(), which fails fast when the
+  // operator has no state handler; they can be null at close time.
+  if (windowFunction_) {
+    windowFunction_->close();
+  }
+  if (windowState_) {
+    windowState_->clear();
+  }
 }
 
 void GroupWindowAggregator::registerCleanupTimer(

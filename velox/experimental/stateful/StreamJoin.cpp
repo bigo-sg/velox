@@ -57,8 +57,14 @@ void StreamJoin::close() {
   StatefulOperator::close();
   leftInput_->close();
   rightInput_->close();
-  leftRecordStateView_->close();
-  rightRecordStateView_->close();
+  // State members are created in initializeState(), which fails fast when the
+  // operator has no state handler; they can be null at close time.
+  if (leftRecordStateView_) {
+    leftRecordStateView_->close();
+  }
+  if (rightRecordStateView_) {
+    rightRecordStateView_->close();
+  }
 }
 
 void StreamJoin::advance() {
