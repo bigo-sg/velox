@@ -45,6 +45,11 @@ void WindowJoin::initialize() {
 }
 
 void WindowJoin::initializeState() {
+  // TODO: migrate this operator to operator-owned keyed state (cf.
+  // GroupAggregator::initializeStateBackend) and remove this guard.
+  VELOX_NYI(
+      "WindowJoin is not yet migrated to operator-owned keyed state; there "
+      "is no state handler to initialize");
   StateDescriptor leftStateDesc("left-records");
   leftWindowState_ = stateHandler()->getListState(leftStateDesc);
   StateDescriptor rightStateDesc("right-records");
