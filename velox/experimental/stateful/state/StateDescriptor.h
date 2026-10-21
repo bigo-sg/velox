@@ -78,8 +78,8 @@ class AggregatingStateDescriptor : public StateDescriptor {
   // the same construct-then-merge sequence velox uses to reload spilled
   // aggregation state. One keyed entry restores one row, so the columns
   // always carry exactly one row.
-  using MergeRowCallback = std::function<
-      void(char* row, const std::vector<VectorPtr>& columns)>;
+  using MergeRowCallback =
+      std::function<void(char* row, const std::vector<VectorPtr>& columns)>;
 
   AggregatingStateDescriptor(
       const std::string& name,
