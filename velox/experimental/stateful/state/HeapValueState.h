@@ -16,12 +16,14 @@
 #pragma once
 
 #include <memory>
+#include <type_traits>
 #include <utility>
 
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
+#include "velox/type/StringView.h"
 
 namespace facebook::velox::stateful {
 
@@ -44,6 +46,14 @@ class HeapValueState : public ValueState<K, N, V> {
         nsSerializer_(NamespaceSerializerTraits<N>::create()),
         valueSerializer_(std::dynamic_pointer_cast<TypeSerializer<V>>(
             descriptor.serializer())) {
+    // The StringView serializer's deserialize() returns a view borrowing the
+    // checkpoint buffer (a documented contract); a view stored into this
+    // long-lived table would dangle once the buffer is released.
+    if constexpr (std::is_same_v<V, StringView>) {
+      VELOX_FAIL(
+          "StringView cannot be stored in a long-lived state container; "
+          "use std::string until a copying implementation lands");
+    }
     VELOX_CHECK_NOT_NULL(
         valueSerializer_,
         "Value state '{}' requires a serializer for its value type",
@@ -86,10 +96,11 @@ class HeapValueState : public ValueState<K, N, V> {
     map.releaseSnapshot(snapshot.version);
   }
 
-  void restoreEntry(CheckpointReader& reader) override {
+  void restoreEntry(int32_t keyGroupId, CheckpointReader& reader) override {
     const auto frames = readEntryFrames(reader);
     const auto ns = nsSerializer_->deserialize(frames.ns);
     const auto key = keySerializer_->deserialize(frames.key);
+    checkEntryKeyGroup(key, keyGroupId);
     const auto value = valueSerializer_->deserialize(frames.payload);
     stateTable_->put(key, ns, value);
   }

@@ -17,21 +17,25 @@
 
 #include <map>
 #include <memory>
+#include <optional>
+#include <type_traits>
 #include <utility>
 
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
+#include "velox/type/StringView.h"
 
 namespace facebook::velox::stateful {
 
 /// MapState on the heap storage: the value is a shared std::map, created on
-/// the first put, overwritten on put of an existing user key and read as an
-/// empty map when absent, as in Flink HeapMapState. Removing from an absent
-/// map does not materialize one, and removing the last user entry drops the
-/// stored map itself, so empty maps never reach a checkpoint. The
-/// checkpoint payload of one entry is the user-entry count followed by the
+/// the first put and overwritten on put of an existing user key; get()
+/// misses (std::nullopt) both when no map is stored and when the user key
+/// is absent, as in Flink HeapMapState. Removing from an absent map does
+/// not materialize one, and removing the last user entry drops the stored
+/// map itself, so empty maps never reach a checkpoint. The checkpoint
+/// payload of one entry is the user-entry count followed by the
 /// length-prefixed serialization of each user key and user value.
 /// @param <K> type of key, a StateKey subclass
 /// @param <N> type of namespace, a Namespace subclass
@@ -52,6 +56,15 @@ class HeapMapState : public MapState<K, N, UK, UV> {
             descriptor.keySerializer())),
         userValueSerializer_(std::dynamic_pointer_cast<TypeSerializer<UV>>(
             descriptor.valueSerializer())) {
+    // The StringView serializer's deserialize() returns a view borrowing the
+    // checkpoint buffer (a documented contract); a view stored into this
+    // long-lived map would dangle once the buffer is released.
+    if constexpr (
+        std::is_same_v<UK, StringView> || std::is_same_v<UV, StringView>) {
+      VELOX_FAIL(
+          "StringView cannot be stored in a long-lived state container; "
+          "use std::string until a copying implementation lands");
+    }
     VELOX_CHECK_NOT_NULL(
         userKeySerializer_,
         "Map state '{}' requires a serializer for its user key type",
@@ -62,13 +75,14 @@ class HeapMapState : public MapState<K, N, UK, UV> {
         descriptor.name());
   }
 
-  UV get(const K& key, const N& ns, const UK& userKey) override {
+  std::optional<UV> get(const K& key, const N& ns, const UK& userKey) override {
     auto currentMap = stateTable_->get(key, ns);
     if (currentMap == nullptr) {
-      return UV();
+      return std::nullopt;
     }
     auto it = currentMap->find(userKey);
-    return it == currentMap->end() ? UV() : it->second;
+    return it == currentMap->end() ? std::nullopt
+                                   : std::optional<UV>(it->second);
   }
 
   void put(const K& key, const N& ns, const UK& userKey, const UV& value)
@@ -116,10 +130,11 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     map.releaseSnapshot(snapshot.version);
   }
 
-  void restoreEntry(CheckpointReader& reader) override {
+  void restoreEntry(int32_t keyGroupId, CheckpointReader& reader) override {
     const auto frames = readEntryFrames(reader);
     const auto ns = nsSerializer_->deserialize(frames.ns);
     const auto key = keySerializer_->deserialize(frames.key);
+    checkEntryKeyGroup(key, keyGroupId);
     CheckpointReader mapReader(frames.payload.data(), frames.payload.size());
     const auto size = mapReader.readInt32();
     VELOX_CHECK_GE(size, 0, "Corrupt checkpoint: negative map size {}", size);

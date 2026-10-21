@@ -18,6 +18,7 @@
 #include <folly/Range.h>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
@@ -47,7 +48,12 @@ class State {
     VELOX_NYI("This state does not support key-group snapshots");
   }
 
-  virtual void restoreEntry(CheckpointReader& /* reader */) {
+  /// Restores one entry of the key-group block labeled 'keyGroupId'; the
+  /// implementation fails loud when the restored key does not belong to
+  /// that key group.
+  virtual void restoreEntry(
+      int32_t /* keyGroupId */,
+      CheckpointReader& /* reader */) {
     VELOX_NYI("This state does not support entry restore");
   }
 
@@ -61,6 +67,20 @@ class State {
 };
 
 using StatePtr = std::shared_ptr<State>;
+
+/// Fails loud when a restored entry's key does not belong to the key-group
+/// block it rides in: a mislabeled or reordered stream must not place
+/// entries into the wrong key group's StateMap. Every heap state runs this
+/// right after deserializing an entry's key.
+template <typename K>
+void checkEntryKeyGroup(const K& key, int32_t keyGroupId) {
+  VELOX_CHECK_EQ(
+      key.keyGroup(),
+      static_cast<uint32_t>(keyGroupId),
+      "Corrupt checkpoint: entry key belongs to key group {} but rides in the block of {}",
+      key.keyGroup(),
+      keyGroupId);
+}
 
 /// Velox-specialized aggregating state: the value is a row of a value
 /// RowContainer whose layout the state derives once from the descriptor's
@@ -100,10 +120,14 @@ class AggregatingState : public State {
 };
 
 // This class is relevant to Flink org.apache.flink.api.common.MapState.
+// get() returns std::nullopt on a miss: MapState has no per-type default
+// value to fabricate (Flink throws on a miss for non-nullable types), and
+// a silent UV() would turn misses into wrong data - e.g. a false 0 count.
 template <typename K, typename N, typename UK, typename UV>
 class MapState : public State {
  public:
-  virtual UV get(const K& key, const N& ns, const UK& userKey) = 0;
+  virtual std::optional<UV>
+  get(const K& key, const N& ns, const UK& userKey) = 0;
 
   virtual void
   put(const K& key, const N& ns, const UK& userKey, const UV& value) = 0;

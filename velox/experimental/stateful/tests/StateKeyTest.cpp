@@ -428,8 +428,15 @@ class FakeListState : public ListState<K, N, S> {
 template <typename K, typename N, typename UK, typename UV>
 class FakeMapState : public MapState<K, N, UK, UV> {
  public:
-  UV get(const K& key, const N& ns, const UK& userKey) override {
-    return map_[{key, ns}][userKey];
+  std::optional<UV> get(const K& key, const N& ns, const UK& userKey) override {
+    auto entry = map_.find({key, ns});
+    if (entry == map_.end()) {
+      return std::nullopt;
+    }
+    auto userValue = entry->second.find(userKey);
+    return userValue == entry->second.end()
+        ? std::nullopt
+        : std::optional<UV>(userValue->second);
   }
 
   void put(const K& key, const N& ns, const UK& userKey, const UV& value)
@@ -501,7 +508,7 @@ TEST(StateApiTest, mapStateExplicitKeyNamespaceAndUserKey) {
   EXPECT_EQ(entries.at("b"), 2);
 
   state.remove(1, 100, "a");
-  EXPECT_EQ(state.get(1, 100, "a"), 0);
+  EXPECT_EQ(state.get(1, 100, "a"), std::nullopt);
   EXPECT_EQ(state.get(1, 100, "b"), 2);
   EXPECT_EQ(state.get(1, 200, "a"), 3);
 }

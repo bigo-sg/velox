@@ -137,10 +137,11 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     map.releaseSnapshot(snapshot.version);
   }
 
-  void restoreEntry(CheckpointReader& reader) override {
+  void restoreEntry(int32_t keyGroupId, CheckpointReader& reader) override {
     const auto frames = readEntryFrames(reader);
     const auto ns = nsSerializer_->deserialize(frames.ns);
     const auto key = keySerializer_->deserialize(frames.key);
+    checkEntryKeyGroup(key, keyGroupId);
     // Decode the payload into one-row intermediate columns, then rebuild the
     // row exactly like a spilled-input merge: construct fresh accumulators,
     // then merge the intermediates in (there is no byte-level inverse —

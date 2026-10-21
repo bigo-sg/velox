@@ -408,7 +408,8 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
             entryCount, 0, "Corrupt checkpoint: negative entry count");
         for (int32_t i = 0; i < entryCount; ++i) {
           if (mine) {
-            statesById[id]->restoreEntry(reader);
+            statesById[id]->restoreEntry(
+                static_cast<int32_t>(keyGroup), reader);
           } else {
             readEntryFrames(reader);
           }

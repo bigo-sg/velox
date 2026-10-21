@@ -82,9 +82,9 @@ RowVectorPtr AppendOnlyTopNRanker::processElements(
 
   auto sortKeyToData = sortKeySelector_->partition(input);
   for (auto& [sortKey, data] : sortKeyToData) {
-    auto preResult = dataState_->get(key, State::VOID_NAMESPACE, sortKey);
-    if (preResult) {
-      preResult = TimeWindowUtil::mergeVectors({data, preResult}, pool());
+    RowVectorPtr preResult;
+    if (auto stored = dataState_->get(key, State::VOID_NAMESPACE, sortKey)) {
+      preResult = TimeWindowUtil::mergeVectors({data, *stored}, pool());
     } else {
       preResult = data;
     }

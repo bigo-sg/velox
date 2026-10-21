@@ -28,6 +28,7 @@
 #include <folly/dynamic.h>
 
 #include "velox/common/base/Exceptions.h"
+#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/core/PlanNode.h"
 #include "velox/core/QueryConfig.h"
@@ -41,6 +42,7 @@
 #include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/KeyTable.h"
 #include "velox/experimental/stateful/state/Namespace.h"
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/state/StateMap.h"
@@ -738,13 +740,49 @@ TEST_F(StateBackendTest, backendValueListMapStates) {
   mapState->put(keyB, ns, 30, 300);
   EXPECT_EQ(111, mapState->get(keyA, ns, 10));
   EXPECT_EQ(200, mapState->get(keyA, ns, 20));
-  EXPECT_EQ(0, mapState->get(keyA, ns, 99));
-  EXPECT_EQ(0, mapState->get(keyC, ns, 10));
+  EXPECT_EQ(std::nullopt, mapState->get(keyA, ns, 99));
+  EXPECT_EQ(std::nullopt, mapState->get(keyC, ns, 10));
   EXPECT_EQ(2, mapState->entries(keyA, ns).size());
   EXPECT_EQ(1, mapState->entries(keyB, ns).size());
   mapState->remove(keyA, ns, 10);
-  EXPECT_EQ(0, mapState->get(keyA, ns, 10));
+  EXPECT_EQ(std::nullopt, mapState->get(keyA, ns, 10));
   EXPECT_EQ(1, mapState->entries(keyA, ns).size());
+}
+
+// The heap map / list / value states reject StringView element types at
+// construction: the StringView serializer's deserialize() returns a view
+// borrowing the checkpoint buffer, and a long-lived container would outlive
+// the buffer (the key path is unaffected - restored keys copy their bytes
+// into the key row).
+TEST_F(StateBackendTest, stringViewStatesFailLoudAtConstruction) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  auto stringViewSerializer = [] {
+    return std::make_shared<ValueSerializer<StringView>>();
+  };
+  EXPECT_THROW(
+      backend.getOrCreateMapState<VoidNamespace>(
+          MapStateDescriptor<StringView, int64_t>(
+              "map-sv-key", stringViewSerializer(), int64Serializer(), pool())),
+      VeloxException);
+  EXPECT_THROW(
+      backend.getOrCreateMapState<VoidNamespace>(
+          MapStateDescriptor<int64_t, StringView>(
+              "map-sv-value",
+              int64Serializer(),
+              stringViewSerializer(),
+              pool())),
+      VeloxException);
+  EXPECT_THROW(
+      backend.getOrCreateListState<VoidNamespace>(
+          ListStateDescriptor<StringView>(
+              "list-sv", stringViewSerializer(), pool())),
+      VeloxException);
+  EXPECT_THROW(
+      backend.getOrCreateValueState<VoidNamespace>(
+          ValueStateDescriptor<StringView>(
+              "value-sv", stringViewSerializer(), pool())),
+      VeloxException);
 }
 
 // A full checkpoint round trip through all four state kinds: backend A
@@ -840,7 +878,7 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   EXPECT_EQ((std::vector<int64_t>{1, 2}), listStateB->get(keysB[0], ns));
   EXPECT_EQ((std::vector<int64_t>{3}), listStateB->get(keysB[1], ns));
   EXPECT_EQ(111, mapStateB->get(keysB[0], ns, 10));
-  EXPECT_EQ(0, mapStateB->get(keysB[0], ns, 99));
+  EXPECT_EQ(std::nullopt, mapStateB->get(keysB[0], ns, 99));
   EXPECT_EQ(300, mapStateB->get(keysB[1], ns, 30));
 }
 
@@ -1025,6 +1063,72 @@ TEST_F(StateBackendTest, restoreRejectsZeroKeyGroupCount) {
   header.numKeyGroups = 0;
   writeCheckpointHeader(writer, header);
   EXPECT_THROW(backend.restore(bytes), VeloxException);
+}
+
+// A key-group block whose entries do not belong to it is rejected at the
+// entry level: each restored key's key group is cross-checked against the
+// block label, so a mislabeled or reordered stream cannot place entries
+// into the wrong key group's StateMap.
+TEST_F(StateBackendTest, restoreRejectsEntryOutsideItsKeyGroupBlock) {
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
+  auto listState = backendA.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+
+  // A key outside key group 0; its entry rides in the block labeled 0.
+  std::vector<std::optional<int64_t>> values(256);
+  for (int64_t v = 0; v < 256; ++v) {
+    values[v] = v;
+  }
+  const auto probed = probeKeys(selectorA, values);
+  size_t other = probed.size();
+  for (size_t i = 0; i < probed.size(); ++i) {
+    if (probed[i].keyGroup() != 0) {
+      other = i;
+      break;
+    }
+  }
+  ASSERT_LT(other, probed.size());
+
+  const auto keySerializer = backendA.keyIndex().keySerializer();
+  auto nsSerializer = NamespaceSerializerTraits<VoidNamespace>::create();
+  ValueSerializer<int64_t> elementSerializer;
+  std::string payload;
+  CheckpointWriter payloadWriter(payload);
+  payloadWriter.writeInt32(1);
+  payloadWriter.writeBytes(elementSerializer.serialize(7));
+
+  std::string bytes;
+  CheckpointWriter writer(bytes);
+  CheckpointHeader header;
+  header.flags = kCheckpointFlagLittleEndian | kCheckpointFlagCrcTrailer;
+  header.maxParallelism = kMaxParallelism;
+  header.startKeyGroup = 0;
+  header.numKeyGroups = kMaxParallelism;
+  writeCheckpointHeader(writer, header);
+  writer.writeBytes(keySerializer->schemaId());
+  writer.writeUInt32(1);
+  writer.writeBytes("list");
+  writer.writeBytes(listState->namespaceSchemaId());
+  writer.writeBytes(listState->valueSchemaId());
+  writer.writeUInt32(0);
+  writer.writeBytes("list");
+  writer.writeInt32(1);
+  writeEntryFrames(
+      writer,
+      nsSerializer->serialize(VoidNamespace::instance()),
+      keySerializer->serialize(probed[other]),
+      payload);
+  writer.writeUInt32(checkpointCrc32(bytes));
+
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  backendB.getOrCreateListState<VoidNamespace>(
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
+  // The entry-level check fires (not a later stream check): the restored
+  // key's group is not the block label.
+  VELOX_ASSERT_THROW(backendB.restore(bytes), "rides in the block of");
 }
 
 // A sub-range backend picks its own key groups out of a wider checkpoint,
