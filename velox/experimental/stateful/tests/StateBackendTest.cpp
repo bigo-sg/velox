@@ -600,6 +600,100 @@ TEST_F(StateBackendTest, backendAggregatingState) {
   EXPECT_EQ(20, sum.valueOf(readRows[1], pool()));
 }
 
+// The accumulator rows live in the state's value container, outside the
+// state table: remove() returns the row to the container instead of only
+// dropping the entry. RowContainer never shrinks its row count, so the
+// observable is address reuse - the next miss lands on the freed row - and
+// removing a key nobody stored is a no-op.
+TEST_F(StateBackendTest, aggregatingStateRemoveReclaimsValueRow) {
+  SumAggregate sum;
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+  const VoidNamespace ns;
+
+  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(
+      sum.descriptor(pool()));
+  sum.wire(state->valueRows());
+  auto* rowA = state->row(keys[0], ns);
+  state->row(keys[1], ns);
+  const auto rowsBefore = state->valueRows()->numRows();
+  ASSERT_EQ(2, rowsBefore);
+  ASSERT_EQ(2, sum.initCount);
+
+  state->remove(probeKeys(selector, {999})[0], ns);
+  EXPECT_EQ(rowsBefore, state->valueRows()->numRows());
+
+  state->remove(keys[0], ns);
+  auto* rebuilt = state->row(keys[0], ns);
+  EXPECT_EQ(rowA, rebuilt);
+  EXPECT_EQ(rowsBefore, state->valueRows()->numRows());
+  EXPECT_EQ(3, sum.initCount);
+}
+
+// clear() drops every entry and returns every accumulator row to the value
+// container: the rows allocated after the clear are served from the freed
+// addresses and the container does not grow.
+TEST_F(StateBackendTest, aggregatingStateClearReclaimsValueRows) {
+  SumAggregate sum;
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+  auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+  const VoidNamespace ns;
+
+  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(
+      sum.descriptor(pool()));
+  sum.wire(state->valueRows());
+  auto* rowA = state->row(keys[0], ns);
+  auto* rowB = state->row(keys[1], ns);
+  const auto rowsBefore = state->valueRows()->numRows();
+  ASSERT_EQ(2, rowsBefore);
+
+  state->clear();
+  auto* freshA = state->row(keys[0], ns);
+  auto* freshB = state->row(keys[1], ns);
+  EXPECT_TRUE(
+      (freshA == rowA && freshB == rowB) || (freshA == rowB && freshB == rowA));
+  EXPECT_EQ(rowsBefore, state->valueRows()->numRows());
+}
+
+// Restoring the same stream twice overwrites the earlier entries (Flink's
+// last-write-wins on duplicate restores); the overwritten accumulator rows
+// return to the value container instead of leaking, so the row count after
+// the second restore equals the count after the first.
+TEST_F(StateBackendTest, aggregatingStateRestoreOverwriteReleasesOldRow) {
+  SumAggregate sumA;
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {0});
+  auto keysA = probeKeys(selectorA, {kCollisionKeyA});
+  const VoidNamespace ns;
+  auto stateA = backendA.getOrCreateAggregatingState<VoidNamespace>(
+      sumA.descriptor(pool()));
+  sumA.wire(stateA->valueRows());
+  sumA.add(stateA->row(keysA[0], ns), makeNullableFlatVector<int64_t>({7}));
+  const auto bytes = backendA.snapshot();
+
+  SumAggregate sumB;
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {0});
+  auto stateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
+      sumB.descriptor(pool()));
+  sumB.wire(stateB->valueRows());
+  backendB.restore(bytes);
+  const auto rowsAfterFirstRestore = stateB->valueRows()->numRows();
+  ASSERT_EQ(1, rowsAfterFirstRestore);
+
+  backendB.restore(bytes);
+  EXPECT_EQ(rowsAfterFirstRestore, stateB->valueRows()->numRows());
+
+  auto keysB = probeKeys(selectorB, {kCollisionKeyA});
+  EXPECT_EQ(7, sumB.valueOf(stateB->row(keysB[0], ns), pool()));
+}
+
 // Value / List / Map states on the same backend: Flink read semantics
 // (miss is default), overwrite on map put, and the collision pair stays
 // independent in each.

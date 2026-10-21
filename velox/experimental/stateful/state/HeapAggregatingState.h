@@ -72,8 +72,8 @@ class HeapAggregatingState : public AggregatingState<K, N> {
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
         nsSerializer_(NamespaceSerializerTraits<N>::create()),
-        valueSchemaId_("presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {
-  }
+        valueSchemaId_(
+            "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {}
 
   void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
     for (size_t i = 0; i < keys.size(); ++i) {
@@ -95,8 +95,20 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return valueRows_.get();
   }
 
+  void remove(const K& key, const N& ns) override {
+    // The accumulator row lives in the value container, not in the state
+    // table: return it before dropping the entry (a miss removes nothing).
+    if (char* valueRow = stateTable_->get(key, ns)) {
+      valueRows_->eraseRows(folly::Range<char**>(&valueRow, 1));
+    }
+    stateTable_->remove(key, ns);
+  }
+
   void clear() override {
+    // The table clear reports every dropped entry to the key-row
+    // bookkeeping; the container clear then frees all accumulator rows.
     stateTable_->clear();
+    valueRows_->clear();
   }
 
   // Synchronous snapshots only: entries are serialized inline while the
@@ -163,6 +175,11 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     char* row = valueRows_->newRow();
     initializeRow_(row);
     mergeRow_(row, columns);
+    // Last write wins on a duplicate restore, as in Flink; the row the put
+    // replaces goes back to the value container instead of leaking.
+    if (char* valueRow = stateTable_->get(key, ns)) {
+      valueRows_->eraseRows(folly::Range<char**>(&valueRow, 1));
+    }
     stateTable_->put(key, ns, row);
   }
 
@@ -198,8 +215,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return payload;
   }
 
-  static std::string spillTypesSchema(
-      const std::vector<TypePtr>& spillTypes) {
+  static std::string spillTypesSchema(const std::vector<TypePtr>& spillTypes) {
     std::string schema;
     for (const auto& spillType : spillTypes) {
       if (!schema.empty()) {

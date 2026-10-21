@@ -90,6 +90,10 @@ class AggregatingState : public State {
   /// rows().
   virtual char* row(const K& key, const N& ns) = 0;
 
+  /// Drops the entry of (key, ns) and returns its accumulator row to the
+  /// value container; a miss is a no-op.
+  virtual void remove(const K& key, const N& ns) = 0;
+
   /// The value RowContainer holding the accumulator rows. Created by the
   /// state from the descriptor's acc types, not by the operator.
   virtual exec::RowContainer* valueRows() = 0;

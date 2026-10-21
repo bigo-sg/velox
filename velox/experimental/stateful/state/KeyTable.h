@@ -200,13 +200,6 @@ class KeyTable : public KeyIndex,
     return std::make_unique<exec::HashLookup>(hashTable_->hashers(), pool_);
   }
 
-  void eraseKey(char* row) override {
-    // HashTable::erase unlinks the row from the hash structure and frees
-    // the container row (RowContainer::eraseRows) in one call; erasing the
-    // row separately here would double free it.
-    hashTable_->erase(folly::Range<char**>(&row, 1));
-  }
-
   /// The lifecycle surface the backend's state tables report entry
   /// existence to; it is this table, which owns the refcount column.
   KeyRowLifecycleObserver<RowContainerStateKey>* keyLifecycle() {
@@ -251,6 +244,15 @@ class KeyTable : public KeyIndex,
   }
 
  private:
+  // Physically removes a key row: HashTable::erase unlinks the row from
+  // the hash structure and frees the container row (RowContainer::
+  // eraseRows) in one call. Internal to this table on purpose - advance()
+  // is the only caller, and an erase that bypasses it would leave the row
+  // on the dirty list as a dangling pointer.
+  void eraseKey(char* row) {
+    hashTable_->erase(folly::Range<char**>(&row, 1));
+  }
+
   // A freshly inserted key row starts with a zero entry refcount and goes
   // on the dirty list at birth: a key that is probed but never written is
   // reclaimable at the next boundary, exactly like a key whose entries

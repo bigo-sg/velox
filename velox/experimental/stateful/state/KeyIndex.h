@@ -75,12 +75,6 @@ class KeyIndex {
   /// A fresh lookup bound to the table's hashers, the scratch a bound
   /// client (KeySelector) probes through.
   virtual std::unique_ptr<exec::HashLookup> newLookup() = 0;
-
-  /// Physically removes a key row from the table (unlinks it from the hash
-  /// table and returns its memory to the container). Batch-boundary
-  /// reclamation only - never between a probe and the consumption of its
-  /// results.
-  virtual void eraseKey(char* row) = 0;
 };
 
 } // namespace facebook::velox::stateful
