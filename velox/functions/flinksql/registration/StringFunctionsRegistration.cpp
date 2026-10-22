@@ -13,17 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/Register.h"
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 #include "velox/expression/VectorFunction.h"
-#include "velox/functions/flinksql/RegexFunctions.h"
 #include "velox/functions/lib/Re2Functions.h"
 
 namespace facebook::velox::functions::flinksql {
 
-void registerFunctions(const std::string& prefix) {
+namespace {
+// Flink semantics: returns NULL on no match, allows non-constant patterns.
+std::shared_ptr<exec::VectorFunction> makeRegexExtract(
+    const std::string& name,
+    const std::vector<exec::VectorFunctionArg>& inputArgs,
+    const core::QueryConfig& config) {
+  return makeRe2Extract(name, inputArgs, config, /*emptyNoMatch=*/false);
+}
+} // namespace
+
+void registerStringFunctions(const std::string& prefix) {
   exec::registerStatefulVectorFunction(
       prefix + "regexp_extract", re2ExtractSignatures(), makeRegexExtract);
+  // TODO: add the Flink string expression registrations.
 }
 
 } // namespace facebook::velox::functions::flinksql

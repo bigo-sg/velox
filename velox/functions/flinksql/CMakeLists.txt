@@ -12,6 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-velox_add_library(velox_functions_flink Register.cpp RegexFunctions.cpp)
-
-velox_link_libraries(velox_functions_flink velox_functions_lib Folly::folly)
+add_subdirectory(registration)

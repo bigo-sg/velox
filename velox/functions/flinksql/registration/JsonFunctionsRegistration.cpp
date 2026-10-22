@@ -13,21 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
-
-#include <memory>
-#include <vector>
-
-#include "velox/expression/Expr.h"
-#include "velox/vector/BaseVector.h"
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 namespace facebook::velox::functions::flinksql {
 
-// Flink-flavored REGEXP_EXTRACT: returns NULL on no match, allows non-constant
-// patterns.
-std::shared_ptr<exec::VectorFunction> makeRegexExtract(
-    const std::string& name,
-    const std::vector<exec::VectorFunctionArg>& inputArgs,
-    const core::QueryConfig& config);
+void registerJsonFunctions(const std::string& /*prefix*/) {
+  // TODO: add the Flink Json expression registrations.
+}
 
 } // namespace facebook::velox::functions::flinksql

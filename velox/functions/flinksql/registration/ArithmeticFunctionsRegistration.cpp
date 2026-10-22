@@ -13,18 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/RegexFunctions.h"
-
-#include "velox/functions/lib/Re2Functions.h"
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 namespace facebook::velox::functions::flinksql {
 
-std::shared_ptr<exec::VectorFunction> makeRegexExtract(
-    const std::string& name,
-    const std::vector<exec::VectorFunctionArg>& inputArgs,
-    const core::QueryConfig& config) {
-  // Flink semantics: returns NULL on no match, allows non-constant patterns.
-  return makeRe2Extract(name, inputArgs, config, /*emptyNoMatch=*/false);
+void registerArithmeticFunctions(const std::string& /*prefix*/) {
+  // TODO: add the Flink Arithmetic expression registrations.
 }
 
 } // namespace facebook::velox::functions::flinksql

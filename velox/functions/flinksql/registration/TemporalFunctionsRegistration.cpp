@@ -13,17 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
-
-#include <string>
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 namespace facebook::velox::functions::flinksql {
 
-// Register Flink SQL functions.
-//
-// Idempotent within a process when called with overwrite=true at the
-// exec::registerStatefulVectorFunction layer; existing registrations with the
-// same name are replaced.
-void registerFunctions(const std::string& prefix = "");
+void registerTemporalFunctions(const std::string& /*prefix*/) {
+  // TODO: add the Flink Temporal expression registrations.
+}
 
 } // namespace facebook::velox::functions::flinksql
