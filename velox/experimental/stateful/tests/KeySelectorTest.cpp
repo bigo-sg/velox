@@ -1,0 +1,408 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include <gtest/gtest.h>
+
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <vector>
+
+#include "velox/common/base/Exceptions.h"
+#include "velox/common/memory/MemoryPool.h"
+#include "velox/exec/RowContainer.h"
+#include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
+#include "velox/experimental/stateful/state/KeySerializer.h"
+#include "velox/experimental/stateful/state/KeyTable.h"
+#include "velox/experimental/stateful/state/StateKey.h"
+#include "velox/type/Type.h"
+#include "velox/vector/tests/utils/VectorTestBase.h"
+
+namespace facebook::velox::stateful {
+namespace {
+
+using namespace facebook::velox;
+
+// 391 and 32728 are the collision pair that broke the old identity: both
+// map to 250707955 under fmix64 % INT_MAX, so the old partition() silently
+// merged them. Every test below probes them through the groupProbe path.
+constexpr int64_t kCollisionKeyA = 391;
+constexpr int64_t kCollisionKeyB = 32728;
+
+class KeySelectorTest : public testing::Test, public test::VectorTestBase {
+ protected:
+  static void SetUpTestCase() {
+    memory::MemoryManager::testingSetInstance({});
+  }
+
+  RowVectorPtr makeInput(const std::vector<std::optional<int64_t>>& keys) {
+    return makeRowVector({makeNullableFlatVector<int64_t>(keys)});
+  }
+};
+
+// The collision pair lands on two different rows; nothing merges.
+TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+  selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
+
+  auto keys = selector.keys();
+  ASSERT_EQ(2, keys.size());
+  EXPECT_NE(keys[0].row(), keys[1].row());
+  EXPECT_FALSE(keys[0].equals(keys[1]));
+
+  auto distinct = selector.distinctKeys();
+  ASSERT_EQ(2, distinct.size());
+  EXPECT_NE(distinct[0].row(), distinct[1].row());
+  EXPECT_FALSE(distinct[0].equals(distinct[1]));
+
+  const auto& groupRows = selector.groupRows();
+  ASSERT_EQ(2, groupRows.size());
+  EXPECT_TRUE(groupRows[0].isValid(0));
+  EXPECT_FALSE(groupRows[0].isValid(1));
+  EXPECT_FALSE(groupRows[1].isValid(0));
+  EXPECT_TRUE(groupRows[1].isValid(1));
+
+  EXPECT_NE(nullptr, selector.keyRowContainer());
+}
+
+// Usage 1 (per-row): keys are 1:1 with input rows, equal keys share the row
+// pointer, and repeated probes are idempotent.
+TEST_F(KeySelectorTest, perRowKeys) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+  selector.probe(makeInput(
+      {kCollisionKeyA,
+       kCollisionKeyB,
+       kCollisionKeyA,
+       kCollisionKeyA,
+       kCollisionKeyB}));
+
+  auto keys = selector.keys();
+  ASSERT_EQ(5, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[2].row());
+  EXPECT_EQ(keys[0].row(), keys[3].row());
+  EXPECT_EQ(keys[1].row(), keys[4].row());
+  EXPECT_NE(keys[0].row(), keys[1].row());
+  EXPECT_TRUE(keys[0].equals(keys[2]));
+  EXPECT_EQ(keys[0].hash(), keys[2].hash());
+  EXPECT_EQ(keys[0].keyGroup(), keys[2].keyGroup());
+  EXPECT_LT(keys[0].keyGroup(), 128);
+
+  auto distinct = selector.distinctKeys();
+  ASSERT_EQ(2, distinct.size());
+
+  const auto& groupRows = selector.groupRows();
+  ASSERT_EQ(2, groupRows.size());
+  EXPECT_EQ(3, groupRows[0].countSelected());
+  EXPECT_EQ(2, groupRows[1].countSelected());
+  EXPECT_TRUE(groupRows[0].isValid(0));
+  EXPECT_TRUE(groupRows[0].isValid(2));
+  EXPECT_TRUE(groupRows[0].isValid(3));
+  EXPECT_TRUE(groupRows[1].isValid(1));
+  EXPECT_TRUE(groupRows[1].isValid(4));
+
+  auto newGroups = selector.newGroups();
+  ASSERT_EQ(2, newGroups.size());
+  EXPECT_EQ(0, newGroups[0]);
+  EXPECT_EQ(1, newGroups[1]);
+}
+
+// Row pointers stay stable and newGroups only reports first occurrences
+// across probes.
+TEST_F(KeySelectorTest, probesAreIncremental) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+
+  selector.probe(makeInput({kCollisionKeyA}));
+  auto firstRows = selector.keys();
+  ASSERT_EQ(1, firstRows.size());
+  // The keys() view is only valid until the next probe (the underlying
+  // vector may reallocate); the row itself never moves, so capture the row
+  // pointer by value for the cross-probe comparisons below.
+  const char* firstRow = firstRows[0].row();
+  ASSERT_EQ(1, selector.newGroups().size());
+
+  selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
+  auto keys = selector.keys();
+  ASSERT_EQ(2, keys.size());
+  EXPECT_EQ(firstRow, keys[0].row());
+  auto newGroups = selector.newGroups();
+  ASSERT_EQ(1, newGroups.size());
+  EXPECT_EQ(1, newGroups[0]);
+
+  // Everything exists now: no new groups, pointers unchanged.
+  selector.probe(makeInput({kCollisionKeyB, kCollisionKeyA}));
+  keys = selector.keys();
+  EXPECT_EQ(firstRow, keys[1].row());
+  EXPECT_TRUE(selector.newGroups().empty());
+  EXPECT_EQ(2, selector.distinctKeys().size());
+}
+
+// Null keys form their own group: null equals null, one distinct key.
+TEST_F(KeySelectorTest, nullKeysFormOneGroup) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+  selector.probe(makeInput({std::nullopt, kCollisionKeyA, std::nullopt}));
+
+  auto keys = selector.keys();
+  ASSERT_EQ(3, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[2].row());
+  EXPECT_NE(keys[0].row(), keys[1].row());
+  EXPECT_TRUE(keys[0].equals(keys[2]));
+  EXPECT_FALSE(keys[0].equals(keys[1]));
+
+  auto distinct = selector.distinctKeys();
+  ASSERT_EQ(2, distinct.size());
+  EXPECT_EQ(2, selector.groupRows()[0].countSelected());
+  EXPECT_EQ(1, selector.groupRows()[1].countSelected());
+}
+
+// Composite keys (varchar, bigint) group on the full column tuple.
+TEST_F(KeySelectorTest, compositeKey) {
+  auto input = makeRowVector(
+      {makeNullableFlatVector<std::string>({"a", "b", "a", "a"}),
+       makeNullableFlatVector<int64_t>({1, 1, 1, 2})});
+
+  KeyTable keyTable({VARCHAR(), BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0, 1});
+  selector.probe(input);
+
+  auto keys = selector.keys();
+  ASSERT_EQ(4, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[2].row());
+  EXPECT_NE(keys[0].row(), keys[1].row());
+  EXPECT_NE(keys[0].row(), keys[3].row());
+
+  EXPECT_EQ(3, selector.distinctKeys().size());
+  const auto& groupRows = selector.groupRows();
+  ASSERT_EQ(3, groupRows.size());
+  EXPECT_EQ(2, groupRows[0].countSelected());
+  EXPECT_EQ(1, groupRows[1].countSelected());
+  EXPECT_EQ(1, groupRows[2].countSelected());
+}
+
+// The table may switch hash modes at runtime (kArray -> kNormalizedKey /
+// kHash on rehash). Previously returned row pointers must survive such
+// transitions and the collision pair must stay distinct afterwards.
+TEST_F(KeySelectorTest, rowPointersSurviveHashModeTransitions) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+
+  // Small non-negative values keep the table in kArray mode.
+  selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
+  const char* rowA = selector.keys()[0].row();
+  const char* rowB = selector.keys()[1].row();
+
+  // Large and negative values overflow the value-ID ranges and force the
+  // table to rehash into a generic mode.
+  selector.probe(makeInput({1LL << 40, -(1LL << 40), -5}));
+  EXPECT_EQ(3, selector.newGroups().size());
+
+  selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
+  auto keys = selector.keys();
+  ASSERT_EQ(2, keys.size());
+  EXPECT_EQ(rowA, keys[0].row());
+  EXPECT_EQ(rowB, keys[1].row());
+  EXPECT_TRUE(selector.newGroups().empty());
+  // distinctKeys() reflects the last probe() input only; the five keys seen
+  // so far live on in the key RowContainer / the table.
+  EXPECT_EQ(2, selector.distinctKeys().size());
+}
+
+// Empty input is a no-op probe with empty results.
+TEST_F(KeySelectorTest, emptyInput) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+  selector.probe(makeInput({}));
+
+  EXPECT_TRUE(selector.keys().empty());
+  EXPECT_TRUE(selector.distinctKeys().empty());
+  EXPECT_TRUE(selector.groupRows().empty());
+  EXPECT_TRUE(selector.newGroups().empty());
+
+  selector.probe(makeInput({kCollisionKeyA}));
+  EXPECT_EQ(1, selector.keys().size());
+}
+
+// The stable hash chain of probe() must match the chain the serializer
+// probes a restored key through (serialize -> deserialize round trip), so
+// hash and keyGroup are identical at probe time and after a restart, and a
+// restored key lands on the very row it had at probe time.
+TEST_F(KeySelectorTest, probeHashMatchesSerializerChain) {
+  KeyTable keyTable({BIGINT()}, 128, pool());
+  KeySelector selector(keyTable, {0});
+  selector.probe(makeInput({kCollisionKeyA, kCollisionKeyB, kCollisionKeyA}));
+
+  auto distinct = selector.distinctKeys();
+  ASSERT_EQ(2, distinct.size());
+  auto serializer = selector.keySerializer();
+  for (const auto& key : distinct) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+    EXPECT_TRUE(restored.equals(key));
+  }
+}
+
+// Float key columns follow the table's grouping semantics: NaN equals NaN
+// (one group, mirroring the NaN-aware hash chain), -0.0 equals +0.0 and
+// null equals null. Verified across hash-mode transitions and through the
+// serializer round trip.
+TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
+  const auto nan = std::numeric_limits<double>::quiet_NaN();
+  KeyTable doubleTable({DOUBLE()}, 128, pool());
+  KeySelector selector(doubleTable, {0});
+
+  selector.probe(makeRowVector({makeNullableFlatVector<double>(
+      {nan, nan, -0.0, 0.0, std::nullopt, std::nullopt, 1.5})}));
+  auto keys = selector.keys();
+  ASSERT_EQ(7, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[1].row());
+  EXPECT_TRUE(keys[0].equals(keys[1]));
+  EXPECT_EQ(keys[0].hash(), keys[1].hash());
+  EXPECT_EQ(keys[0].keyGroup(), keys[1].keyGroup());
+  EXPECT_EQ(keys[2].row(), keys[3].row());
+  EXPECT_TRUE(keys[2].equals(keys[3]));
+  EXPECT_EQ(keys[2].hash(), keys[3].hash());
+  EXPECT_EQ(keys[4].row(), keys[5].row());
+  EXPECT_TRUE(keys[4].equals(keys[5]));
+  EXPECT_NE(keys[0].row(), keys[2].row());
+  EXPECT_NE(keys[0].row(), keys[4].row());
+  EXPECT_NE(keys[2].row(), keys[4].row());
+  EXPECT_EQ(4, selector.distinctKeys().size());
+
+  const char* nanRow = keys[0].row();
+  const char* zeroRow = keys[2].row();
+  const char* nullRow = keys[4].row();
+
+  // Many distinct values force the table out of its array mode into the
+  // generic hash modes; the float grouping must survive the transition.
+  std::vector<std::optional<double>> many;
+  many.reserve(2000);
+  for (int i = 0; i < 2000; ++i) {
+    many.push_back(i * 1e6 + 0.5);
+  }
+  selector.probe(makeRowVector({makeNullableFlatVector<double>(many)}));
+  EXPECT_EQ(2000, selector.newGroups().size());
+
+  selector.probe(makeRowVector(
+      {makeNullableFlatVector<double>({nan, 0.0, -0.0, std::nullopt, 1.5})}));
+  keys = selector.keys();
+  ASSERT_EQ(5, keys.size());
+  EXPECT_EQ(nanRow, keys[0].row());
+  EXPECT_EQ(zeroRow, keys[1].row());
+  EXPECT_EQ(zeroRow, keys[2].row());
+  EXPECT_EQ(nullRow, keys[3].row());
+  EXPECT_TRUE(selector.newGroups().empty());
+
+  // The serializer round trip lands on the same rows with the same hashes
+  // and key groups, NaN and signed zeros included.
+  auto serializer = selector.keySerializer();
+  for (const auto& key : selector.distinctKeys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+  }
+
+  // REAL keys follow the same rules.
+  const auto nanFloat = std::numeric_limits<float>::quiet_NaN();
+  KeyTable floatTable({REAL()}, 128, pool());
+  KeySelector floatSelector(floatTable, {0});
+  floatSelector.probe(makeRowVector(
+      {makeNullableFlatVector<float>({nanFloat, nanFloat, -0.0f, 0.0f})}));
+  auto floatKeys = floatSelector.keys();
+  ASSERT_EQ(4, floatKeys.size());
+  EXPECT_EQ(floatKeys[0].row(), floatKeys[1].row());
+  EXPECT_TRUE(floatKeys[0].equals(floatKeys[1]));
+  EXPECT_EQ(floatKeys[2].row(), floatKeys[3].row());
+  EXPECT_TRUE(floatKeys[2].equals(floatKeys[3]));
+}
+
+// Unsupported key column types fail at construction of the key table
+// instead of midway through a probe, a comparison or a serialization.
+TEST_F(KeySelectorTest, unsupportedKeyTypeFailsAtConstruction) {
+  EXPECT_THROW(KeyTable({ARRAY(BIGINT())}, 128, pool()), VeloxException);
+}
+
+// Two selectors bound to one backend's key table probe through their own
+// scratch: one selector's cached results (keys, newGroups) survive the
+// other's probes, and both see the same rows through the shared table.
+TEST_F(KeySelectorTest, boundSelectorsDoNotDisturbEachOther) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, 128, 0, 128, pool());
+  KeySelector selectorA(backend.keyIndex(), {0});
+  KeySelector selectorB(backend.keyIndex(), {0});
+
+  selectorA.probe(makeInput({kCollisionKeyA, kCollisionKeyB}));
+  ASSERT_EQ(2, selectorA.newGroups().size());
+  const char* rowA = selectorA.keys()[0].row();
+
+  selectorB.probe(makeInput({kCollisionKeyB, 7}));
+  EXPECT_EQ(1, selectorB.newGroups().size());
+
+  // A's cached results were untouched by B's probe.
+  auto keysA = selectorA.keys();
+  ASSERT_EQ(2, keysA.size());
+  EXPECT_EQ(rowA, keysA[0].row());
+  EXPECT_EQ(2, selectorA.newGroups().size());
+
+  // Both selectors see the same rows through the shared table: 7 already
+  // exists for A, and equal keys resolve to equal row pointers.
+  selectorA.probe(makeInput({kCollisionKeyB, 7}));
+  EXPECT_TRUE(selectorA.newGroups().empty());
+  EXPECT_EQ(selectorB.keys()[1].row(), selectorA.keys()[1].row());
+  EXPECT_EQ(2, selectorA.distinctKeys().size());
+}
+
+// The key serializer belongs to the bound table (the backend), not to any
+// selector: one instance serves every bound selector across their probes.
+TEST_F(KeySelectorTest, keySerializerIsOwnedByTheTable) {
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, 128, 0, 128, pool());
+  EXPECT_EQ(
+      backend.keyIndex().keySerializer().get(),
+      backend.keyIndex().keySerializer().get());
+
+  KeySelector selectorA(backend.keyIndex(), {0});
+  KeySelector selectorB(backend.keyIndex(), {0});
+  selectorA.probe(makeInput({kCollisionKeyA}));
+  selectorB.probe(makeInput({kCollisionKeyB}));
+
+  auto serializer = selectorA.keySerializer();
+  EXPECT_EQ(serializer.get(), selectorB.keySerializer().get());
+  for (const auto& key : selectorA.distinctKeys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+  }
+  for (const auto& key : selectorB.distinctKeys()) {
+    auto restored = serializer->deserialize(serializer->serialize(key));
+    EXPECT_EQ(key.row(), restored.row());
+    EXPECT_EQ(key.hash(), restored.hash());
+    EXPECT_EQ(key.keyGroup(), restored.keyGroup());
+    EXPECT_TRUE(key.equals(restored));
+  }
+}
+
+} // namespace
+} // namespace facebook::velox::stateful

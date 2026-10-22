@@ -17,6 +17,7 @@
 
 #include <exception>
 #include <memory>
+#include <optional>
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/slice.h"
@@ -302,7 +303,7 @@ class RocksDBMapState : public RocksDBState<K, N, MapVectorPtr>,
             defaultValue,
             pool) {}
 
-  UV get(K key, N ns, UK userKey) override {
+  std::optional<UV> get(K key, N ns, UK userKey) override {
     MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
     VELOX_CHECK(mapVector != nullptr, "MapVector is null.");
     FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();
@@ -315,7 +316,7 @@ class RocksDBMapState : public RocksDBState<K, N, MapVectorPtr>,
         }
       }
     }
-    return UV();
+    return std::nullopt;
   }
 
   MapVectorPtr vectorGet(const K& key, const N& ns) override {
