@@ -654,7 +654,14 @@ variant deserializeOpaque(const folly::dynamic& variantobj) {
 }
 variant variant::create(const folly::dynamic& variantobj) {
   TypeKind kind = mapNameToTypeKind(variantobj["type"].asString());
-  const folly::dynamic& obj = variantobj["value"];
+  // The Java producer (velox4j Serde) serializes with Include.NON_NULL, so a
+  // null variant value arrives as an absent "value" member rather than an
+  // explicit null; treat both as the typed null.
+  auto valueIt = variantobj.find("value");
+  if (valueIt == variantobj.items().end()) {
+    return variant::null(kind);
+  }
+  const folly::dynamic& obj = valueIt->second;
 
   if (obj.isNull()) {
     return variant::null(kind);

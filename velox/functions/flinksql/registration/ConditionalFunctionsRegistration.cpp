@@ -13,12 +13,42 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
+#include "velox/functions/flinksql/ConditionalFunctions.h"
+
+#include "velox/functions/Registerer.h"
 
 namespace facebook::velox::functions::flinksql {
 
-void registerConditionalFunctions(const std::string& /*prefix*/) {
-  // TODO: add the Flink Conditional expression registrations.
+void registerConditionalFunctions(const std::string& prefix) {
+  // IFNULL(T, T) -> T. Flink's planner inserts the casts that bring both
+  // operands to their common type, so every supported type needs exactly
+  // one same-typed signature (decimals through the generic bindings).
+  registerFunction<IfNullFunction, bool, bool, bool>({prefix + "ifnull"});
+  registerFunction<IfNullFunction, int8_t, int8_t, int8_t>(
+      {prefix + "ifnull"});
+  registerFunction<IfNullFunction, int16_t, int16_t, int16_t>(
+      {prefix + "ifnull"});
+  registerFunction<IfNullFunction, int32_t, int32_t, int32_t>(
+      {prefix + "ifnull"});
+  registerFunction<IfNullFunction, int64_t, int64_t, int64_t>(
+      {prefix + "ifnull"});
+  registerFunction<IfNullFunction, float, float, float>({prefix + "ifnull"});
+  registerFunction<IfNullFunction, double, double, double>({prefix + "ifnull"});
+  registerFunction<IfNullFunction, Varchar, Varchar, Varchar>(
+      {prefix + "ifnull"});
+  registerFunction<IfNullFunction, Date, Date, Date>({prefix + "ifnull"});
+  registerFunction<IfNullFunction, Timestamp, Timestamp, Timestamp>(
+      {prefix + "ifnull"});
+  registerFunction<
+      IfNullFunction,
+      ShortDecimal<P1, S1>,
+      ShortDecimal<P1, S1>,
+      ShortDecimal<P1, S1>>({prefix + "ifnull"});
+  registerFunction<
+      IfNullFunction,
+      LongDecimal<P1, S1>,
+      LongDecimal<P1, S1>,
+      LongDecimal<P1, S1>>({prefix + "ifnull"});
 }
 
 } // namespace facebook::velox::functions::flinksql
