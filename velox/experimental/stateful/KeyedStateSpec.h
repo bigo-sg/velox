@@ -84,11 +84,6 @@ class KeyedStateSpec : public ISerializable {
         std::move(keyChannels), std::move(keyTypes));
   }
 
-  static void registerSerDe() {
-    auto& registry = DeserializationWithContextRegistryForSharedPtr();
-    registry.Register("KeyedStateSpec", create);
-  }
-
  private:
   const std::vector<column_index_t> keyChannels_;
   const std::vector<TypePtr> keyTypes_;

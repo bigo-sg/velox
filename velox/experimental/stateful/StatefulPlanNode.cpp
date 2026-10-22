@@ -16,6 +16,7 @@
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include <cstdint>
 #include "velox/experimental/stateful/KeyGroupPartitionFunction.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 
 namespace facebook::velox::stateful {
@@ -94,6 +95,7 @@ void StatefulPlanNode::registerSerDe() {
   registry.Register("StreamTopNNode", StreamTopNNode::create);
   registry.Register("GroupAggsHandlerNode", GroupAggsHandlerNode::create);
   registry.Register("GroupAggregationNode", GroupAggregationNode::create);
+  registry.Register("KeyedStateSpec", KeyedStateSpec::create);
 }
 
 const std::vector<core::PlanNodePtr>& WatermarkAssignerNode::sources() const {
