@@ -13,3 +13,7 @@
 # limitations under the License.
 
 add_subdirectory(registration)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()
