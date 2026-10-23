@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_subdirectory(aggregates)
+
 velox_add_library(velox_functions_flink_impl StringFunctions.cpp
                   DateTimeFunctions.cpp)
 
