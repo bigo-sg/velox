@@ -18,6 +18,7 @@ velox_add_library(velox_functions_flink_impl StringFunctions.cpp
 velox_link_libraries(velox_functions_flink_impl velox_functions_lib
                      velox_functions_lib_date_time_formatter Folly::folly)
 
+add_subdirectory(aggregates)
 add_subdirectory(registration)
 
 if(${VELOX_BUILD_TESTING})
