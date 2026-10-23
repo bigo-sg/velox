@@ -45,6 +45,11 @@ void WindowJoin::initialize() {
 }
 
 void WindowJoin::initializeState() {
+  // TODO: migrate this operator to operator-owned keyed state (cf.
+  // GroupAggregator::initializeStateBackend) and remove this guard.
+  VELOX_NYI(
+      "WindowJoin is not yet migrated to operator-owned keyed state; there "
+      "is no state handler to initialize");
   StateDescriptor leftStateDesc("left-records");
   leftWindowState_ = stateHandler()->getListState(leftStateDesc);
   StateDescriptor rightStateDesc("right-records");
@@ -64,8 +69,14 @@ void WindowJoin::close() {
   StatefulOperator::close();
   leftInput_->close();
   rightInput_->close();
-  leftWindowState_->clear();
-  rightWindowState_->clear();
+  // State members are created in initializeState(), which fails fast when the
+  // operator has no state handler; they can be null at close time.
+  if (leftWindowState_) {
+    leftWindowState_->clear();
+  }
+  if (rightWindowState_) {
+    rightWindowState_->clear();
+  }
 }
 
 void WindowJoin::advance() {

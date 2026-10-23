@@ -18,7 +18,9 @@
 #include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/type/Type.h"
+#include "velox/vector/BaseVector.h"
 #include "velox/vector/ConstantVector.h"
+#include "velox/vector/FlatVector.h"
 
 namespace facebook::velox::stateful {
 
@@ -123,6 +125,17 @@ std::shared_ptr<StreamRecord> StreamRecord::create(
   }
   return std::make_shared<StreamRecord>(
       std::move(nodeId), std::move(value), std::move(simpleKind));
+}
+
+SimpleVectorPtr<int8_t> makeRowKindVector(
+    memory::MemoryPool* pool,
+    const std::vector<int8_t>& kinds) {
+  auto vector = std::static_pointer_cast<FlatVector<int8_t>>(
+      BaseVector::create(TINYINT(), kinds.size(), pool));
+  for (size_t i = 0; i < kinds.size(); ++i) {
+    vector->set(static_cast<vector_size_t>(i), kinds[i]);
+  }
+  return vector;
 }
 
 } // namespace facebook::velox::stateful
