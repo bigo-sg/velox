@@ -156,12 +156,14 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
       return AggregatingStateDescriptor(
           "acc",
           {exec::Accumulator(function.get(), BIGINT())},
-          [this](char* row) {
-            ++initCount;
-            char* groups[1] = {row};
-            const std::vector<vector_size_t> indices{0};
+          [this](char** rows, size_t numRows) {
+            initCount += numRows;
+            std::vector<vector_size_t> indices(numRows);
+            for (size_t i = 0; i < numRows; ++i) {
+              indices[i] = static_cast<vector_size_t>(i);
+            }
             function->initializeNewGroups(
-                groups,
+                rows,
                 folly::Range<const vector_size_t*>(
                     indices.data(), indices.size()));
           },
@@ -246,13 +248,15 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
       return AggregatingStateDescriptor(
           "acc",
           std::move(accumulators),
-          [this](char* row) {
-            ++initCount;
+          [this](char** rows, size_t numRows) {
+            initCount += numRows;
+            std::vector<vector_size_t> indices(numRows);
+            for (size_t i = 0; i < numRows; ++i) {
+              indices[i] = static_cast<vector_size_t>(i);
+            }
             for (auto* function : {sum.get(), avg.get(), min.get()}) {
-              char* groups[1] = {row};
-              const std::vector<vector_size_t> indices{0};
               function->initializeNewGroups(
-                  groups,
+                  rows,
                   folly::Range<const vector_size_t*>(
                       indices.data(), indices.size()));
             }

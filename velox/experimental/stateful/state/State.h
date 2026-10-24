@@ -86,7 +86,8 @@ void checkEntryKeyGroup(const K& key, int32_t keyGroupId) {
 /// RowContainer whose layout the state derives once from the descriptor's
 /// acc types. On a miss the state materializes a fresh row and initializes
 /// it through the operator-registered callback (the operator wraps
-/// Aggregate::initializeNewGroups over its own aggregates); the state layer
+/// Aggregate::initializeNewGroups over its own aggregates; a batch of misses
+/// initializes through one callback); the state layer
 /// has zero dependency on AggregateInfo. The operator drives addRawInput
 /// itself with its own aggregate metadata; the state never orchestrates
 /// accumulation. Relevant to Flink AggregatingState.
@@ -100,8 +101,9 @@ class AggregatingState : public State {
  public:
   /// Batch lookup of value row pointers under namespace 'ns'. outRows[i]
   /// receives the value row for keys[i]; a miss creates a new row in the
-  /// value RowContainer, initializes it via the descriptor's init callback
-  /// and inserts it into the state table. outRows is caller-owned (out
+  /// value RowContainer, inserts it into the state table, and the batch's
+  /// new rows are initialized together via one descriptor init callback.
+  /// outRows is caller-owned (out
   /// parameter, reused across batches for zero allocation on the hot path).
   virtual void
   rows(folly::Range<const K*> keys, const N& ns, char** outRows) = 0;

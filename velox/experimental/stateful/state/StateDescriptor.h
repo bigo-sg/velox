@@ -66,15 +66,16 @@ class StateDescriptor {
 // through the accumulator array and the two callbacks.
 class AggregatingStateDescriptor : public StateDescriptor {
  public:
-  // Initializes a freshly materialized value row; invoked by the state on
-  // each miss. Operator-supplied so that the state never calls any Aggregate
-  // method itself.
-  using InitRowCallback = std::function<void(char* row)>;
+  // Initializes freshly materialized value rows; invoked by the state once
+  // per batch of misses (a single miss arrives as a one-row array). The
+  // batch shape matches Aggregate::initializeNewGroups. Operator-supplied so
+  // that the state never calls any Aggregate method itself.
+  using InitRowsCallback = std::function<void(char** rows, size_t numRows)>;
 
   // Merges row 0 of 'columns' (one one-row intermediate column per
   // accumulator, in descriptor order; produced by Accumulator::extractForSpill
   // on the snapshot side) into the accumulators of 'row'. Invoked by the state
-  // on restore, after 'initializeRow' has constructed the fresh accumulators —
+  // on restore, after 'initializeRows' has constructed the fresh accumulators —
   // the same construct-then-merge sequence velox uses to reload spilled
   // aggregation state. One keyed entry restores one row, so the columns
   // always carry exactly one row.
@@ -84,12 +85,12 @@ class AggregatingStateDescriptor : public StateDescriptor {
   AggregatingStateDescriptor(
       const std::string& name,
       std::vector<exec::Accumulator> accumulators,
-      InitRowCallback initializeRow,
+      InitRowsCallback initializeRows,
       MergeRowCallback mergeRow,
       memory::MemoryPool* pool = nullptr)
       : StateDescriptor(name, "", pool),
         accumulators_(std::move(accumulators)),
-        initializeRow_(std::move(initializeRow)),
+        initializeRows_(std::move(initializeRows)),
         mergeRow_(std::move(mergeRow)) {}
 
   const std::vector<exec::Accumulator>& accumulators() const {
@@ -109,8 +110,8 @@ class AggregatingStateDescriptor : public StateDescriptor {
     return types;
   }
 
-  const InitRowCallback& initializeRow() const {
-    return initializeRow_;
+  const InitRowsCallback& initializeRows() const {
+    return initializeRows_;
   }
 
   const MergeRowCallback& mergeRow() const {
@@ -124,7 +125,7 @@ class AggregatingStateDescriptor : public StateDescriptor {
   // these closures) and must have setAllocator/setOffsets wired to the
   // state's valueRows() container before the first rows() call.
   const std::vector<exec::Accumulator> accumulators_;
-  const InitRowCallback initializeRow_;
+  const InitRowsCallback initializeRows_;
   const MergeRowCallback mergeRow_;
 };
 

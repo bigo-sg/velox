@@ -40,11 +40,12 @@ namespace facebook::velox::stateful {
 /// RowContainer in accumulator layout, built from the descriptor's
 /// accumulator array so that aggregate functions read and write their slots
 /// in place (the same layout HashAggregation rows use). On a miss the state
-/// materializes a fresh row, constructs the accumulators through the
-/// descriptor's init callback (the operator wraps
-/// Aggregate::initializeNewGroups over its own aggregates) and inserts the
-/// row into the state table. The state never calls any Aggregate method
-/// itself. Relevant to Flink HeapAggregatingState.
+/// materializes a fresh row, inserts it into the state table, and constructs
+/// the accumulators through the descriptor's init callback — one batched
+/// call per rows() batch of misses (the operator wraps
+/// Aggregate::initializeNewGroups over its own aggregates). The state never
+/// calls any Aggregate method itself. Relevant to Flink
+/// HeapAggregatingState.
 /// @param <K> type of key, a StateKey subclass
 /// @param <N> type of namespace, a Namespace subclass
 template <typename K, typename N>
@@ -67,7 +68,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
             false,
             false,
             descriptor.memoryPool())),
-        initializeRow_(descriptor.initializeRow()),
+        initializeRows_(descriptor.initializeRows()),
         mergeRow_(descriptor.mergeRow()),
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
@@ -76,8 +77,19 @@ class HeapAggregatingState : public AggregatingState<K, N> {
             "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {}
 
   void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
+    std::vector<char*> newRows;
     for (size_t i = 0; i < keys.size(); ++i) {
-      outRows[i] = row(keys[i], ns);
+      if (char* value = stateTable_->get(keys[i], ns)) {
+        outRows[i] = value;
+        continue;
+      }
+      char* row = valueRows_->newRow();
+      stateTable_->put(keys[i], ns, row);
+      outRows[i] = row;
+      newRows.push_back(row);
+    }
+    if (!newRows.empty()) {
+      initializeRows_(newRows.data(), newRows.size());
     }
   }
 
@@ -86,7 +98,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
       return value;
     }
     char* newRow = valueRows_->newRow();
-    initializeRow_(newRow);
+    initializeRows_(&newRow, 1);
     stateTable_->put(key, ns, newRow);
     return newRow;
   }
@@ -174,7 +186,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
       columns.push_back(std::move(column));
     }
     char* row = valueRows_->newRow();
-    initializeRow_(row);
+    initializeRows_(&row, 1);
     mergeRow_(row, columns);
     // Last write wins on a duplicate restore, as in Flink; the row the put
     // replaces goes back to the value container instead of leaking.
@@ -229,7 +241,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
 
   std::shared_ptr<StateTable<K, N, char*>> stateTable_;
   std::unique_ptr<exec::RowContainer> valueRows_;
-  AggregatingStateDescriptor::InitRowCallback initializeRow_;
+  AggregatingStateDescriptor::InitRowsCallback initializeRows_;
   AggregatingStateDescriptor::MergeRowCallback mergeRow_;
   serializer::presto::PrestoVectorSerde serde_;
   memory::MemoryPool* pool_;
