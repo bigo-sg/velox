@@ -19,7 +19,8 @@ add_executable(
   HashFunctionsTest.cpp
   LogicalFunctionsTest.cpp
   StringFunctionsTest.cpp
-  TemporalFunctionsTest.cpp)
+  TemporalFunctionsTest.cpp
+  JsonFunctionsTest.cpp)
 
 add_test(velox_functions_flinksql_test velox_functions_flinksql_test)
 
