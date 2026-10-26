@@ -654,11 +654,11 @@ variant deserializeOpaque(const folly::dynamic& variantobj) {
 }
 variant variant::create(const folly::dynamic& variantobj) {
   TypeKind kind = mapNameToTypeKind(variantobj["type"].asString());
-  const folly::dynamic& obj = variantobj["value"];
 
-  if (obj.isNull()) {
+  if (!variantobj.count("value") || variantobj["value"].isNull()) {
     return variant::null(kind);
   }
+  const folly::dynamic& obj = variantobj["value"];
   switch (kind) {
     case TypeKind::MAP: {
       std::map<variant, variant> map;
