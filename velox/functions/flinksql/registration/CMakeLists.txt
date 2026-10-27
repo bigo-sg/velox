@@ -14,6 +14,7 @@
 
 velox_add_library(
   velox_functions_flink
+  ../LikeFunctions.cpp
   ArithmeticFunctionsRegistration.cpp
   ConditionalFunctionsRegistration.cpp
   HashFunctionsRegistration.cpp
