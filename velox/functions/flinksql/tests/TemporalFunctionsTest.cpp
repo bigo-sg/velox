@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <date/date.h>
 #include <chrono>
 #include <cmath>
-#include <date/date.h>
 #include <string>
 
 #include "velox/functions/flinksql/TemporalFunctions.h"
-#include "velox/functions/flinksql/Register.h"
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 #include "velox/parse/TypeResolver.h"
 #include "velox/type/Timestamp.h"
@@ -52,8 +52,9 @@ class FlinkTemporalTest : public functions::test::FunctionBaseTest {
     const std::chrono::
         time_point<std::chrono::system_clock, std::chrono::milliseconds>
             localTimepoint(std::chrono::milliseconds(now.toMillis()));
-    const auto daysSinceEpoch = std::chrono::floor<date::days>(
-        localTimepoint.time_since_epoch()).count();
+    const auto daysSinceEpoch =
+        std::chrono::floor<date::days>(localTimepoint.time_since_epoch())
+            .count();
     return static_cast<int32_t>(daysSinceEpoch);
   }
 };
@@ -80,10 +81,8 @@ TEST_F(FlinkTemporalTest, currentDateAcrossZonesSameRun) {
   const auto tokyo = evaluateCurrentDate();
   setTimezone("America/Los_Angeles");
   const auto la = evaluateCurrentDate();
-  ASSERT_EQ(
-      expectedDateInZone(*tz::locateZone("Asia/Tokyo")), tokyo);
-  ASSERT_EQ(
-      expectedDateInZone(*tz::locateZone("America/Los_Angeles")), la);
+  ASSERT_EQ(expectedDateInZone(*tz::locateZone("Asia/Tokyo")), tokyo);
+  ASSERT_EQ(expectedDateInZone(*tz::locateZone("America/Los_Angeles")), la);
 }
 
 // CURRENT_TIME: the session-timezone wall clock as millisecond-of-day INT.
