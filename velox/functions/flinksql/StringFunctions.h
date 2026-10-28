@@ -174,6 +174,62 @@ struct LTrimFunction : public TrimFunctionBase<T, true, false> {};
 template <typename T>
 struct RTrimFunction : public TrimFunctionBase<T, false, true> {};
 
+/// Flink two-argument trim with a runtime-sourced seek (a column or a
+/// computed expression, as opposed to a plan constant). Flink's
+/// BinaryStringDataUtil.isSpaceString (BinaryStringDataUtil.java:967-973)
+/// tests only byteAt(0) == ' ' for segment-backed strings — their Java object
+/// is null — so a seek whose first byte is a space degrades the trim to
+/// space-only instead of trimming the character set. Plan constants keep
+/// their Java object and take the character-set walk, which is what the
+/// plain two-argument functions above implement.
+template <typename T, bool leftTrim, bool rightTrim>
+struct TrimRuntimeFunctionBase
+    : public TrimFunctionBase<T, leftTrim, rightTrim> {
+  VELOX_DEFINE_FUNCTION_TYPES(T);
+
+  using TrimFunctionBase<T, leftTrim, rightTrim>::call;
+  using TrimFunctionBase<T, leftTrim, rightTrim>::callAscii;
+
+  FOLLY_ALWAYS_INLINE void call(
+      out_type<Varchar>& result,
+      const arg_type<Varchar>& str,
+      const arg_type<Varchar>& seek) {
+    if (UNLIKELY(seek.empty())) {
+      result.setNoCopy(str);
+      return;
+    }
+    if (seek.data()[0] == ' ') {
+      TrimSpaceFunctionBase<T, leftTrim, rightTrim>::call(result, str);
+      return;
+    }
+    TrimCharsFunctionBase<T, leftTrim, rightTrim>::call(result, str, seek);
+  }
+
+  FOLLY_ALWAYS_INLINE void callAscii(
+      out_type<Varchar>& result,
+      const arg_type<Varchar>& str,
+      const arg_type<Varchar>& seek) {
+    if (UNLIKELY(seek.empty())) {
+      result.setNoCopy(str);
+      return;
+    }
+    if (seek.data()[0] == ' ') {
+      TrimSpaceFunctionBase<T, leftTrim, rightTrim>::call(result, str);
+      return;
+    }
+    TrimCharsFunctionBase<T, leftTrim, rightTrim>::callAscii(result, str, seek);
+  }
+};
+
+template <typename T>
+struct TrimRuntimeFunction : public TrimRuntimeFunctionBase<T, true, true> {};
+
+template <typename T>
+struct LTrimRuntimeFunction : public TrimRuntimeFunctionBase<T, true, false> {};
+
+template <typename T>
+struct RTrimRuntimeFunction : public TrimRuntimeFunctionBase<T, false, true> {};
+
 /// Flink LPAD/RPAD. Diverges from prestosql/sparksql in two ways: a negative
 /// length or an empty pad returns NULL (velox user check error elsewhere),
 /// and there is no 1MB length cap. Width is counted in UTF-8 code points,

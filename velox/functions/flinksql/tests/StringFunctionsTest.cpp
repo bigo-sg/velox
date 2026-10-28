@@ -95,18 +95,15 @@ TEST_F(FlinkStringTest, trimSpacesWhitespaceSemantics) {
 // two-argument trim removes characters of a character set,
 // not a literal prefix.
 TEST_F(FlinkStringTest, trimChars) {
-  const auto trim = [&](
-                        const std::optional<std::string>& str,
+  const auto trim = [&](const std::optional<std::string>& str,
                         const std::optional<std::string>& seek) {
     return evaluateOnce<std::string>("trim(c0, c1)", str, seek);
   };
-  const auto ltrim = [&](
-                         const std::optional<std::string>& str,
+  const auto ltrim = [&](const std::optional<std::string>& str,
                          const std::optional<std::string>& seek) {
     return evaluateOnce<std::string>("ltrim(c0, c1)", str, seek);
   };
-  const auto rtrim = [&](
-                         const std::optional<std::string>& str,
+  const auto rtrim = [&](const std::optional<std::string>& str,
                          const std::optional<std::string>& seek) {
     return evaluateOnce<std::string>("rtrim(c0, c1)", str, seek);
   };
@@ -137,13 +134,11 @@ TEST_F(FlinkStringTest, trimChars) {
 // seek containing a space (unified character-set walk, no
 // isSpaceString special case).
 TEST_F(FlinkStringTest, trimCharsNonAscii) {
-  const auto trim = [&](
-                        const std::optional<std::string>& str,
+  const auto trim = [&](const std::optional<std::string>& str,
                         const std::optional<std::string>& seek) {
     return evaluateOnce<std::string>("trim(c0, c1)", str, seek);
   };
-  const auto ltrim = [&](
-                         const std::optional<std::string>& str,
+  const auto ltrim = [&](const std::optional<std::string>& str,
                          const std::optional<std::string>& seek) {
     return evaluateOnce<std::string>("ltrim(c0, c1)", str, seek);
   };
@@ -161,8 +156,7 @@ TEST_F(FlinkStringTest, trimCharsSpaceEquivalentToSingleArg) {
   const auto trimSpace = [&](const std::optional<std::string>& str) {
     return evaluateOnce<std::string>("trim(c0)", str);
   };
-  const auto trimWithSpaceSeek = [&](
-                                     const std::optional<std::string>& str,
+  const auto trimWithSpaceSeek = [&](const std::optional<std::string>& str,
                                      const std::optional<std::string>& seek) {
     return evaluateOnce<std::string>("trim(c0, c1)", str, seek);
   };
@@ -176,12 +170,11 @@ TEST_F(FlinkStringTest, trimCharsSpaceEquivalentToSingleArg) {
 // lpad basic padding, truncation, multi-character
 // cycling, len = 0 and BMP-wide unicode.
 TEST_F(FlinkStringTest, lpad) {
-  const auto lpad =
-      [&](const std::optional<std::string>& str,
-          const std::optional<int32_t>& len,
-          const std::optional<std::string>& pad) {
-        return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
-      };
+  const auto lpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
+  };
 
   EXPECT_EQ("xtext", lpad("text", 5, "x"));
   EXPECT_EQ("  text", lpad("text", 6, " "));
@@ -204,12 +197,11 @@ TEST_F(FlinkStringTest, lpad) {
 }
 
 TEST_F(FlinkStringTest, rpad) {
-  const auto rpad =
-      [&](const std::optional<std::string>& str,
-          const std::optional<int32_t>& len,
-          const std::optional<std::string>& pad) {
-        return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
-      };
+  const auto rpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
+  };
 
   EXPECT_EQ("textx", rpad("text", 5, "x"));
   EXPECT_EQ("text  ", rpad("text", 6, " "));
@@ -228,18 +220,16 @@ TEST_F(FlinkStringTest, rpad) {
 // a negative length or an empty pad yields NULL - unlike
 // prestosql/sparksql, which raise a user error.
 TEST_F(FlinkStringTest, padInvalidArgumentsReturnNull) {
-  const auto lpad =
-      [&](const std::optional<std::string>& str,
-          const std::optional<int32_t>& len,
-          const std::optional<std::string>& pad) {
-        return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
-      };
-  const auto rpad =
-      [&](const std::optional<std::string>& str,
-          const std::optional<int32_t>& len,
-          const std::optional<std::string>& pad) {
-        return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
-      };
+  const auto lpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
+  };
+  const auto rpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
+  };
 
   EXPECT_EQ(lpad("abc", -1, "e"), std::nullopt);
   EXPECT_EQ(rpad("abc", -1, "e"), std::nullopt);
@@ -254,18 +244,16 @@ TEST_F(FlinkStringTest, padInvalidArgumentsReturnNull) {
 
 // NULL in any argument position propagates NULL.
 TEST_F(FlinkStringTest, padNullArguments) {
-  const auto lpad =
-      [&](const std::optional<std::string>& str,
-          const std::optional<int32_t>& len,
-          const std::optional<std::string>& pad) {
-        return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
-      };
-  const auto rpad =
-      [&](const std::optional<std::string>& str,
-          const std::optional<int32_t>& len,
-          const std::optional<std::string>& pad) {
-        return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
-      };
+  const auto lpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
+  };
+  const auto rpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
+  };
 
   EXPECT_EQ(lpad(std::nullopt, 5, "x"), std::nullopt);
   EXPECT_EQ(rpad(std::nullopt, 5, "x"), std::nullopt);
@@ -273,6 +261,73 @@ TEST_F(FlinkStringTest, padNullArguments) {
   EXPECT_EQ(rpad("abc", std::nullopt, "x"), std::nullopt);
   EXPECT_EQ(lpad("abc", 5, std::nullopt), std::nullopt);
   EXPECT_EQ(rpad("abc", 5, std::nullopt), std::nullopt);
+}
+
+// Non-BMP characters: width is counted in UTF-8 code points, while Flink's
+// SqlFunctionUtils counts UTF-16 code units (the counts differ for non-BMP
+// inputs). These cases pin the code-point behavior.
+TEST_F(FlinkStringTest, padNonBmpCodePoints) {
+  const auto lpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("lpad(c0, c1, c2)", str, len, pad);
+  };
+  const auto rpad = [&](const std::optional<std::string>& str,
+                        const std::optional<int32_t>& len,
+                        const std::optional<std::string>& pad) {
+    return evaluateOnce<std::string>("rpad(c0, c1, c2)", str, len, pad);
+  };
+
+  // U+1F600 is one code point (4 UTF-8 bytes, 2 UTF-16 units).
+  EXPECT_EQ(lpad("\U0001F600", 2, "x"), "x\U0001F600");
+  EXPECT_EQ(rpad("\U0001F600", 2, "x"), "\U0001F600x");
+  EXPECT_EQ(lpad("\U0001F600", 1, "x"), "\U0001F600");
+
+  // Truncation cuts on code-point boundaries.
+  EXPECT_EQ(lpad("a\U0001F600b", 2, "x"), "a\U0001F600");
+  EXPECT_EQ(rpad("a\U0001F600b", 2, "x"), "a\U0001F600");
+}
+
+// Runtime-sourced seek: Flink's isSpaceString (BinaryStringDataUtil.java:
+// 967-973) tests only byteAt(0) == ' ' for segment-backed strings, so a seek
+// starting with a space degrades the trim to space-only. Plan-constant seeks
+// take the character-set walk (the plain two-argument functions).
+TEST_F(FlinkStringTest, trimRuntimeSeekDegradesToSpaces) {
+  const auto rtrimRuntime = [&](const std::optional<std::string>& str,
+                                const std::optional<std::string>& seek) {
+    return evaluateOnce<std::string>("rtrim_runtime(c0, c1)", str, seek);
+  };
+  const auto ltrimRuntime = [&](const std::optional<std::string>& str,
+                                const std::optional<std::string>& seek) {
+    return evaluateOnce<std::string>("ltrim_runtime(c0, c1)", str, seek);
+  };
+  const auto trimRuntime = [&](const std::optional<std::string>& str,
+                               const std::optional<std::string>& seek) {
+    return evaluateOnce<std::string>("trim_runtime(c0, c1)", str, seek);
+  };
+  const auto rtrimCharset = [&](const std::optional<std::string>& str,
+                                const std::optional<std::string>& seek) {
+    return evaluateOnce<std::string>("rtrim(c0, c1)", str, seek);
+  };
+
+  // A seek whose first byte is a space trims spaces only.
+  EXPECT_EQ(rtrimRuntime("abx ", " x"), "abx");
+  EXPECT_EQ(ltrimRuntime(" xab", " x"), "xab");
+  EXPECT_EQ(trimRuntime(" xab ", " x"), "xab");
+
+  // A seek that does not start with a space takes the character-set walk.
+  EXPECT_EQ(rtrimRuntime("abx ", "x "), "ab");
+  EXPECT_EQ(ltrimRuntime(" xab", "x "), "ab");
+
+  // An empty seek returns the string unchanged.
+  EXPECT_EQ(rtrimRuntime("abc ", ""), "abc ");
+
+  // Contrast: the plain two-argument function walks the character set for
+  // every seek, including one that starts with a space.
+  EXPECT_EQ(rtrimCharset("abx ", " x"), "ab");
+
+  // NULL propagation keeps the default behavior.
+  EXPECT_EQ(rtrimRuntime("abc", std::nullopt), std::nullopt);
 }
 
 } // namespace

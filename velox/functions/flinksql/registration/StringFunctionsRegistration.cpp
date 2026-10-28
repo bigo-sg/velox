@@ -49,6 +49,16 @@ void registerStringFunctions(const std::string& prefix) {
   registerFunction<RTrimFunction, Varchar, Varchar>({prefix + "rtrim"});
   registerFunction<RTrimFunction, Varchar, Varchar, Varchar>(
       {prefix + "rtrim"});
+  // Two-argument forms with a runtime-sourced seek: Flink's isSpaceString
+  // checks only the first byte for segment-backed strings, degrading a seek
+  // that starts with a space to space-only trimming. Plan-constant seeks take
+  // the plain functions above (character-set walk).
+  registerFunction<TrimRuntimeFunction, Varchar, Varchar, Varchar>(
+      {prefix + "trim_runtime"});
+  registerFunction<LTrimRuntimeFunction, Varchar, Varchar, Varchar>(
+      {prefix + "ltrim_runtime"});
+  registerFunction<RTrimRuntimeFunction, Varchar, Varchar, Varchar>(
+      {prefix + "rtrim_runtime"});
   // lpad/rpad(str, len, pad): len is Flink INT (int32); a negative len or an
   // empty pad yields NULL via the bool-returning call.
   registerFunction<LPadFunction, Varchar, Varchar, int32_t, Varchar>(
