@@ -16,6 +16,8 @@
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 #include "velox/expression/VectorFunction.h"
+#include "velox/functions/Registerer.h"
+#include "velox/functions/flinksql/StringFunctions.h"
 #include "velox/functions/lib/Re2Functions.h"
 
 namespace facebook::velox::functions::flinksql {
@@ -33,7 +35,36 @@ std::shared_ptr<exec::VectorFunction> makeRegexExtract(
 void registerStringFunctions(const std::string& prefix) {
   exec::registerStatefulVectorFunction(
       prefix + "regexp_extract", re2ExtractSignatures(), makeRegexExtract);
-  // TODO: add the Flink string expression registrations.
+
+  // Flink-semantics string functions; registered with an empty prefix by
+  // velox4j's FLINK preset they overwrite the sparksql baseline entries
+  // registered under the same (name, signature) keys.
+  // trim(str[, seek]) removes 0x20 spaces (1-arg) or any character of the
+  // seek character set (2-arg); Flink argument order is (str, seek).
+  registerFunction<TrimFunction, Varchar, Varchar>({prefix + "trim"});
+  registerFunction<TrimFunction, Varchar, Varchar, Varchar>({prefix + "trim"});
+  registerFunction<LTrimFunction, Varchar, Varchar>({prefix + "ltrim"});
+  registerFunction<LTrimFunction, Varchar, Varchar, Varchar>(
+      {prefix + "ltrim"});
+  registerFunction<RTrimFunction, Varchar, Varchar>({prefix + "rtrim"});
+  registerFunction<RTrimFunction, Varchar, Varchar, Varchar>(
+      {prefix + "rtrim"});
+  // Two-argument forms with a runtime-sourced seek: Flink's isSpaceString
+  // checks only the first byte for segment-backed strings, degrading a seek
+  // that starts with a space to space-only trimming. Plan-constant seeks take
+  // the plain functions above (character-set walk).
+  registerFunction<TrimRuntimeFunction, Varchar, Varchar, Varchar>(
+      {prefix + "trim_runtime"});
+  registerFunction<LTrimRuntimeFunction, Varchar, Varchar, Varchar>(
+      {prefix + "ltrim_runtime"});
+  registerFunction<RTrimRuntimeFunction, Varchar, Varchar, Varchar>(
+      {prefix + "rtrim_runtime"});
+  // lpad/rpad(str, len, pad): len is Flink INT (int32); a negative len or an
+  // empty pad yields NULL via the bool-returning call.
+  registerFunction<LPadFunction, Varchar, Varchar, int32_t, Varchar>(
+      {prefix + "lpad"});
+  registerFunction<RPadFunction, Varchar, Varchar, int32_t, Varchar>(
+      {prefix + "rpad"});
 }
 
 } // namespace facebook::velox::functions::flinksql
