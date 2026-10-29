@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_executable(velox_functions_flinksql_test ConditionalFunctionsTest.cpp)
+add_executable(velox_functions_flinksql_test ConditionalFunctionsTest.cpp
+                                             HashFunctionsTest.cpp)
 
 add_test(velox_functions_flinksql_test velox_functions_flinksql_test)
 
