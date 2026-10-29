@@ -654,7 +654,14 @@ variant deserializeOpaque(const folly::dynamic& variantobj) {
 }
 variant variant::create(const folly::dynamic& variantobj) {
   TypeKind kind = mapNameToTypeKind(variantobj["type"].asString());
-  const folly::dynamic& obj = variantobj["value"];
+  // A null variant value may arrive as an explicit null "value" member or
+  // as an absent "value" member (JSON serializers may skip null members);
+  // treat both as the typed null.
+  auto valueIt = variantobj.find("value");
+  if (valueIt == variantobj.items().end()) {
+    return variant::null(kind);
+  }
+  const folly::dynamic& obj = valueIt->second;
 
   if (obj.isNull()) {
     return variant::null(kind);
