@@ -240,6 +240,12 @@ TEST_F(FlinkStringTest, padInvalidArgumentsReturnNull) {
   EXPECT_EQ(rpad("abc", 5, ""), std::nullopt);
   EXPECT_EQ(lpad("abc", 0, ""), std::nullopt);
   EXPECT_EQ(rpad("abc", 0, ""), std::nullopt);
+
+  // A malformed pad of UTF-8 continuation bytes has a positive byte size but
+  // a zero character length; it is treated like an empty pad (NULL).
+  EXPECT_EQ(lpad("abc", 5, "\x80"), std::nullopt);
+  EXPECT_EQ(rpad("abc", 5, "\x80"), std::nullopt);
+  EXPECT_EQ(lpad("abc", 5, "\x80\x80\x80"), std::nullopt);
 }
 
 // NULL in any argument position propagates NULL.

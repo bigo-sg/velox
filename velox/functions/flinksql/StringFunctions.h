@@ -270,6 +270,12 @@ struct PadFunctionBase {
     }
 
     const int64_t padCharLength = stringImpl::length<isAscii>(pad);
+    // A malformed pad made of UTF-8 continuation bytes has a positive byte
+    // size but a zero character length; treat it like an empty pad (NULL) —
+    // the padding arithmetic below would otherwise divide by zero.
+    if (UNLIKELY(padCharLength == 0)) {
+      return false;
+    }
     const int64_t strCharLength = stringImpl::length<isAscii>(str);
 
     // If str already has at least len characters, truncate to the first len
