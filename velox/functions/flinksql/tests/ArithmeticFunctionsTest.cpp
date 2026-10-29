@@ -13,12 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "velox/functions/flinksql/ArithmeticFunctions.h"
-#include "velox/functions/flinksql/Register.h"
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 #include "velox/parse/TypeResolver.h"
 #include "velox/type/Type.h"
@@ -42,8 +43,8 @@ class FlinkArithmeticTest : public functions::test::FunctionBaseTest {
       const std::string& functionName,
       const VectorPtr& expected,
       const VectorPtr& input) {
-    auto inputExpr = std::make_shared<core::FieldAccessTypedExpr>(
-        input->type(), "c0");
+    auto inputExpr =
+        std::make_shared<core::FieldAccessTypedExpr>(input->type(), "c0");
     std::vector<core::TypedExprPtr> args{inputExpr};
     auto expr = std::make_shared<core::CallTypedExpr>(
         expected->type(), args, functionName);
@@ -83,8 +84,8 @@ TEST_F(FlinkArithmeticTest, roundDoubleLargeMagnitudeTie) {
   auto input = makeNullableFlatVector<double>(
       {647568.815, 581245.205, 284978.595, 2.675});
   auto d = makeNullableFlatVector<int32_t>({2, 2, 2, 2});
-  auto expected = makeNullableFlatVector<double>(
-      {647568.82, 581245.21, 284978.6, 2.68});
+  auto expected =
+      makeNullableFlatVector<double>({647568.82, 581245.21, 284978.6, 2.68});
   testBinary("round", expected, input, d);
 }
 
@@ -253,6 +254,62 @@ TEST_F(FlinkArithmeticTest, absDecimal) {
   auto expected = makeNullableFlatVector<int64_t>(
       {1234, 1234, std::optional<int64_t>(std::nullopt)}, DECIMAL(10, 2));
   testUnary("abs", expected, input);
+}
+
+TEST_F(FlinkArithmeticTest, absNegateIntegerEdges) {
+  // INT_MIN and the int64 most-negative value wrap to themselves under
+  // abs/negate (Math.abs semantics), and same-typed int64 keeps exact
+  // |x| >= 2^53 values where Flink's
+  // double-widening fallback path silently corrupts them (e.g.
+  // abs(-2^53 - 1) evaluates as (long)abs((double)x) in Flink); the
+  // most negative integer wraps to itself, mirroring Java Math.abs.
+  auto intInput = makeNullableFlatVector<int32_t>(
+      {std::numeric_limits<int32_t>::min(), -7, 7});
+  auto intAbsExpected = makeNullableFlatVector<int32_t>(
+      {std::numeric_limits<int32_t>::min(), 7, 7});
+  testUnary("abs", intAbsExpected, intInput);
+  auto intNegExpected = makeNullableFlatVector<int32_t>(
+      {std::numeric_limits<int32_t>::min(), 7, -7});
+  testUnary("negate", intNegExpected, intInput);
+
+  auto input = makeNullableFlatVector<int64_t>(
+      {-9007199254740993LL,
+       9007199254740993LL,
+       std::numeric_limits<int64_t>::min()});
+  auto absExpected = makeNullableFlatVector<int64_t>(
+      {9007199254740993LL,
+       9007199254740993LL,
+       std::numeric_limits<int64_t>::min()});
+  testUnary("abs", absExpected, input);
+
+  auto negExpected = makeNullableFlatVector<int64_t>(
+      {9007199254740993LL,
+       -9007199254740993LL,
+       std::numeric_limits<int64_t>::min()});
+  testUnary("negate", negExpected, input);
+}
+
+TEST_F(FlinkArithmeticTest, floorCeilInt64Beyond2Pow53) {
+  // Integral floor/ceil are identities in same-typed int64; Flink's
+  // double-widening path loses 2^53 + 1 entirely (rounds to 2^53).
+  auto input = makeNullableFlatVector<int64_t>(
+      {9007199254740993LL, -9007199254740993LL});
+  auto expected = makeNullableFlatVector<int64_t>(
+      {9007199254740993LL, -9007199254740993LL});
+  testUnary("floor", expected, input);
+  testUnary("ceil", expected, input);
+}
+
+TEST_F(FlinkArithmeticTest, roundDoubleNanInfFailsLikeFlink) {
+  // Flink's ROUND(double) evaluates through BigDecimal.valueOf, which
+  // throws NumberFormatException for NaN/Inf and fails the job; the
+  // velox-side ROUND fails loudly with a user error the same way.
+  auto input = makeNullableFlatVector<double>(
+      {std::numeric_limits<double>::quiet_NaN(),
+       std::numeric_limits<double>::infinity()});
+  auto expected = makeNullableFlatVector<double>({0.0, 0.0});
+  VELOX_ASSERT_THROW(
+      testUnary("round", expected, input), "ROUND is not defined");
 }
 
 TEST_F(FlinkArithmeticTest, negate) {

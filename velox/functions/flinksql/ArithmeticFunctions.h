@@ -23,6 +23,7 @@
 
 #include "folly/CPortability.h"
 
+#include "velox/common/base/Exceptions.h"
 #include "velox/core/QueryConfig.h"
 #include "velox/functions/Macros.h"
 #include "velox/type/DecimalUtil.h"
@@ -67,9 +68,15 @@ FOLLY_ALWAYS_INLINE uint64_t uint64Pow10(int n) {
 // product lands below the tie at larger magnitudes (ROUND(647568.815, 2) =
 // 647568.82 here, not 647568.81).
 FOLLY_ALWAYS_INLINE double decimalHalfUpRound(double value, int32_t b) {
-  if (std::isnan(value) || std::isinf(value) || value == 0.0) {
+  if (std::isnan(value) || std::isinf(value)) {
+    // Flink's ROUND(double) evaluates through BigDecimal.valueOf, which
+    // throws NumberFormatException for NaN/Inf and fails the job; fail
+    // loudly the same way instead of returning the input unchanged.
+    VELOX_USER_FAIL("ROUND is not defined for NaN/Inf: {}", value);
+  }
+  if (value == 0.0) {
     // BigDecimal has no negative zero: Flink rounds -0.0 to +0.0.
-    return std::isnan(value) || std::isinf(value) ? value : 0.0;
+    return 0.0;
   }
   const bool negative = value < 0;
   char buf[64];
@@ -129,8 +136,8 @@ FOLLY_ALWAYS_INLINE double decimalHalfUpRound(double value, int32_t b) {
     char out[48];
     const auto outRes = std::to_chars(out, out + sizeof(out), rounded);
     *outRes.ptr = 'e';
-    const auto expRes =
-        std::to_chars(outRes.ptr + 1, out + sizeof(out), -static_cast<long long>(b));
+    const auto expRes = std::to_chars(
+        outRes.ptr + 1, out + sizeof(out), -static_cast<long long>(b));
     // Neither to_chars call terminates the buffer; stale digits from a
     // previous invocation would extend the exponent.
     *expRes.ptr = '\0';
@@ -222,8 +229,9 @@ struct DecimalFloorFunction {
       const std::vector<TypePtr>& inputTypes,
       const core::QueryConfig& /*config*/,
       const A* /*a*/) {
-    rescaleFactor_ = DecimalUtil::kPowersOfTen
-        [getDecimalPrecisionScale(*inputTypes[0]).second];
+    rescaleFactor_ =
+        DecimalUtil::kPowersOfTen[getDecimalPrecisionScale(*inputTypes[0])
+                                      .second];
   }
 
   template <typename R, typename A>
@@ -244,8 +252,9 @@ struct DecimalCeilFunction {
       const std::vector<TypePtr>& inputTypes,
       const core::QueryConfig& /*config*/,
       const A* /*a*/) {
-    rescaleFactor_ = DecimalUtil::kPowersOfTen
-        [getDecimalPrecisionScale(*inputTypes[0]).second];
+    rescaleFactor_ =
+        DecimalUtil::kPowersOfTen[getDecimalPrecisionScale(*inputTypes[0])
+                                      .second];
   }
 
   template <typename R, typename A>
@@ -286,15 +295,13 @@ template <typename TExec>
 struct FloatRoundFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  FOLLY_ALWAYS_INLINE void call(
-      double& result,
-      const double& a,
-      const int32_t b = 0) {
+  FOLLY_ALWAYS_INLINE void
+  call(double& result, const double& a, const int32_t b = 0) {
     result = detail::decimalHalfUpRound(a, b);
   }
 
-  FOLLY_ALWAYS_INLINE void call(
-      float& result, const float& a, const int32_t b = 0) {
+  FOLLY_ALWAYS_INLINE void
+  call(float& result, const float& a, const int32_t b = 0) {
     result = static_cast<float>(detail::decimalHalfUpRound(a, b));
   }
 };
@@ -318,10 +325,7 @@ struct DecimalRoundFunction {
   }
 
   template <typename R, typename A>
-  FOLLY_ALWAYS_INLINE void call(
-      R& out,
-      const A& a,
-      const int32_t b = 0) {
+  FOLLY_ALWAYS_INLINE void call(R& out, const A& a, const int32_t b = 0) {
     const int drop = static_cast<int>(scale_) - b;
     if (drop <= 0) {
       out = a;

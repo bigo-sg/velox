@@ -39,6 +39,13 @@ std::vector<exec::SignatureVariable> decimalScaleZeroConstraints() {
 } // namespace
 
 void registerArithmeticFunctions(const std::string& prefix) {
+  // ABS over BIGINT is intentionally exact in same-typed int64: Flink
+  // evaluates BIGINT operands through its widening fallback as
+  // (long) SqlFunctionUtils.abs((double) x), which silently corrupts
+  // for |x| >= 2^53 (e.g. abs(-2^53 - 1) yields 2^53 in Flink). The
+  // same-typed registrations here keep the exact result, and the most
+  // negative integer wraps to itself on both sides. Integral
+  // floor/ceil are identities either way.
   // ABS: same type in and out.
   for (const std::string& name : {prefix + "abs"}) {
     registerFunction<AbsFunction, int8_t, int8_t>({name});
@@ -69,10 +76,8 @@ void registerArithmeticFunctions(const std::string& prefix) {
         NegateFunction,
         ShortDecimal<P1, S1>,
         ShortDecimal<P1, S1>>({name});
-    registerFunction<
-        NegateFunction,
-        LongDecimal<P1, S1>,
-        LongDecimal<P1, S1>>({name});
+    registerFunction<NegateFunction, LongDecimal<P1, S1>, LongDecimal<P1, S1>>(
+        {name});
   }
 
   // FLOOR/CEIL over numerics: same type in and out.
