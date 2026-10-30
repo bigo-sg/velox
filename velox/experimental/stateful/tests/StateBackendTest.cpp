@@ -43,6 +43,7 @@
 #include "velox/experimental/stateful/state/KeyTable.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
+#include "velox/experimental/stateful/state/RocksDBStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/state/StateMap.h"
@@ -1383,6 +1384,59 @@ TEST_F(StateBackendTest, keyedStateBuiltAtInitializeFromSpecAndParameters) {
   ASSERT_EQ(3, keys.size());
   EXPECT_EQ(keys[0].row(), keys[2].row());
   EXPECT_NE(keys[0].row(), keys[1].row());
+}
+
+// The unified entry the keyed operators' initializeStateBackend calls:
+// the plan's KeyedStateSpec and the task backend's parameters in, the
+// operator's typed backend out. The key-group numbers on the built
+// backend are exactly the parameters'; the key table is built from the
+// spec's key types, so probing through it keeps the collision pair apart.
+TEST_F(StateBackendTest, createKeyedStateBackendBuildsHeapBackend) {
+  const KeyedStateSpec spec(
+      std::vector<column_index_t>{0}, std::vector<TypePtr>{BIGINT()});
+  HashMapStateBackend taskBackend(
+      std::make_shared<const KeyedStateBackendParameters>(
+          StateBackendType::HEAP, "job", "op", 256, 10, 20));
+
+  auto backend =
+      createKeyedStateBackend<RowContainerStateKey>(taskBackend, spec, pool());
+
+  EXPECT_EQ(256, backend->maxParallelism());
+  EXPECT_EQ(10, backend->startKeyGroup());
+  EXPECT_EQ(20, backend->numKeyGroups());
+  EXPECT_EQ(256, backend->keyIndex().maxParallelism());
+
+  KeySelector selector(backend->keyIndex(), spec.keyChannels());
+  auto keys =
+      probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
+  ASSERT_EQ(3, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[2].row());
+  EXPECT_NE(keys[0].row(), keys[1].row());
+}
+
+// A backendType with no engine behind it fails at the entry, at operator
+// initialization, instead of silently producing a heap backend.
+TEST_F(StateBackendTest, createKeyedStateBackendRejectsRocksdb) {
+  const KeyedStateSpec spec(
+      std::vector<column_index_t>{0}, std::vector<TypePtr>{BIGINT()});
+  RocksDBStateBackend taskBackend(
+      std::make_shared<const RocksDBKeyedStateBackendParameters>(
+          StateBackendType::ROCKSDB,
+          "job",
+          "op",
+          0 /* dbHandle */,
+          0 /* readOptionHandle */,
+          0 /* writeOptionHandle */,
+          std::set<std::string>{},
+          std::unordered_map<std::string, int64_t>{},
+          std::unordered_map<std::string, std::string>{},
+          std::unordered_map<std::string, TypePtr>{},
+          std::unordered_map<std::string, TypePtr>{},
+          std::unordered_map<std::string, TypePtr>{}));
+
+  EXPECT_THROW(
+      createKeyedStateBackend<RowContainerStateKey>(taskBackend, spec, pool()),
+      VeloxUserError);
 }
 
 // The keyed-state spec is plan data: it round-trips through the serde

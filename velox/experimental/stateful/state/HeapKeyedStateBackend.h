@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
 #include "velox/experimental/stateful/state/HeapAggregatingState.h"
@@ -32,6 +33,7 @@
 #include "velox/experimental/stateful/state/KeyIndex.h"
 #include "velox/experimental/stateful/state/KeyTable.h"
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
+#include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
 
@@ -445,5 +447,36 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   // Handle registry, by state name; each handle owns its state table.
   std::unordered_map<std::string, StatePtr> createdStates_;
 };
+
+/// Creates one keyed operator's backend, dispatched on the task backend's
+/// declared type. The plan contributes the key schema (the KeyedStateSpec),
+/// the task backend's parameters the key-group configuration - the one
+/// place those numbers exist at runtime. K is the operator's key type (a
+/// StateKey subclass) - only the operator can name it, so this entry is a
+/// free template and never a virtual member of StateBackend: a virtual
+/// function cannot be a template, so no factory on the base can hand out
+/// the typed backend. A declared type with no engine behind it fails
+/// here, at operator initialization, instead of silently producing a
+/// heap backend. The pre-generic factory on StateBackend stays for the
+/// not-yet-migrated operators; this entry is the door for the typed ones.
+template <typename K>
+std::unique_ptr<HeapKeyedStateBackend<K>> createKeyedStateBackend(
+    const StateBackend& stateBackend,
+    const KeyedStateSpec& spec,
+    memory::MemoryPool* pool) {
+  const auto& parameters = stateBackend.parameters();
+  switch (parameters->getBackendType()) {
+    case StateBackendType::HEAP:
+      return std::make_unique<HeapKeyedStateBackend<K>>(
+          spec.keyTypes(),
+          parameters->getMaxParallelism(),
+          parameters->getStartKeyGroup(),
+          parameters->getNumKeyGroups(),
+          pool);
+    case StateBackendType::ROCKSDB:
+      VELOX_UNSUPPORTED("The RocksDB keyed state backend is not implemented");
+  }
+  VELOX_UNREACHABLE();
+}
 
 } // namespace facebook::velox::stateful
