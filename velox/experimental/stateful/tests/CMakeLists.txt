@@ -240,3 +240,19 @@ target_link_libraries(
   velox_common_base
   GTest::gtest
   GTest::gtest_main)
+
+add_executable(velox_stateful_operator_checkpoint_test
+               StatefulOperatorCheckpointTest.cpp)
+
+add_test(velox_stateful_operator_checkpoint_test
+         velox_stateful_operator_checkpoint_test)
+
+target_link_libraries(
+  velox_stateful_operator_checkpoint_test
+  velox_stateful_exec
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
