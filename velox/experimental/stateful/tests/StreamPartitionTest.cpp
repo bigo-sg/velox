@@ -19,14 +19,21 @@
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
 
+#include <optional>
+#include <vector>
+
 #include "velox/core/PlanFragment.h"
 #include "velox/core/PlanNode.h"
 #include "velox/exec/Driver.h"
 #include "velox/exec/Values.h"
 #include "velox/exec/tests/utils/OperatorTestBase.h"
+#include "velox/experimental/stateful/KeyGroupPartitionFunction.h"
+#include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
+#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
+#include "velox/type/Type.h"
 
 namespace facebook::velox::stateful::test {
 namespace {
@@ -195,6 +202,98 @@ TEST_F(StreamPartitionTest, carriesRowKindAcrossPartitions) {
   EXPECT_EQ(
       r1->rowKind()->valueAt(0), static_cast<int8_t>(RowKind::UPDATE_BEFORE));
   EXPECT_EQ(r1->rowKind()->valueAt(1), static_cast<int8_t>(RowKind::DELETE));
+}
+
+// The routing side and the state side must derive the same key group from
+// the same key values (hash same-source), and the channel must be the
+// contiguous-range map of that key group: channel = keyGroup * P / maxP,
+// the dual of the ownership range [ceil(i*maxP/P), floor(((i+1)*maxP-1)/P)].
+// The state side's key groups come from a real backend key table probed
+// through a KeySelector, never recomputed in the test.
+TEST_F(StreamPartitionTest, keyGroupRoutingMatchesStateOwnership) {
+  constexpr uint32_t kMaxP = 128;
+  constexpr int kNumPartitions = 4;
+  HeapKeyedStateBackend<RowContainerStateKey> backend(
+      {BIGINT()}, kMaxP, 0, kMaxP, pool());
+  KeySelector selector(backend.keyIndex(), {0});
+
+  std::vector<std::optional<int64_t>> values;
+  for (int64_t v = 0; v < 256; ++v) {
+    values.push_back(v);
+  }
+  // Null keys form their own group on the state side; the routing chain
+  // must agree with that placement too. 391/32728 are the collision pair
+  // of the hash fix.
+  values.push_back(std::nullopt);
+  values.push_back(391);
+  values.push_back(32728);
+  auto input = makeRowVector({"c"}, {makeNullableFlatVector<int64_t>(values)});
+
+  selector.probe(input);
+  const auto stateKeys = std::vector<RowContainerStateKey>(
+      selector.keys().begin(), selector.keys().end());
+  ASSERT_EQ(values.size(), stateKeys.size());
+
+  KeyGroupPartitionFunctionSpec spec(ROW({"c"}, {BIGINT()}), {0}, kMaxP);
+
+  // With numPartitions == maxParallelism the channel IS the key group, so
+  // this pins hash same-source: the routing hash chain lands every key in
+  // the key group the state side derived for it.
+  auto byKeyGroup = spec.create(kMaxP, /*localExchange=*/false);
+  std::vector<uint32_t> channels;
+  byKeyGroup->partition(*input, channels);
+  for (auto i = 0; i < values.size(); ++i) {
+    EXPECT_EQ(stateKeys[i].keyGroup(), channels[i]);
+  }
+
+  // With fewer partitions the channel is the range map of the key group,
+  // and the key group lies inside the owning channel's range.
+  auto routed = spec.create(kNumPartitions, /*localExchange=*/false);
+  routed->partition(*input, channels);
+  for (auto i = 0; i < values.size(); ++i) {
+    const auto keyGroup = stateKeys[i].keyGroup();
+    const auto expectedChannel =
+        keyGroup * static_cast<uint64_t>(kNumPartitions) / kMaxP;
+    EXPECT_EQ(expectedChannel, channels[i]);
+    const auto start =
+        (channels[i] * static_cast<uint64_t>(kMaxP) + kNumPartitions - 1) /
+        kNumPartitions;
+    const auto end =
+        ((channels[i] + 1) * static_cast<uint64_t>(kMaxP) - 1) / kNumPartitions;
+    EXPECT_LE(start, keyGroup);
+    EXPECT_LE(keyGroup, end);
+  }
+}
+
+// maxParallelism need not be a multiple of numPartitions (or vice versa):
+// the ranges just come out uneven, and a serde round trip of the spec
+// routes identically.
+TEST_F(StreamPartitionTest, keyGroupRoutingSerdeRoundTripNonDivisor) {
+  constexpr uint32_t kMaxP = 10;
+  constexpr int kNumPartitions = 4;
+  // The spec's input type round-trips through the type serde.
+  Type::registerSerDe();
+  std::vector<std::optional<int64_t>> values;
+  for (int64_t v = 0; v < 100; ++v) {
+    values.push_back(v);
+  }
+  auto input = makeRowVector({"c"}, {makeNullableFlatVector<int64_t>(values)});
+
+  KeyGroupPartitionFunctionSpec spec(ROW({"c"}, {BIGINT()}), {0}, kMaxP);
+  auto roundTripped =
+      KeyGroupPartitionFunctionSpec::deserialize(spec.serialize(), pool());
+
+  std::vector<uint32_t> channels;
+  spec.create(kNumPartitions, /*localExchange=*/false)
+      ->partition(*input, channels);
+  std::vector<uint32_t> roundTrippedChannels;
+  roundTripped->create(kNumPartitions, /*localExchange=*/false)
+      ->partition(*input, roundTrippedChannels);
+  ASSERT_EQ(channels.size(), roundTrippedChannels.size());
+  for (auto i = 0; i < channels.size(); ++i) {
+    EXPECT_EQ(channels[i], roundTrippedChannels[i]);
+    EXPECT_LT(channels[i], kNumPartitions);
+  }
 }
 
 } // namespace

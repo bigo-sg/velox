@@ -430,21 +430,8 @@ StatefulOperatorPtr StatefulPlanner::transformStreamRankOperator(
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGroupAggregationOperator(
-    const StatefulPlanNode& planNode) {
-  std::vector<StatefulOperatorPtr> targets =
-      transformStatefulOperators(planNode.targets());
-
-  auto aggNode =
-      std::dynamic_pointer_cast<const GroupAggregationNode>(planNode.node());
-  VELOX_CHECK(aggNode, "Failed to cast to GroupAggregationNode");
-
-  auto op = transformOperator(aggNode->aggregation());
-
-  std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
-      aggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
-
-  return std::make_unique<StreamKeyedOperator>(
-      std::move(op), std::move(keySelector), std::move(targets));
+    const StatefulPlanNode& /*planNode*/) {
+  VELOX_NYI("GroupAggregation operator is not supported yet");
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGenericOperator(

@@ -87,7 +87,11 @@ RowVectorPtr RowTimeDeduplicateRanker::processElements(
 
 void RowTimeDeduplicateRanker::close() {
   exec::Operator::close();
-  state_->clear();
-  state_.reset();
+  // state_ is created in open(), which no longer runs when the wrapping
+  // operator's initializeState fails fast; it can be null at close time.
+  if (state_) {
+    state_->clear();
+    state_.reset();
+  }
 }
 } // namespace facebook::velox::stateful
