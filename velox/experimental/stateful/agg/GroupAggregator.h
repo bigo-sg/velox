@@ -27,7 +27,7 @@
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamElement.h"
-#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
+#include "velox/experimental/stateful/state/KeyedStateBackendFactory.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/State.h"
 
@@ -80,7 +80,7 @@ class GroupAggregator : public StatefulOperator {
   /// The keyed state backend this operator owns. Checkpoint drivers
   /// snapshot and restore the aggregation state through it; the task-level
   /// wiring that persists the checkpoint bytes is delivered separately.
-  HeapKeyedStateBackend<RowContainerStateKey>& keyedStateBackend() {
+  TypedKeyedStateBackend<RowContainerStateKey>& keyedStateBackend() {
     return *keyedBackend_;
   }
 
@@ -143,9 +143,9 @@ class GroupAggregator : public StatefulOperator {
   const uint32_t numKeys_;
   const bool generateUpdateBefore_;
 
-  std::unique_ptr<HeapKeyedStateBackend<RowContainerStateKey>> keyedBackend_;
+  std::unique_ptr<TypedKeyedStateBackend<RowContainerStateKey>> keyedBackend_;
   std::unique_ptr<KeySelector> keySelector_;
-  std::shared_ptr<AggregatingState<RowContainerStateKey, VoidNamespace>> state_;
+  std::shared_ptr<AggregatingState<RowContainerStateKey>> state_;
 
   // Per-batch scratch, reused across batches.
   std::unordered_map<const char*, vector_size_t> rowToDistinct_;
