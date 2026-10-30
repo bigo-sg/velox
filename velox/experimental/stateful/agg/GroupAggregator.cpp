@@ -80,14 +80,9 @@ void GroupAggregator::mergeRow(
 }
 
 void GroupAggregator::initializeStateBackend(StateBackend* stateBackend) {
-  const auto& parameters = stateBackend->parameters();
   const auto& spec = *node_->keyedStateSpec();
-  keyedBackend_ = std::make_unique<HeapKeyedStateBackend<RowContainerStateKey>>(
-      spec.keyTypes(),
-      parameters->getMaxParallelism(),
-      parameters->getStartKeyGroup(),
-      parameters->getNumKeyGroups(),
-      memoryPool());
+  keyedBackend_ = createKeyedStateBackend<RowContainerStateKey>(
+      *stateBackend, spec, memoryPool());
   keySelector_ = std::make_unique<KeySelector>(
       keyedBackend_->keyIndex(), spec.keyChannels());
 
