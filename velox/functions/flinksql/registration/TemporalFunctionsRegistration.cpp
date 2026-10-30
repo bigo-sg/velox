@@ -15,10 +15,79 @@
  */
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
+#include "velox/functions/Registerer.h"
+#include "velox/functions/flinksql/DateTimeFunctions.h"
+#include "velox/functions/flinksql/IntervalArithmetic.h"
+
 namespace facebook::velox::functions::flinksql {
 
-void registerTemporalFunctions(const std::string& /*prefix*/) {
-  // TODO: add the Flink Temporal expression registrations.
+void registerTemporalFunctions(const std::string& prefix) {
+  // FROM_UNIXTIME / UNIX_TIMESTAMP with Flink semantics.
+  registerFunction<FromUnixtimeFunction, Varchar, int64_t>(
+      {prefix + "from_unixtime"});
+  registerFunction<FromUnixtimeWithFormatFunction, Varchar, int64_t, Varchar>(
+      {prefix + "from_unixtime"});
+  registerFunction<UnixTimestampFunction, int64_t>({prefix + "unix_timestamp"});
+  registerFunction<UnixTimestampParseFunction, int64_t, Varchar>(
+      {prefix + "unix_timestamp"});
+  registerFunction<
+      UnixTimestampParseWithFormatFunction,
+      int64_t,
+      Varchar,
+      Varchar>({prefix + "unix_timestamp"});
+
+  // TIMESTAMPADD (Flink rewrites it into interval arithmetic, so these
+  // register plus/minus/multiply for the rewritten shapes).
+  registerFunction<
+      TimestampPlusIntervalDayTimeFunction,
+      Timestamp,
+      Timestamp,
+      IntervalDayTime>({prefix + "plus"});
+  registerFunction<
+      TimestampMinusIntervalDayTimeFunction,
+      Timestamp,
+      Timestamp,
+      IntervalDayTime>({prefix + "minus"});
+  registerFunction<
+      TimestampPlusIntervalYearMonthFunction,
+      Timestamp,
+      Timestamp,
+      IntervalYearMonth>({prefix + "plus"});
+  registerFunction<
+      TimestampMinusIntervalYearMonthFunction,
+      Timestamp,
+      Timestamp,
+      IntervalYearMonth>({prefix + "minus"});
+  registerFunction<
+      DatePlusIntervalDayTimeFunction,
+      Date,
+      Date,
+      IntervalDayTime>({prefix + "plus"});
+  registerFunction<
+      DatePlusIntervalYearMonthFunction,
+      Date,
+      Date,
+      IntervalYearMonth>({prefix + "plus"});
+  registerFunction<
+      DateMinusIntervalDayTimeFunction,
+      Date,
+      Date,
+      IntervalDayTime>({prefix + "minus"});
+  registerFunction<
+      DateMinusIntervalYearMonthFunction,
+      Date,
+      Date,
+      IntervalYearMonth>({prefix + "minus"});
+  registerFunction<
+      IntervalDayTimeMultiplyFunction,
+      IntervalDayTime,
+      IntervalDayTime,
+      int64_t>({prefix + "multiply"});
+  registerFunction<
+      IntervalYearMonthMultiplyFunction,
+      IntervalYearMonth,
+      IntervalYearMonth,
+      int64_t>({prefix + "multiply"});
 }
 
 } // namespace facebook::velox::functions::flinksql

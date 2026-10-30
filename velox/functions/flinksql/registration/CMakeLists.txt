@@ -24,3 +24,7 @@ velox_add_library(
   TemporalFunctionsRegistration.cpp)
 
 velox_link_libraries(velox_functions_flink velox_functions_lib Folly::folly)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()
