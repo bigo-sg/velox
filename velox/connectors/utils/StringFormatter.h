@@ -20,6 +20,8 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <folly/Try.h>
+#include <charconv>
+#include <cmath>
 #include <ctime>
 #include <memory>
 #include <string>
@@ -34,6 +36,47 @@
 #include "velox/vector/DictionaryVector.h"
 
 namespace facebook::velox::connector {
+
+/// Renders a floating-point value the way Java's Double.toString /
+/// Float.toString do, so the print connector matches native Flink output in
+/// dual-run comparisons: the shortest decimal that round-trips (via
+/// std::to_chars), plain notation within [1e-3, 1e7), and Java-style
+/// scientific notation ("d.dddEx", one mandatory fraction digit, no '+'
+/// sign or leading zeros in the exponent) outside that range. The default
+/// `ostream << double` only keeps 6 significant digits, which silently
+/// corrupts values like 647568.82 -> 647569.
+template <typename T>
+inline std::string javaFloatingPointToString(T t) {
+  static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);
+  if (std::isnan(t)) {
+    return "NaN";
+  }
+  if (std::isinf(t)) {
+    return t > 0 ? "Infinity" : "-Infinity";
+  }
+  const double abs = std::fabs(static_cast<double>(t));
+  char buf[64];
+  if (abs == 0.0 || (abs >= 1e-3 && abs < 1e7)) {
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), t);
+    VELOX_CHECK(ec == std::errc());
+    std::string s(buf, ptr - buf);
+    if (s.find('.') == std::string::npos) {
+      s += ".0";
+    }
+    return s;
+  }
+  auto [ptr, ec] =
+      std::to_chars(buf, buf + sizeof(buf), t, std::chars_format::scientific);
+  VELOX_CHECK(ec == std::errc());
+  const std::string s(buf, ptr - buf);
+  const auto epos = s.find('e');
+  std::string mantissa = s.substr(0, epos);
+  if (mantissa.find('.') == std::string::npos) {
+    mantissa += ".0";
+  }
+  const int exp = std::stoi(s.substr(epos + 1));
+  return mantissa + "E" + std::to_string(exp);
+}
 
 struct StringFormatter {
  public:
@@ -170,20 +213,9 @@ struct DefaultFormatter : public StringFormatter {
         std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t> ||
         std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>) {
       ss << t;
-    } else if constexpr (std::is_same_v<T, float>) {
-      float intPart;
-      if (std::modf(t, &intPart) == 0.0) {
-        ss << intPart << ".0";
-      } else {
-        ss << t;
-      }
-    } else if constexpr (std::is_same_v<T, double>) {
-      double intPart;
-      if (std::modf(t, &intPart) == 0.0) {
-        ss << intPart << ".0";
-      } else {
-        ss << t;
-      }
+    } else if constexpr (
+        std::is_same_v<T, float> || std::is_same_v<T, double>) {
+      ss << javaFloatingPointToString(t);
     } else if constexpr (std::is_same_v<T, bool>) {
       std::string s = t ? "true" : "false";
       ss << s;
