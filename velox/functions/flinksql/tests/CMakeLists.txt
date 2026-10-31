@@ -12,6 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_executable(
+  velox_functions_flink_test
+  LogicalFunctionsTest.cpp)
+
+add_test(velox_functions_flink_test velox_functions_flink_test)
+
+target_link_libraries(
+  velox_functions_flink_test
+  velox_functions_flink
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
+
 add_executable(velox_functions_flinksql_test ConditionalFunctionsTest.cpp
                                              TemporalFunctionsTest.cpp)
 
