@@ -57,9 +57,8 @@ add_test(velox_stateful_stream_record_test velox_stateful_stream_record_test)
 
 add_test(velox_stateful_calc_operator_test velox_stateful_calc_operator_test)
 
-add_test(
-  velox_stateful_record_clock_refresh_test
-  velox_stateful_record_clock_refresh_test)
+add_test(velox_stateful_record_clock_refresh_test
+         velox_stateful_record_clock_refresh_test)
 
 target_link_libraries(
   velox_stateful_combined_watermark_status_test velox_common_base GTest::gtest
@@ -151,8 +150,8 @@ target_link_libraries(
   GTest::gtest
   GTest::gtest_main)
 
-# W4 evaluates the real flinksql temporal functions inside a stateful
-# chain, so the flinksql function library is linked in.
+# W4 evaluates the real flinksql temporal functions inside a stateful chain, so
+# the flinksql function library is linked in.
 target_link_libraries(
   velox_stateful_record_clock_refresh_test
   velox_stateful_exec

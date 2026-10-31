@@ -417,8 +417,7 @@ TEST_F(TemporalFunctionsTest, localTimeUtcRangeAndDerivation) {
     const auto v = localTime->valueAt(i);
     EXPECT_GE(v, 0) << "row: " << i;
     EXPECT_LT(v, 86'400'000) << "row: " << i;
-    const int64_t derived =
-        millisOfDay(localTimestamp->valueAt(i).toMillis());
+    const int64_t derived = millisOfDay(localTimestamp->valueAt(i).toMillis());
     EXPECT_EQ(v, static_cast<int32_t>(derived)) << "row: " << i;
   }
 }
@@ -451,8 +450,7 @@ TEST_F(TemporalFunctionsTest, localTimeShanghaiRangeAndDerivation) {
     const auto v = localTime->valueAt(i);
     EXPECT_GE(v, 0) << "row: " << i;
     EXPECT_LT(v, 86'400'000) << "row: " << i;
-    const int64_t derived =
-        millisOfDay(localTimestamp->valueAt(i).toMillis());
+    const int64_t derived = millisOfDay(localTimestamp->valueAt(i).toMillis());
     EXPECT_EQ(v, static_cast<int32_t>(derived)) << "row: " << i;
   }
 }
@@ -518,8 +516,7 @@ TEST_F(TemporalFunctionsTest, nowAliasSameRowEqual) {
   auto rowVector =
       makeRowVector({makeFlatVector<int32_t>(std::vector<int32_t>(kSize, 0))});
   exec::ExprSet exprSet(
-      {makeNoArgCall("current_timestamp"), makeNoArgCall("now")},
-      &execCtx_);
+      {makeNoArgCall("current_timestamp"), makeNoArgCall("now")}, &execCtx_);
   exec::EvalCtx context(&execCtx_, &exprSet, rowVector.get());
   std::vector<VectorPtr> results(2);
   SelectivityVector rows(kSize);
