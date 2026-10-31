@@ -19,9 +19,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "velox/core/Expressions.h"
+#include "velox/functions/flinksql/RecordClock.h"
 #include "velox/functions/flinksql/TemporalFunctions.h"
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
@@ -151,9 +153,12 @@ TEST_F(FlinkCurrentTimeTest, followsSessionZone) {
 }
 
 // Tests for the temporal function group (CURRENT_TIMESTAMP / NOW /
-// LOCALTIMESTAMP). All assertions are range assertions: the functions are
-// evaluated per record (Flink streaming semantics), so rows may legitimately
-// differ from each other by milliseconds.
+// LOCALTIMESTAMP / LOCALTIME). Unpinned assertions are range assertions: on
+// a thread with no emission-boundary refresh the functions fall back to a
+// fresh wall-clock reading per record, so rows may legitimately differ from
+// each other by milliseconds. Pinned assertions (RecordClock refreshed by
+// the test) are exact: every occurrence in the same evaluation shares one
+// instant, and LOCALTIMESTAMP / LOCALTIME derive from it.
 class TemporalFunctionsTest : public functions::test::FunctionBaseTest {
  protected:
   static void SetUpTestCase() {
@@ -162,6 +167,18 @@ class TemporalFunctionsTest : public functions::test::FunctionBaseTest {
     // so the flinksql registrations are free of overwrite interference.
     memory::MemoryManager::testingSetInstance({});
   }
+
+  // Pins the record clock for the test body and guarantees the pin is
+  // dropped on exit: zero residue for later tests, independent of test
+  // order.
+  struct RecordClockPin {
+    RecordClockPin() {
+      RecordClock::refresh();
+    }
+    ~RecordClockPin() {
+      RecordClock::reset();
+    }
+  };
 
   // Builds a no-argument call ("current_timestamp" and friends are SQL
   // keywords, so the expression tree is constructed directly).
@@ -339,15 +356,16 @@ TEST_F(TemporalFunctionsTest, localTimestampShanghai) {
   }
 }
 
-// U6: in the same projection (same ExprSet pass) with tz=Asia/Shanghai,
-// localtimestamp - current_timestamp is ~ +8h for every row, with a 2s
-// tolerance.
+// U6: in the same projection (same ExprSet pass) with the record clock
+// pinned (emission-boundary shape), localtimestamp - current_timestamp is
+// exactly +8h for every row in Asia/Shanghai: both derive from the same
+// shared instant.
 TEST_F(TemporalFunctionsTest, localTimestampDerivedFromCurrentTimestamp) {
   flinksql::registerFunctions("");
   setTimezone("Asia/Shanghai");
+  RecordClockPin pin;
   constexpr vector_size_t kSize = 100;
   constexpr int64_t kOffsetMillis = 8LL * 3600 * 1000;
-  constexpr int64_t kToleranceMillis = 2'000;
 
   auto rowVector =
       makeRowVector({makeFlatVector<int32_t>(std::vector<int32_t>(kSize, 0))});
@@ -366,17 +384,17 @@ TEST_F(TemporalFunctionsTest, localTimestampDerivedFromCurrentTimestamp) {
   for (auto i = 0; i < kSize; ++i) {
     const auto diffMillis = localTimestamp->valueAt(i).toMillis() -
         currentTimestamp->valueAt(i).toMillis();
-    EXPECT_GE(diffMillis, kOffsetMillis - kToleranceMillis) << "row: " << i;
-    EXPECT_LE(diffMillis, kOffsetMillis + kToleranceMillis) << "row: " << i;
+    EXPECT_EQ(diffMillis, kOffsetMillis) << "row: " << i;
   }
 }
 
-// U7: localtime at UTC — every row lands in [0, 86'400'000), never NULL,
-// carries the INTEGER type, and equals the same row's localtimestamp
-// modulo the day (circular diff within the 2s sampling tolerance).
+// U7: localtime at UTC with the record clock pinned — every row lands in
+// [0, 86'400'000), never NULL, carries the INTEGER type, and equals the
+// same row's localtimestamp milliseconds-of-day exactly.
 TEST_F(TemporalFunctionsTest, localTimeUtcRangeAndDerivation) {
   flinksql::registerFunctions("");
   setTimezone("UTC");
+  RecordClockPin pin;
   constexpr vector_size_t kSize = 100;
 
   auto rowVector =
@@ -399,17 +417,19 @@ TEST_F(TemporalFunctionsTest, localTimeUtcRangeAndDerivation) {
     const auto v = localTime->valueAt(i);
     EXPECT_GE(v, 0) << "row: " << i;
     EXPECT_LT(v, 86'400'000) << "row: " << i;
-    const int64_t derived = localTimestamp->valueAt(i).toMillis() % 86'400'000;
-    EXPECT_LE(std::abs(circularDiffMillis(v, derived)), 2'000) << "row: " << i;
+    const int64_t derived =
+        millisOfDay(localTimestamp->valueAt(i).toMillis());
+    EXPECT_EQ(v, static_cast<int32_t>(derived)) << "row: " << i;
   }
 }
 
-// U8: localtime at Asia/Shanghai — same assertions as U7 against the
-// Shanghai-shifted localtimestamp (the +8h offset must survive the modulo
-// wrap).
+// U8: localtime at Asia/Shanghai with the record clock pinned — same
+// assertions as U7 against the Shanghai-shifted localtimestamp (the +8h
+// offset must survive the floor-mod day wrap).
 TEST_F(TemporalFunctionsTest, localTimeShanghaiRangeAndDerivation) {
   flinksql::registerFunctions("");
   setTimezone("Asia/Shanghai");
+  RecordClockPin pin;
   constexpr vector_size_t kSize = 100;
 
   auto rowVector =
@@ -431,8 +451,9 @@ TEST_F(TemporalFunctionsTest, localTimeShanghaiRangeAndDerivation) {
     const auto v = localTime->valueAt(i);
     EXPECT_GE(v, 0) << "row: " << i;
     EXPECT_LT(v, 86'400'000) << "row: " << i;
-    const int64_t derived = localTimestamp->valueAt(i).toMillis() % 86'400'000;
-    EXPECT_LE(std::abs(circularDiffMillis(v, derived)), 2'000) << "row: " << i;
+    const int64_t derived =
+        millisOfDay(localTimestamp->valueAt(i).toMillis());
+    EXPECT_EQ(v, static_cast<int32_t>(derived)) << "row: " << i;
   }
 }
 
@@ -455,6 +476,122 @@ TEST_F(TemporalFunctionsTest, localTimeWallClockWindow) {
     EXPECT_GE(circularDiffMillis(v, t0Millis % 86'400'000), -1'000);
     // ... and not after t1 + 1s, both judged on the circular day clock.
     EXPECT_LE(circularDiffMillis(v, t1Millis % 86'400'000), 1'000);
+  }
+}
+
+// U10: with the record clock pinned, two independent current_timestamp
+// call sites in the same ExprSet evaluate equal on every row — the same-row
+// multi-occurrence consistency Flink guarantees per record.
+TEST_F(TemporalFunctionsTest, currentTimestampSameRowEqual) {
+  flinksql::registerFunctions("");
+  setTimezone("UTC");
+  RecordClockPin pin;
+  constexpr vector_size_t kSize = 100;
+
+  auto rowVector =
+      makeRowVector({makeFlatVector<int32_t>(std::vector<int32_t>(kSize, 0))});
+  exec::ExprSet exprSet(
+      {makeNoArgCall("current_timestamp"), makeNoArgCall("current_timestamp")},
+      &execCtx_);
+  exec::EvalCtx context(&execCtx_, &exprSet, rowVector.get());
+  std::vector<VectorPtr> results(2);
+  SelectivityVector rows(kSize);
+  exprSet.eval(rows, context, results);
+
+  auto* first = results[0]->asFlatVector<Timestamp>();
+  auto* second = results[1]->asFlatVector<Timestamp>();
+  ASSERT_EQ(first->size(), kSize);
+  ASSERT_EQ(second->size(), kSize);
+  for (auto i = 0; i < kSize; ++i) {
+    EXPECT_EQ(first->valueAt(i), second->valueAt(i)) << "row: " << i;
+  }
+}
+
+// U11: with the record clock pinned, now() agrees with current_timestamp on
+// every row — the dual registration names share one instant per record.
+TEST_F(TemporalFunctionsTest, nowAliasSameRowEqual) {
+  flinksql::registerFunctions("");
+  setTimezone("UTC");
+  RecordClockPin pin;
+  constexpr vector_size_t kSize = 100;
+
+  auto rowVector =
+      makeRowVector({makeFlatVector<int32_t>(std::vector<int32_t>(kSize, 0))});
+  exec::ExprSet exprSet(
+      {makeNoArgCall("current_timestamp"), makeNoArgCall("now")},
+      &execCtx_);
+  exec::EvalCtx context(&execCtx_, &exprSet, rowVector.get());
+  std::vector<VectorPtr> results(2);
+  SelectivityVector rows(kSize);
+  exprSet.eval(rows, context, results);
+
+  auto* currentTimestamp = results[0]->asFlatVector<Timestamp>();
+  auto* now = results[1]->asFlatVector<Timestamp>();
+  ASSERT_EQ(currentTimestamp->size(), kSize);
+  ASSERT_EQ(now->size(), kSize);
+  for (auto i = 0; i < kSize; ++i) {
+    EXPECT_EQ(currentTimestamp->valueAt(i), now->valueAt(i)) << "row: " << i;
+  }
+}
+
+// U12: each refresh re-pins the instant — after sleeping past the clock
+// granularity, a refreshed evaluation strictly exceeds the previous one,
+// and both readings stay inside the test wall-clock window.
+TEST_F(TemporalFunctionsTest, refreshAdvancesInstantPerRecord) {
+  flinksql::registerFunctions("");
+  RecordClockPin pin;
+  auto t0 = toTimestamp(std::chrono::system_clock::now());
+  RecordClock::refresh();
+  auto first = evaluateTemporal("current_timestamp", 1);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(3));
+  RecordClock::refresh();
+  auto second = evaluateTemporal("current_timestamp", 1);
+  auto t1 = toTimestamp(std::chrono::system_clock::now());
+
+  ASSERT_EQ(first.size(), 1);
+  ASSERT_EQ(second.size(), 1);
+  EXPECT_GT(second[0], first[0]);
+  EXPECT_GE(first[0], minusOneSecond(t0));
+  EXPECT_LE(first[0], plusOneSecond(t1));
+  EXPECT_GE(second[0], minusOneSecond(t0));
+  EXPECT_LE(second[0], plusOneSecond(t1));
+}
+
+// U13: unpinned fallback — after a reset, two evaluations separated by a
+// sleep read the wall clock independently (per-call values); the later one
+// is not before the earlier one.
+TEST_F(TemporalFunctionsTest, unpinnedFallbackReadsPerCall) {
+  flinksql::registerFunctions("");
+  RecordClock::reset();
+  auto first = evaluateTemporal("current_timestamp", 1);
+  std::this_thread::sleep_for(std::chrono::milliseconds(3));
+  auto second = evaluateTemporal("current_timestamp", 1);
+
+  ASSERT_EQ(first.size(), 1);
+  ASSERT_EQ(second.size(), 1);
+  EXPECT_GE(second[0], first[0]);
+}
+
+// U14: millisOfDay is a floor-mod — table-driven over the day boundary and
+// pre-1970 (negative) local millis, all results land in [0, 86'400'000).
+TEST_F(TemporalFunctionsTest, millisOfDayFloorMod) {
+  constexpr int64_t kDay = 86'400'000;
+  const std::vector<std::pair<int64_t, int64_t>> cases = {
+      {0, 0},
+      {kDay - 1, kDay - 1},
+      {kDay, 0},
+      {-1, kDay - 1},
+      {-kDay, 0},
+      {-kDay - 1, kDay - 1},
+      // Pre-1970 local midnight minus 7h: folds back to 17:00 of the
+      // previous local day.
+      {-(kDay + 7LL * 3600 * 1000), kDay - 7LL * 3600 * 1000}};
+  for (const auto& [input, expected] : cases) {
+    const auto actual = millisOfDay(input);
+    EXPECT_GE(actual, 0) << "input: " << input;
+    EXPECT_LT(actual, kDay) << "input: " << input;
+    EXPECT_EQ(actual, expected) << "input: " << input;
   }
 }
 
