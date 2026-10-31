@@ -119,6 +119,59 @@ TEST_F(StringFormatterTest, testRowFormatterToString) {
   ASSERT_TRUE(ssPrefix.str() == "-U[99, +I[1, 2], null]");
 }
 
+TEST_F(StringFormatterTest, testDoubleFormatterToString) {
+  // The print connector must render doubles like Java's Double.toString so
+  // dual-run comparisons stay exact. The old `ss << t` path kept only 6
+  // significant digits and corrupted 647568.82 into 647569.
+  auto doubleType = DOUBLE();
+  auto formatter =
+      createFormatter(ROW({{"d", doubleType}}), tz::locateZone("UTC"));
+
+  auto makeRow = [&](std::vector<double> values) {
+    auto vec = BaseVector::create<FlatVector<double>>(
+        doubleType, values.size(), memoryPool.get());
+    for (size_t i = 0; i < values.size(); ++i) {
+      vec->set(i, values[i]);
+    }
+    auto rowType = ROW({{"d", doubleType}});
+    return std::make_shared<RowVector>(
+        memoryPool.get(),
+        rowType,
+        /*nulls=*/nullptr,
+        values.size(),
+        std::vector<VectorPtr>{vec});
+  };
+
+  struct Case {
+    double input;
+    std::string expected;
+  };
+  std::vector<Case> cases = {
+      {647568.82, "647568.82"}, // >6 significant digits (the regression)
+      {2.675, "2.675"},
+      {28.0, "28.0"},
+      {0.0, "0.0"},
+      {-2.5, "-2.5"},
+      {1234.789, "1234.789"},
+      {9999999.0, "9999999.0"}, // last plain magnitude
+      {12345678.0, "1.2345678E7"}, // first scientific magnitude
+      {0.001, "0.001"}, // smallest plain magnitude
+      {0.0001, "1.0E-4"}, // first scientific below plain range
+  };
+  std::vector<double> inputs;
+  for (const auto& c : cases) {
+    inputs.push_back(c.input);
+  }
+  auto row = makeRow(inputs);
+  auto rowType = ROW({{"d", doubleType}});
+  for (size_t i = 0; i < cases.size(); ++i) {
+    std::stringstream ss;
+    formatter->toString(row, rowType, i, ss);
+    ASSERT_EQ(cases[i].expected, ss.str())
+        << "input double bit pattern: " << std::hexfloat << cases[i].input;
+  }
+}
+
 TEST_F(StringFormatterTest, testStringToTimestamp) {
   DefaultFormatter<Timestamp> formatter;
   TypePtr timestampType = std::make_shared<TimestampType>();
