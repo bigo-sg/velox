@@ -15,10 +15,37 @@
  */
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
+#include "velox/expression/VectorFunction.h"
+#include "velox/functions/Registerer.h"
+#include "velox/functions/flinksql/LogicalFunctions.h"
+
+namespace facebook::velox::functions {
+
+// Re-registers the prestosql NOT implementation (velox/functions/
+// prestosql/Not.cpp) under the flinksql prefix, the way sparksql does for
+// its own prefix in registration/RegisterComparison.cpp. This helper must
+// live in namespace facebook::velox::functions:
+// VELOX_REGISTER_VECTOR_FUNCTION's block-scope extern declaration binds
+// registerVectorFunction_udf_not to an entity of the innermost enclosing
+// namespace, which has to match Not.cpp's namespace to link.
+void registerFlinksqlNot(const std::string& prefix) {
+  VELOX_REGISTER_VECTOR_FUNCTION(udf_not, prefix + "not");
+}
+
+} // namespace facebook::velox::functions
+
 namespace facebook::velox::functions::flinksql {
 
-void registerLogicalFunctions(const std::string& /*prefix*/) {
-  // TODO: add the Flink Logical expression registrations.
+void registerLogicalFunctions(const std::string& prefix) {
+  // NOT reuses the single prestosql NOT implementation. NULLs are preserved
+  // by the vector function framework's default null behavior, matching
+  // Flink's three-valued NOT.
+  registerFlinksqlNot(prefix);
+  // Three-valued-logic predicates that never return NULL.
+  registerFunction<IsTrueFunction, bool, bool>({prefix + "is_true"});
+  registerFunction<IsFalseFunction, bool, bool>({prefix + "is_false"});
+  registerFunction<IsNotTrueFunction, bool, bool>({prefix + "is_not_true"});
+  registerFunction<IsNotFalseFunction, bool, bool>({prefix + "is_not_false"});
 }
 
 } // namespace facebook::velox::functions::flinksql
