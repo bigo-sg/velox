@@ -57,7 +57,7 @@ struct IsNotTrueFunction {
   FOLLY_ALWAYS_INLINE void callNullable(
       out_type<bool>& result,
       const arg_type<bool>* x) {
-    result = !(x != nullptr && *x);
+    result = (x == nullptr || !*x);
   }
 };
 
@@ -68,7 +68,7 @@ struct IsNotFalseFunction {
   FOLLY_ALWAYS_INLINE void callNullable(
       out_type<bool>& result,
       const arg_type<bool>* x) {
-    result = !(x != nullptr && !*x);
+    result = (x == nullptr || *x);
   }
 };
 
