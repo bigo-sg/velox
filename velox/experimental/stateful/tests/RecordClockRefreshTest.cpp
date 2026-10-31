@@ -306,11 +306,7 @@ TEST_F(RecordClockRefreshTest, emissionDrivenTemporalProjectionIsConsistent) {
   std::vector<StatefulOperatorPtr> calcTargets;
   calcTargets.push_back(std::move(capture));
   auto calcOp = std::make_unique<StatefulCalcOperator>(
-      0,
-      driverCtx_.get(),
-      nullptr,
-      project,
-      std::move(calcTargets));
+      0, driverCtx_.get(), nullptr, project, std::move(calcTargets));
 
   auto spy = std::make_unique<SpyOperator>(
       driverCtx_.get(),
