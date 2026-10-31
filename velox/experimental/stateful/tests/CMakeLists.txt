@@ -32,6 +32,9 @@ add_executable(velox_stateful_stream_record_test StreamRecordTest.cpp)
 
 add_executable(velox_stateful_calc_operator_test StatefulCalcOperatorTest.cpp)
 
+add_executable(velox_stateful_record_clock_refresh_test
+               RecordClockRefreshTest.cpp)
+
 add_test(velox_stateful_watermark_generator_test
          velox_stateful_watermark_generator_test)
 
@@ -53,6 +56,9 @@ add_test(velox_stateful_stream_partition_test
 add_test(velox_stateful_stream_record_test velox_stateful_stream_record_test)
 
 add_test(velox_stateful_calc_operator_test velox_stateful_calc_operator_test)
+
+add_test(velox_stateful_record_clock_refresh_test
+         velox_stateful_record_clock_refresh_test)
 
 target_link_libraries(
   velox_stateful_combined_watermark_status_test velox_common_base GTest::gtest
@@ -137,6 +143,19 @@ target_link_libraries(
 target_link_libraries(
   velox_stateful_calc_operator_test
   velox_stateful_exec
+  velox_vector_test_lib
+  velox_exec_test_lib
+  velox_exec
+  velox_common_base
+  GTest::gtest
+  GTest::gtest_main)
+
+# W4 evaluates the real flinksql temporal functions inside a stateful chain, so
+# the flinksql function library is linked in.
+target_link_libraries(
+  velox_stateful_record_clock_refresh_test
+  velox_stateful_exec
+  velox_functions_flink
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec

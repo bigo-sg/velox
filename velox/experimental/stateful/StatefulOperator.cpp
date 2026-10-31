@@ -18,6 +18,7 @@
 #include "velox/exec/TableScan.h"
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
+#include "velox/functions/flinksql/RecordClock.h"
 
 namespace facebook::velox::stateful {
 
@@ -132,6 +133,14 @@ void StatefulOperator::advance() {
 }
 
 void StatefulOperator::pushOutput(StreamElementPtr output) {
+  // Record-emission boundary and the single funnel for it: every record
+  // leaving an operator (source, window, timer and finish drains alike)
+  // passes here before the downstream evaluation is driven synchronously on
+  // the emitting thread. Flink evaluates the temporal functions
+  // (CURRENT_TIMESTAMP et al.) once per record as it reaches the operator;
+  // refreshing the per-thread record clock here makes every temporal
+  // occurrence evaluated for this record observe the same instant.
+  functions::flinksql::RecordClock::refresh();
   if (targets_.empty()) {
     auto task = std::static_pointer_cast<StatefulTask>(
         operator_->operatorCtx()->driverCtx()->task);
