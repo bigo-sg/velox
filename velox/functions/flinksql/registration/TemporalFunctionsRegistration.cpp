@@ -13,15 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/TemporalFunctions.h"
+#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 #include "velox/functions/Registerer.h"
+#include "velox/functions/flinksql/TemporalFunctions.h"
 
 namespace facebook::velox::functions::flinksql {
 
 void registerTemporalFunctions(const std::string& prefix) {
   registerFunction<CurrentDateFunction, Date>({prefix + "current_date"});
   registerFunction<CurrentTimeFunction, int32_t>({prefix + "current_time"});
+  // Per-record evaluation (Flink streaming semantics): the instant is fixed
+  // for the task lifetime. "current_timestamp" overwrites the sparksql
+  // registration of identical shape (the runtime path moves to the flinksql
+  // namespace).
+  registerFunction<FlinkCurrentTimestampFunction, Timestamp>(
+      {prefix + "current_timestamp", prefix + "now"});
+  registerFunction<FlinkLocalTimestampFunction, Timestamp>(
+      {prefix + "localtimestamp"});
+  // LOCALTIME returns INTEGER: the milliseconds-of-day carrier of Flink's
+  // TIME(0) (the exact RowData representation, so raw projections flow back
+  // to the sink without carrier conversion).
+  registerFunction<FlinkLocalTimeFunction, int32_t>({prefix + "localtime"});
 }
 
 } // namespace facebook::velox::functions::flinksql
