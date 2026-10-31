@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/functions/flinksql/ArithmeticFunctions.h"
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
