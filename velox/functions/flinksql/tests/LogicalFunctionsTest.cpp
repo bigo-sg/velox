@@ -28,10 +28,11 @@
 
 namespace facebook::velox::functions::flinksql::test {
 
-// Tests for the logical function group (NOT / IS FALSE / IS NOT TRUE /
-// IS NOT FALSE). "not" and "is_*" are constructed directly as CallTypedExpr
-// trees ("not" is a SQL keyword; nested combinations are built by nesting
-// calls).
+// Tests for the logical function group (NOT / IS TRUE / IS FALSE / IS NOT
+// TRUE / IS NOT FALSE). "not" and "is_*" are constructed directly as
+// CallTypedExpr trees ("not" is a SQL keyword; nested combinations are built
+// by nesting calls). NOT is the prestosql udf_not re-registered under the
+// flinksql prefix; the IS_* family is flinksql-native.
 class LogicalFunctionsTest : public functions::test::FunctionBaseTest {
  protected:
   static void SetUpTestCase() {
@@ -88,7 +89,21 @@ TEST_F(LogicalFunctionsTest, notTruthTable) {
   EXPECT_TRUE(result->isNullAt(2));
 }
 
-// L2: IS_FALSE truth table — {true,false,NULL} -> {false,true,false}, never
+// L2: IS_TRUE truth table — {true,false,NULL} -> {true,false,false}, never
+// NULL (Flink x IS TRUE returns FALSE for UNKNOWN, NEVER_NULL).
+TEST_F(LogicalFunctionsTest, isTrueTruthTable) {
+  flinksql::registerFunctions("");
+  VectorPtr owner;
+  auto* result =
+      evaluateBool(makeCall("is_true", {boolField()}), truthTableData(), owner);
+  ASSERT_EQ(result->size(), 3);
+  EXPECT_TRUE(result->valueAt(0));
+  EXPECT_FALSE(result->valueAt(1));
+  EXPECT_FALSE(result->valueAt(2));
+  EXPECT_EQ(0, BaseVector::countNulls(result->nulls(), result->size()));
+}
+
+// L3: IS_FALSE truth table — {true,false,NULL} -> {false,true,false}, never
 // NULL.
 TEST_F(LogicalFunctionsTest, isFalseTruthTable) {
   flinksql::registerFunctions("");
@@ -102,7 +117,7 @@ TEST_F(LogicalFunctionsTest, isFalseTruthTable) {
   EXPECT_EQ(0, BaseVector::countNulls(result->nulls(), result->size()));
 }
 
-// L3: IS_NOT_TRUE truth table — {true,false,NULL} -> {false,true,true},
+// L4: IS_NOT_TRUE truth table — {true,false,NULL} -> {false,true,true},
 // never NULL.
 TEST_F(LogicalFunctionsTest, isNotTrueTruthTable) {
   flinksql::registerFunctions("");
@@ -116,7 +131,7 @@ TEST_F(LogicalFunctionsTest, isNotTrueTruthTable) {
   EXPECT_EQ(0, BaseVector::countNulls(result->nulls(), result->size()));
 }
 
-// L4: IS_NOT_FALSE truth table — {true,false,NULL} -> {true,false,true},
+// L5: IS_NOT_FALSE truth table — {true,false,NULL} -> {true,false,true},
 // never NULL.
 TEST_F(LogicalFunctionsTest, isNotFalseTruthTable) {
   flinksql::registerFunctions("");
@@ -130,8 +145,8 @@ TEST_F(LogicalFunctionsTest, isNotFalseTruthTable) {
   EXPECT_EQ(0, BaseVector::countNulls(result->nulls(), result->size()));
 }
 
-// L5: NOT over a constant-encoded input takes the constant path of the
-// vector function (NotFunction contract): all rows are false.
+// L6: NOT over a constant-encoded input takes the constant path of the
+// reused prestosql NotFunction: all rows are false.
 TEST_F(LogicalFunctionsTest, notConstantEncoding) {
   flinksql::registerFunctions("");
   constexpr vector_size_t kSize = 5;
@@ -145,7 +160,7 @@ TEST_F(LogicalFunctionsTest, notConstantEncoding) {
   }
 }
 
-// L6: NOT over an all-NULL flat input is all-NULL (framework
+// L7: NOT over an all-NULL flat input is all-NULL (framework
 // defaultNullBehavior path of the vector function).
 TEST_F(LogicalFunctionsTest, notAllNull) {
   flinksql::registerFunctions("");
@@ -158,7 +173,7 @@ TEST_F(LogicalFunctionsTest, notAllNull) {
   }
 }
 
-// L7: NOT(NOT(x)) is the identity — {true,false,NULL} stays
+// L8: NOT(NOT(x)) is the identity — {true,false,NULL} stays
 // {true,false,NULL}.
 TEST_F(LogicalFunctionsTest, doubleNotIsIdentity) {
   flinksql::registerFunctions("");
@@ -173,7 +188,7 @@ TEST_F(LogicalFunctionsTest, doubleNotIsIdentity) {
   EXPECT_TRUE(result->isNullAt(2));
 }
 
-// L8: IS_NOT_TRUE(NOT(x)) equals the IS_NOT_FALSE(x) truth table —
+// L9: IS_NOT_TRUE(NOT(x)) equals the IS_NOT_FALSE(x) truth table —
 // {true,false,NULL} -> {true,false,true}.
 TEST_F(LogicalFunctionsTest, isNotTrueOfNot) {
   flinksql::registerFunctions("");
@@ -189,8 +204,8 @@ TEST_F(LogicalFunctionsTest, isNotTrueOfNot) {
   EXPECT_EQ(0, BaseVector::countNulls(result->nulls(), result->size()));
 }
 
-// L9: all three IS_* functions over an all-NULL input produce
-// {F,T,T} respectively, with no NULLs in the output.
+// L10: all four IS_* functions over an all-NULL input produce
+// {F,F,F,T,T} respectively, with no NULLs in the output.
 TEST_F(LogicalFunctionsTest, isFamilyAllNullMatrix) {
   flinksql::registerFunctions("");
   struct Case {
@@ -198,7 +213,10 @@ TEST_F(LogicalFunctionsTest, isFamilyAllNullMatrix) {
     bool expected;
   };
   const std::vector<Case> cases = {
-      {"is_false", false}, {"is_not_true", true}, {"is_not_false", true}};
+      {"is_true", false},
+      {"is_false", false},
+      {"is_not_true", true},
+      {"is_not_false", true}};
   for (const auto& c : cases) {
     VectorPtr owner;
     auto* result =
@@ -211,9 +229,10 @@ TEST_F(LogicalFunctionsTest, isFamilyAllNullMatrix) {
   }
 }
 
-// L10: the "not" name resolves through the vector function registry to the
-// flinksql registration: only flinksql is registered in this process, and
-// "not" is present in the vector signatures with (boolean) -> boolean.
+// L11: the "not" name resolves through the vector function registry to the
+// flinksql registration of the prestosql udf_not: only flinksql is
+// registered in this process, and "not" is present in the vector signatures
+// with (boolean) -> boolean.
 TEST_F(LogicalFunctionsTest, notNameResolution) {
   flinksql::registerFunctions("");
 
