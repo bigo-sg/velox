@@ -15,57 +15,177 @@
  */
 #pragma once
 
+#include <map>
+#include <memory>
+#include <optional>
+#include <type_traits>
+#include <utility>
+
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
+#include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateTable.h"
+#include "velox/type/StringView.h"
 
 namespace facebook::velox::stateful {
 
-// This class is relevant to Flink HeapMapState.
+/// MapState on the heap storage: the value is a shared std::map, created on
+/// the first put and overwritten on put of an existing user key; get()
+/// misses (std::nullopt) both when no map is stored and when the user key
+/// is absent, as in Flink HeapMapState. Removing from an absent map does
+/// not materialize one, and removing the last user entry drops the stored
+/// map itself, so empty maps never reach a checkpoint. The checkpoint
+/// payload of one entry is the user-entry count followed by the
+/// length-prefixed serialization of each user key and user value.
+/// @param <K> type of key, a StateKey subclass
+/// @param <N> type of namespace, a Namespace subclass
+/// @param <UK> type of the user keys of the map
+/// @param <UV> type of the user values of the map
 template <typename K, typename N, typename UK, typename UV>
 class HeapMapState : public MapState<K, N, UK, UV> {
  public:
-  HeapMapState(int keyGroupNumber) : keyGroupNumber_(keyGroupNumber) {
-    stateTable_ =
-        std::make_unique<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>(
-            keyGroupNumber);
+  HeapMapState(
+      std::shared_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>
+          stateTable,
+      const MapStateDescriptor<UK, UV>& descriptor,
+      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      : stateTable_(std::move(stateTable)),
+        keySerializer_(std::move(keySerializer)),
+        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        userKeySerializer_(std::dynamic_pointer_cast<TypeSerializer<UK>>(
+            descriptor.keySerializer())),
+        userValueSerializer_(std::dynamic_pointer_cast<TypeSerializer<UV>>(
+            descriptor.valueSerializer())) {
+    // The StringView serializer's deserialize() returns a view borrowing the
+    // checkpoint buffer (a documented contract); a view stored into this
+    // long-lived map would dangle once the buffer is released.
+    if constexpr (
+        std::is_same_v<UK, StringView> || std::is_same_v<UV, StringView>) {
+      VELOX_FAIL(
+          "StringView cannot be stored in a long-lived state container; "
+          "use std::string until a copying implementation lands");
+    }
+    VELOX_CHECK_NOT_NULL(
+        userKeySerializer_,
+        "Map state '{}' requires a serializer for its user key type",
+        descriptor.name());
+    VELOX_CHECK_NOT_NULL(
+        userValueSerializer_,
+        "Map state '{}' requires a serializer for its user value type",
+        descriptor.name());
   }
 
-  UV get(const K& key, const N& ns, const UK& userKey) override {
-    std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
-    return currentMap->count(userKey) ? (*currentMap)[userKey] : UV();
+  std::optional<UV> get(const K& key, const N& ns, const UK& userKey) override {
+    auto currentMap = stateTable_->get(key, ns);
+    if (currentMap == nullptr) {
+      return std::nullopt;
+    }
+    auto it = currentMap->find(userKey);
+    return it == currentMap->end() ? std::nullopt
+                                   : std::optional<UV>(it->second);
   }
 
   void put(const K& key, const N& ns, const UK& userKey, const UV& value)
       override {
-    std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
-    currentMap->insert({userKey, value});
+    (*getOrCreate(key, ns))[userKey] = value;
   }
 
   std::map<UK, UV> entries(const K& key, const N& ns) override {
-    return *getOrCreate(key, ns).get();
+    auto currentMap = stateTable_->get(key, ns);
+    return currentMap == nullptr ? std::map<UK, UV>{} : *currentMap;
+  }
+
+  void remove(const K& key, const N& ns, const UK& userKey) override {
+    if (auto currentMap = stateTable_->get(key, ns)) {
+      currentMap->erase(userKey);
+      if (currentMap->empty()) {
+        // An empty map carries no state: dropping the entry keeps empty maps
+        // out of the checkpoints.
+        stateTable_->remove(key, ns);
+      }
+    }
   }
 
   void clear() override {
     stateTable_->clear();
   }
 
-  void remove(const K& key, const N& ns, const UK& userKey) override {
-    std::shared_ptr<std::map<UK, UV>> currentMap = getOrCreate(key, ns);
-    currentMap->erase(userKey);
+  void snapshotKeyGroup(int32_t keyGroupId, CheckpointWriter& writer) override {
+    auto& map =
+        stateTable_->stateMapForKeyGroup(static_cast<uint32_t>(keyGroupId));
+    auto snapshot = map.createSnapshot();
+    const auto countPosition = writer.writeInt32Placeholder();
+    int32_t entryCount = 0;
+    for (const auto& head : snapshot.heads) {
+      for (auto entry = head; entry != nullptr; entry = entry->next_) {
+        writeEntryFrames(
+            writer,
+            nsSerializer_->serialize(entry->namespace_),
+            keySerializer_->serialize(entry->key_),
+            serializeMap(entry->state_));
+        ++entryCount;
+      }
+    }
+    writer.patchInt32(countPosition, entryCount);
+    map.releaseSnapshot(snapshot.version);
+  }
+
+  void restoreEntry(int32_t keyGroupId, CheckpointReader& reader) override {
+    const auto frames = readEntryFrames(reader);
+    const auto ns = nsSerializer_->deserialize(frames.ns);
+    const auto key = keySerializer_->deserialize(frames.key);
+    checkEntryKeyGroup(key, keyGroupId);
+    CheckpointReader mapReader(frames.payload.data(), frames.payload.size());
+    const auto size = mapReader.readInt32();
+    VELOX_CHECK_GE(size, 0, "Corrupt checkpoint: negative map size {}", size);
+    auto map = std::make_shared<std::map<UK, UV>>();
+    for (int32_t i = 0; i < size; ++i) {
+      auto userKey = userKeySerializer_->deserialize(mapReader.readBytes());
+      auto userValue = userValueSerializer_->deserialize(mapReader.readBytes());
+      map->emplace(std::move(userKey), std::move(userValue));
+    }
+    VELOX_CHECK(
+        mapReader.atEnd(),
+        "Corrupt checkpoint: trailing bytes in a map payload");
+    stateTable_->put(key, ns, map);
+  }
+
+  std::string namespaceSchemaId() const override {
+    return nsSerializer_->schemaId();
+  }
+
+  std::string valueSchemaId() const override {
+    return "map<" + userKeySerializer_->schemaId() + "," +
+        userValueSerializer_->schemaId() + ">";
   }
 
  private:
-  std::shared_ptr<std::map<UK, UV>> getOrCreate(const K& key, const N& ns) {
-    std::shared_ptr<std::map<UK, UV>> currentMap = stateTable_->get(key, ns);
-    if (currentMap == nullptr) {
-      currentMap = std::make_shared<std::map<UK, UV>>();
-      stateTable_->put(key, ns, currentMap);
+  std::string serializeMap(const std::shared_ptr<std::map<UK, UV>>& map) const {
+    VELOX_CHECK_NOT_NULL(map, "Corrupt state: a stored map is null");
+    std::string blob;
+    CheckpointWriter mapWriter(blob);
+    mapWriter.writeInt32(static_cast<int32_t>(map->size()));
+    for (const auto& [userKey, userValue] : *map) {
+      mapWriter.writeBytes(userKeySerializer_->serialize(userKey));
+      mapWriter.writeBytes(userValueSerializer_->serialize(userValue));
     }
-    return currentMap;
+    return blob;
   }
 
-  std::unique_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>
+  std::shared_ptr<std::map<UK, UV>> getOrCreate(const K& key, const N& ns) {
+    if (auto currentMap = stateTable_->get(key, ns)) {
+      return currentMap;
+    }
+    auto freshMap = std::make_shared<std::map<UK, UV>>();
+    stateTable_->put(key, ns, freshMap);
+    return freshMap;
+  }
+
+  std::shared_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>
       stateTable_;
-  int keyGroupNumber_;
+  std::shared_ptr<TypeSerializer<K>> keySerializer_;
+  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<TypeSerializer<UK>> userKeySerializer_;
+  std::shared_ptr<TypeSerializer<UV>> userValueSerializer_;
 };
 } // namespace facebook::velox::stateful

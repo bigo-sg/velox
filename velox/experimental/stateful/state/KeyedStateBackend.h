@@ -16,7 +16,6 @@
 #pragma once
 #include <cstdint>
 
-#include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/state/CheckpointListener.h"
 #include "velox/experimental/stateful/state/Snapshotable.h"
@@ -56,18 +55,6 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   virtual std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
   createGroupWindowAggTimerService(
       Triggerable<int64_t, TimeWindow>* triggerable) = 0;
-
-  void setCurrentKey(const uint32_t key) {
-    currentKey_ = key;
-  }
-
-  const uint32_t getCurrentKey() {
-    return currentKey_;
-  }
-
- private:
-  uint32_t currentKey_{};
-  velox::memory::MemoryPool* memoryPool;
 };
 
 using KeyedStateBackendPtr = std::shared_ptr<KeyedStateBackend>;

@@ -56,7 +56,10 @@ void StreamPartition::advance() {
     return;
   }
 
-  // TODO: The partition function doesn't use max parallelism.
+  // The spec decides the routing: HashPartitionFunctionSpec hashes the key
+  // channels (hash % numPartitions), KeyGroupPartitionFunctionSpec routes
+  // by key group so each subtask receives exactly the key groups its
+  // state backend owns.
   partitionFunction_->partition(*inputRowVector_, partitions_);
   const auto numInput = inputRowVector_->size();
   std::vector<vector_size_t> maxIndex(numPartitions_, 0);
