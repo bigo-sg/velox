@@ -22,12 +22,30 @@
 
 #include "velox/core/QueryConfig.h"
 #include "velox/functions/Macros.h"
+#include "velox/functions/flinksql/RecordClock.h"
 #include "velox/functions/lib/TimeUtils.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/Type.h"
 #include "velox/type/tz/TimeZoneMap.h"
 
 namespace facebook::velox::functions::flinksql {
+
+// Streaming-only scope: these functions implement the Flink *streaming*
+// semantics of the temporal family — one evaluation per input record, all
+// occurrences in a record sharing one instant (the RecordClock pinned at the
+// record-emission boundary, see RecordClock.h). Flink *batch* mode evaluates
+// the family once at query start (a query-level constant); that path is out
+// of scope for this namespace and not covered by the GFV batch pipeline.
+
+// Milliseconds of day with floor-mod semantics: the result domain is
+// [0, kMillisPerDay) for any int64_t local-millis input, including
+// pre-1970 instants (negative local millis, reachable with an injected or
+// historical clock value).
+inline constexpr int64_t kMillisPerDay = 86'400'000;
+
+inline int64_t millisOfDay(int64_t localMillis) {
+  return ((localMillis % kMillisPerDay) + kMillisPerDay) % kMillisPerDay;
+}
 
 // Flink CURRENT_TIMESTAMP / NOW(): TIMESTAMP_LTZ(3) semantics. The value is
 // an epoch timestamp; rendering with the session timezone happens in the
@@ -42,16 +60,17 @@ struct FlinkCurrentTimestampFunction {
   static constexpr bool is_deterministic = false;
 
   FOLLY_ALWAYS_INLINE bool call(out_type<Timestamp>& result) {
-    result = Timestamp::now();
+    result = RecordClock::current();
     return true;
   }
 };
 
 // Flink LOCALTIMESTAMP: TIMESTAMP(3) semantics. The local wall clock in the
-// session timezone, evaluated per record. Equivalent to
-// Timestamp::now().toTimezone(sessionTz), matching Flink's streaming codegen
-// (now + sessionTimeZone.getOffset(now) per record, both taking the offset at
-// the row's own instant).
+// session timezone, evaluated per record from the same shared instant as
+// CURRENT_TIMESTAMP. Equivalent to
+// RecordClock::current().toTimezone(sessionTz), matching Flink's streaming
+// codegen (now + sessionTimeZone.getOffset(now) per record, both taking the
+// offset at the row's own instant).
 template <typename T>
 struct FlinkLocalTimestampFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
@@ -72,7 +91,7 @@ struct FlinkLocalTimestampFunction {
   }
 
   FOLLY_ALWAYS_INLINE bool call(out_type<Timestamp>& result) {
-    result = Timestamp::now();
+    result = RecordClock::current();
     result.toTimezone(*timeZone_);
     return true;
   }
@@ -83,13 +102,13 @@ struct FlinkLocalTimestampFunction {
 
 // Flink LOCALTIME: TIME(0) semantics on the INTEGER carrier. The value is
 // the milliseconds-of-day part of the session-timezone wall clock,
-// evaluated per record. Flink's streaming codegen derives it as
-// timestampMillisToTime(localTimestamp.getMillisecond()), i.e.
-// (int)(localWallMillis % 86'400'000) (DateTimeUtils.java:1383-1385 +
-// CodeGeneratorContext.addReusableRecordLevelLocalTime) — the same value
-// this function produces from Timestamp::now().toTimezone(sessionTz).
-// The int is the exact RowData representation of a TIME(0) field, so the
-// projection flows back to the sink without any carrier conversion.
+// evaluated per record and derived from the same shared instant as
+// LOCALTIMESTAMP (Flink's streaming codegen derives it as
+// timestampMillisToTime(localTimestamp.getMillisecond()), i.e. a floor-mod
+// of the local wall millis — DateTimeUtils.java:1383-1385 +
+// CodeGeneratorContext.addReusableRecordLevelLocalTime). The int is the
+// exact RowData representation of a TIME(0) field, so the projection flows
+// back to the sink without any carrier conversion.
 template <typename T>
 struct FlinkLocalTimeFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
@@ -111,12 +130,9 @@ struct FlinkLocalTimeFunction {
   }
 
   FOLLY_ALWAYS_INLINE bool call(out_type<int32_t>& result) {
-    Timestamp now = Timestamp::now();
+    Timestamp now = RecordClock::current();
     now.toTimezone(*timeZone_);
-    // Epoch is ~1.7e12 ms in 2026 and zone offsets are within +/-14h, so
-    // the dividend is always positive: the modulo lands in
-    // [0, 86'400'000) with no negative-wrap handling needed.
-    result = static_cast<int32_t>(now.toMillis() % 86'400'000);
+    result = static_cast<int32_t>(millisOfDay(now.toMillis()));
     return true;
   }
 
