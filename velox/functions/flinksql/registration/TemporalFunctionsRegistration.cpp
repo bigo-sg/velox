@@ -17,11 +17,44 @@
 
 #include "velox/functions/Registerer.h"
 
+#include "velox/functions/Registerer.h"
+#include "velox/functions/flinksql/DateTimeFunctions.h"
+
 namespace facebook::velox::functions::flinksql {
 
 void registerTemporalFunctions(const std::string& prefix) {
   registerFunction<CurrentDateFunction, Date>({prefix + "current_date"});
   registerFunction<CurrentTimeFunction, int32_t>({prefix + "current_time"});
+
+  registerFunction<ToDateFunction, Date, Varchar>({prefix + "to_date"});
+  registerFunction<ToDateWithFormatFunction, Date, Varchar, Varchar>(
+      {prefix + "to_date"});
+
+  registerFunction<ToTimestampFunction, Timestamp, Varchar>(
+      {prefix + "to_timestamp"});
+  registerFunction<ToTimestampWithFormatFunction, Timestamp, Varchar, Varchar>(
+      {prefix + "to_timestamp"});
+
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int8_t, int32_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int16_t, int32_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int32_t, int32_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int64_t, int32_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzDoubleFunction, Timestamp, double, int32_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<
+      ToTimestampLtzDecimalFunction,
+      Timestamp,
+      ShortDecimal<P1, S1>,
+      int32_t>({prefix + "to_timestamp_ltz"});
+  registerFunction<
+      ToTimestampLtzDecimalFunction,
+      Timestamp,
+      LongDecimal<P1, S1>,
+      int32_t>({prefix + "to_timestamp_ltz"});
 }
 
 } // namespace facebook::velox::functions::flinksql

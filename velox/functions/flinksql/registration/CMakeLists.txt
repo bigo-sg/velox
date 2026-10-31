@@ -23,4 +23,4 @@ velox_add_library(
   StringFunctionsRegistration.cpp
   TemporalFunctionsRegistration.cpp)
 
-velox_link_libraries(velox_functions_flink velox_functions_lib Folly::folly)
+velox_link_libraries(velox_functions_flink velox_functions_flink_impl)
