@@ -32,6 +32,11 @@ void StreamKeyedOperator::initialize() {
 }
 
 void StreamKeyedOperator::initializeState() {
+  // TODO: migrate this operator to operator-owned keyed state (cf.
+  // GroupAggregator::initializeStateBackend) and remove this guard.
+  VELOX_NYI(
+      "StreamKeyedOperator is not yet migrated to operator-owned keyed "
+      "state; there is no state handler to initialize");
   processor_->open(stateHandler().get());
 }
 

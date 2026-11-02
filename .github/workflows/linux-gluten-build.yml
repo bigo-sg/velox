@@ -18,6 +18,7 @@ on:
   push:
     branches:
       - "gluten-0530"
+      - "gluten-20260829"
     paths:
       - "velox/**"
       - "!velox/docs/**"
