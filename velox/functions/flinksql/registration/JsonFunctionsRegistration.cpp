@@ -20,15 +20,43 @@
 namespace facebook::velox::functions::flinksql {
 
 void registerJsonFunctions(const std::string& prefix) {
+  const std::vector<std::string> aliases = {prefix + "json_value"};
   registerFunction<
-      JsonValueFunction,
+      JsonValueVarcharFunction,
       Varchar,
       Varchar,
       Varchar,
       int32_t,
       Varchar,
       int32_t,
-      Varchar>({prefix + "json_value"});
+      Varchar>(aliases);
+  registerFunction<
+      JsonValueIntegerFunction,
+      int32_t,
+      Varchar,
+      Varchar,
+      int32_t,
+      int32_t,
+      int32_t,
+      int32_t>(aliases);
+  registerFunction<
+      JsonValueBooleanFunction,
+      bool,
+      Varchar,
+      Varchar,
+      int32_t,
+      bool,
+      int32_t,
+      bool>(aliases);
+  registerFunction<
+      JsonValueDoubleFunction,
+      double,
+      Varchar,
+      Varchar,
+      int32_t,
+      double,
+      int32_t,
+      double>(aliases);
 }
 
 } // namespace facebook::velox::functions::flinksql
