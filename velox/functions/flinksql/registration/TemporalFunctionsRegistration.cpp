@@ -13,12 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/registration/RegistrationFunctions.h"
+#include "velox/functions/flinksql/TemporalFunctions.h"
+
+#include "velox/functions/Registerer.h"
 
 namespace facebook::velox::functions::flinksql {
 
-void registerTemporalFunctions(const std::string& /*prefix*/) {
-  // TODO: add the Flink Temporal expression registrations.
+void registerTemporalFunctions(const std::string& prefix) {
+  registerFunction<CurrentDateFunction, Date>({prefix + "current_date"});
+  registerFunction<CurrentTimeFunction, int32_t>({prefix + "current_time"});
 }
 
 } // namespace facebook::velox::functions::flinksql

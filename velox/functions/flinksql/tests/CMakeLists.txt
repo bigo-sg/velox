@@ -15,7 +15,10 @@
 add_executable(
   velox_functions_flinksql_test
   ConditionalFunctionsTest.cpp
-  HashFunctionsTest.cpp)
+  HashFunctionsTest.cpp
+  StringFunctionsTest.cpp
+  ConditionalFunctionsTest.cpp
+  TemporalFunctionsTest.cpp)
 
 add_test(velox_functions_flinksql_test velox_functions_flinksql_test)
 
@@ -23,8 +26,10 @@ target_link_libraries(
   velox_functions_flinksql_test
   velox_functions_flink
   velox_functions_test_lib
+  velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
+  velox_common_base
   fmt::fmt
   GTest::gtest
   GTest::gtest_main
