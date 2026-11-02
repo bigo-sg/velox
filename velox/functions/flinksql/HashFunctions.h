@@ -61,12 +61,20 @@ FOLLY_ALWAYS_INLINE void encodeDigestToHexString(
 // hashLength over the bytes of s and renders it as lowercase hex in result.
 // hashLength must be 224, 256, 384, or 512; 0 and any other unsupported
 // length fail the job, mirroring Flink 1.19.2's rejection of unsupported
-// algorithms (0 included). TResult is the caller's out_type<Varchar> writer.
+// algorithms (0 included). The one extra: a column hashLength of 1 succeeds
+// with the 20-byte SHA-1 digest — Flink's column path builds "SHA-" + length
+// and "SHA-1" is a valid algorithm name there — so 1 maps to EVP_sha1() to
+// match, while the literal form of 1 is rejected earlier at the gluten
+// conversion layer, mirroring Flink's init-time literal gate. TResult is the
+// caller's out_type<Varchar> writer.
 template <typename TResult>
 FOLLY_ALWAYS_INLINE void
 sha2Hex(TResult& result, std::string_view s, int64_t hashLength) {
   const EVP_MD* hashAlgorithm;
   switch (hashLength) {
+    case 1:
+      hashAlgorithm = EVP_sha1();
+      break;
     case 224:
       hashAlgorithm = EVP_sha224();
       break;
@@ -82,7 +90,10 @@ sha2Hex(TResult& result, std::string_view s, int64_t hashLength) {
     default:
       VELOX_USER_FAIL("Unsupported SHA-2 hash length: {}", hashLength);
   }
-  const int32_t digestLength = static_cast<int32_t>(hashLength >> 3);
+  // SHA-1 (hashLength 1) is the 20-byte outlier; every other accepted length
+  // derives digestLength as hashLength >> 3.
+  const int32_t digestLength =
+      hashLength == 1 ? 20 : static_cast<int32_t>(hashLength >> 3);
   result.resize(digestLength * 2);
   folly::ssl::OpenSSLHash::hash(
       folly::MutableByteRange((uint8_t*)result.data(), digestLength),

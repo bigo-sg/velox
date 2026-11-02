@@ -67,6 +67,10 @@ const std::string kSha512Long{
 const std::string kEmpty;
 const std::string kTest{"test"};
 const std::string kUtf8{"你好世界"};
+const std::string kSha1Empty{"da39a3ee5e6b4b0d3255bfef95601890afd80709"};
+const std::string kSha1Test{"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"};
+const std::string kSha1Utf8{"dabaa5fe7c47fb21be902480a13013f16a1ab6eb"};
+const std::string kSha1Long{"a26704c04fc5f10db5aab58468035531cc542485"};
 const std::string kLong{"0123456789abcdefghijklmnopqrstuvwxyz"};
 } // namespace
 
@@ -146,8 +150,20 @@ TEST_F(FlinkHashTest, Sha2ZeroAndBigIntLength) {
 }
 
 // C. Unsupported hash lengths fail the job, mirroring Flink's rejection.
+// E. A column hashLength of 1 yields the SHA-1 digest: Flink's column path
+// builds "SHA-" + length and "SHA-1" is a valid algorithm name there, so the
+// job succeeds with the 20-byte SHA-1 digest; the literal form of 1 is
+// rejected earlier at the gluten conversion layer (Flink's init-time
+// literal gate).
+TEST_F(FlinkHashTest, Sha2LengthOneSelectsSha1) {
+  EXPECT_EQ(kSha1Empty, sha2Once(kEmpty, 1));
+  EXPECT_EQ(kSha1Test, sha2Once(kTest, 1));
+  EXPECT_EQ(kSha1Utf8, sha2Once(kUtf8, 1));
+  EXPECT_EQ(kSha1Long, sha2Once(kLong, 1));
+  EXPECT_EQ(kSha1Test, sha2BigIntOnce(kTest, 1));
+}
+
 TEST_F(FlinkHashTest, Sha2UnsupportedLengthFails) {
-  VELOX_ASSERT_THROW(sha2Once(kTest, 1), "Unsupported SHA-2 hash length: 1");
   VELOX_ASSERT_THROW(sha2Once(kTest, -1), "Unsupported SHA-2 hash length: -1");
   VELOX_ASSERT_THROW(
       sha2Once(kTest, 385), "Unsupported SHA-2 hash length: 385");
