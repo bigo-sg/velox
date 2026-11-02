@@ -206,9 +206,8 @@ TEST_F(FlinkHashTest, NullInputs) {
 // F. Multi-row evaluation: distinct rows get distinct digests of the
 // expected length (56/64/96/128 lowercase hex chars).
 TEST_F(FlinkHashTest, MultiRow) {
-  auto data = makeRowVector(
-      std::vector<VectorPtr>{
-          makeNullableFlatVector<std::string>({kEmpty, kTest, kUtf8, kLong})});
+  auto data = makeRowVector(std::vector<VectorPtr>{
+      makeNullableFlatVector<std::string>({kEmpty, kTest, kUtf8, kLong})});
   auto result = evaluate("sha256(c0)", data);
   auto flat = result->asFlatVector<StringView>();
   ASSERT_EQ(4, flat->size());
