@@ -14,8 +14,8 @@
 
 add_executable(
   velox_functions_flinksql_test
-  ConditionalFunctionsTest.cpp StringFunctionsTest.cpp
-  TemporalFunctionsTest.cpp)
+  ArithmeticFunctionsTest.cpp ConditionalFunctionsTest.cpp
+  StringFunctionsTest.cpp TemporalFunctionsTest.cpp)
 
 add_test(velox_functions_flinksql_test velox_functions_flinksql_test)
 
