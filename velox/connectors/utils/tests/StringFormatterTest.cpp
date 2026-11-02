@@ -153,6 +153,11 @@ TEST_F(StringFormatterTest, testDoubleFormatterToString) {
       {0.0, "0.0"},
       {-2.5, "-2.5"},
       {1234.789, "1234.789"},
+      // Plain-range values whose shortest form is scientific: must stay
+      // plain like Java's Double.toString, not "1e+05.0"-style output.
+      {100000.0, "100000.0"},
+      {1000000.0, "1000000.0"},
+      {9000000.0, "9000000.0"},
       {9999999.0, "9999999.0"}, // last plain magnitude
       {12345678.0, "1.2345678E7"}, // first scientific magnitude
       {0.001, "0.001"}, // smallest plain magnitude

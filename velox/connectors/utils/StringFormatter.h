@@ -57,7 +57,11 @@ inline std::string javaFloatingPointToString(T t) {
   const double abs = std::fabs(static_cast<double>(t));
   char buf[64];
   if (abs == 0.0 || (abs >= 1e-3 && abs < 1e7)) {
-    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), t);
+    // Fixed, not shortest: to_chars' shortest form turns 100000.0 into
+    // "1e+05", which would print as "1e+05.0" where Java's Double.toString
+    // keeps plain notation ("100000.0") across the whole plain range.
+    auto [ptr, ec] =
+        std::to_chars(buf, buf + sizeof(buf), t, std::chars_format::fixed);
     VELOX_CHECK(ec == std::errc());
     std::string s(buf, ptr - buf);
     if (s.find('.') == std::string::npos) {
