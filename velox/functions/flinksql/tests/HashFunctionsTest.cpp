@@ -15,30 +15,15 @@
  */
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
-#include "velox/common/base/tests/GTestUtils.h"
 #include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
+
+#include "velox/common/base/tests/GTestUtils.h"
 
 namespace facebook::velox::functions::flinksql::test {
 
 namespace {
-// Digests pinned from Flink's ScalarFunctionsTest / SqlExpressionTest and
-// probed independently; lowercase hex over the UTF-8 bytes of the input.
-
-// MD5 digests.
-const std::string kMd5Empty{"d41d8cd98f00b204e9800998ecf8427e"};
-const std::string kMd5Test{"098f6bcd4621d373cade4e832627b4f6"};
-const std::string kMd5Abc{"900150983cd24fb0d6963f7d28e17f72"};
-const std::string kMd5Utf8{"65396ee4aad0b4f17aacd1c6112ee364"};
-const std::string kMd5Long{"e9b1713db620f1e3a14b6812de523f4b"};
-
-// SHA-1 digests.
-const std::string kSha1Empty{"da39a3ee5e6b4b0d3255bfef95601890afd80709"};
-const std::string kSha1Test{"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"};
-const std::string kSha1Abc{"a9993e364706816aba3e25717850c26c9cd0d89d"};
-const std::string kSha1Utf8{"dabaa5fe7c47fb21be902480a13013f16a1ab6eb"};
-const std::string kSha1Long{"a26704c04fc5f10db5aab58468035531cc542485"};
-
-// SHA-2 digests.
+// Digests pinned from Flink's SqlExpressionTest/ScalarFunctionsTest
+// ("", "test") and probed independently for the supplements.
 const std::string kSha224Empty{
     "d14a028c2a3a2bc9476102bb288234c415a2b01f828ea62ac5b3e42f"};
 const std::string kSha224Test{
@@ -79,15 +64,29 @@ const std::string kSha384Long{
 const std::string kSha512Long{
     "95cadc34aa46b9fdef432f62fe5bad8d9f475bfbecf797d5802bb5f2937a85d93ce48"
     "57a6262b03834c01c610d74cd1215f9a466dc6ad3dd15078e3309a03a6d"};
-
-// Shared inputs.
 const std::string kEmpty;
 const std::string kTest{"test"};
-const std::string kAbc{"abc"};
 const std::string kUtf8{"你好世界"};
+const std::string kSha1Empty{"da39a3ee5e6b4b0d3255bfef95601890afd80709"};
+const std::string kSha1Test{"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3"};
+const std::string kSha1Utf8{"dabaa5fe7c47fb21be902480a13013f16a1ab6eb"};
+const std::string kSha1Long{"a26704c04fc5f10db5aab58468035531cc542485"};
 const std::string kLong{"0123456789abcdefghijklmnopqrstuvwxyz"};
+
+// MD5 digests (md5/sha1 additions).
+const std::string kMd5Empty{"d41d8cd98f00b204e9800998ecf8427e"};
+const std::string kMd5Test{"098f6bcd4621d373cade4e832627b4f6"};
+const std::string kMd5Upper{"902fbdd2b1df0c4f70b4a5d23525e932"};
+const std::string kMd5Utf8{"65396ee4aad0b4f17aacd1c6112ee364"};
+const std::string kMd5Long{"e9b1713db620f1e3a14b6812de523f4b"};
+// SHA-1 case-variant digest, and the uppercase input it corresponds to.
+const std::string kSha1Upper{"3c01bdbb26f358bab27f267924aa2c9a03fcfdb8"};
+const std::string kUpper{"ABC"};
 } // namespace
 
+// Expected values are pinned from Flink's actual behavior (lowercase hex,
+// UTF-8 bytes of the string); the rejection of unsupported hash lengths,
+// 0 included (Flink 1.19.2 rejects it too), follows the expression card.
 class FlinkHashTest : public functions::test::FunctionBaseTest {
  protected:
   static void SetUpTestCase() {
@@ -133,25 +132,7 @@ class FlinkHashTest : public functions::test::FunctionBaseTest {
   }
 };
 
-// MD5 over empty / plain / case-variant / UTF-8 / long inputs.
-TEST_F(FlinkHashTest, Md5Basics) {
-  EXPECT_EQ(kMd5Empty, md5Once(kEmpty));
-  EXPECT_EQ(kMd5Test, md5Once(kTest));
-  EXPECT_EQ(kMd5Abc, md5Once(kAbc));
-  EXPECT_EQ(kMd5Utf8, md5Once(kUtf8));
-  EXPECT_EQ(kMd5Long, md5Once(kLong));
-}
-
-// SHA1 over the same inputs.
-TEST_F(FlinkHashTest, Sha1Basics) {
-  EXPECT_EQ(kSha1Empty, sha1Once(kEmpty));
-  EXPECT_EQ(kSha1Test, sha1Once(kTest));
-  EXPECT_EQ(kSha1Abc, sha1Once(kAbc));
-  EXPECT_EQ(kSha1Utf8, sha1Once(kUtf8));
-  EXPECT_EQ(kSha1Long, sha1Once(kLong));
-}
-
-// sha2 basics: each supported length over empty, plain, UTF-8, and long
+// A. sha2 basics: each supported length over empty, plain, UTF-8, and long
 // inputs; expected digests are Flink-pinned or probed independently.
 TEST_F(FlinkHashTest, Sha2SupportedLengths) {
   EXPECT_EQ(kSha224Empty, sha2Once(kEmpty, 224));
@@ -175,9 +156,27 @@ TEST_F(FlinkHashTest, Sha2SupportedLengths) {
   EXPECT_EQ(kSha512Long, sha2Once(kLong, 512));
 }
 
-// hashLength 0 is rejected like any other unsupported length — Flink 1.19.2
-// rejects 0 outright, and the offloaded path must stay consistent with native
-// execution; BIGINT hashLength follows the int32 path.
+// MD5 over empty / plain / case-variant / UTF-8 / long inputs.
+TEST_F(FlinkHashTest, Md5Basics) {
+  EXPECT_EQ(kMd5Empty, md5Once(kEmpty));
+  EXPECT_EQ(kMd5Test, md5Once(kTest));
+  EXPECT_EQ(kMd5Upper, md5Once(kUpper));
+  EXPECT_EQ(kMd5Utf8, md5Once(kUtf8));
+  EXPECT_EQ(kMd5Long, md5Once(kLong));
+}
+
+// SHA1 over the same inputs.
+TEST_F(FlinkHashTest, Sha1Basics) {
+  EXPECT_EQ(kSha1Empty, sha1Once(kEmpty));
+  EXPECT_EQ(kSha1Test, sha1Once(kTest));
+  EXPECT_EQ(kSha1Upper, sha1Once(kUpper));
+  EXPECT_EQ(kSha1Utf8, sha1Once(kUtf8));
+  EXPECT_EQ(kSha1Long, sha1Once(kLong));
+}
+
+// B. hashLength 0 is rejected like any other unsupported length — Flink
+// 1.19.2 rejects 0 outright, and the offloaded path must stay consistent with
+// native execution; BIGINT hashLength follows the int32 path.
 TEST_F(FlinkHashTest, Sha2ZeroAndBigIntLength) {
   VELOX_ASSERT_THROW(sha2Once(kEmpty, 0), "Unsupported SHA-2 hash length: 0");
   VELOX_ASSERT_THROW(sha2Once(kTest, 0), "Unsupported SHA-2 hash length: 0");
@@ -186,7 +185,8 @@ TEST_F(FlinkHashTest, Sha2ZeroAndBigIntLength) {
   EXPECT_EQ(kSha512Test, sha2BigIntOnce(kTest, 512));
 }
 
-// A column hashLength of 1 yields the SHA-1 digest: Flink's column path
+// C. Unsupported hash lengths fail the job, mirroring Flink's rejection.
+// E. A column hashLength of 1 yields the SHA-1 digest: Flink's column path
 // builds "SHA-" + length and "SHA-1" is a valid algorithm name there, so the
 // job succeeds with the 20-byte SHA-1 digest; the literal form of 1 is
 // rejected earlier at the gluten conversion layer (Flink's init-time
@@ -205,7 +205,7 @@ TEST_F(FlinkHashTest, Sha2UnsupportedLengthFails) {
       sha2Once(kTest, 385), "Unsupported SHA-2 hash length: 385");
 }
 
-// Fixed-length spellings agree with sha2 at the matching length.
+// D. Fixed-length spellings agree with sha2 at the matching length.
 TEST_F(FlinkHashTest, FixedLengthSpellings) {
   EXPECT_EQ(kSha224Empty, sha224Once(kEmpty));
   EXPECT_EQ(kSha224Test, sha224Once(kTest));
@@ -228,7 +228,7 @@ TEST_F(FlinkHashTest, FixedLengthSpellings) {
   EXPECT_EQ(kSha512Long, sha512Once(kLong));
 }
 
-// NULL in -> NULL out for every spelling, including a NULL hashLength.
+// E. NULL in -> NULL out for every spelling, including a NULL hashLength.
 TEST_F(FlinkHashTest, NullInputs) {
   EXPECT_EQ(std::nullopt, md5Once(std::nullopt));
   EXPECT_EQ(std::nullopt, sha1Once(std::nullopt));
@@ -241,8 +241,8 @@ TEST_F(FlinkHashTest, NullInputs) {
   EXPECT_EQ(std::nullopt, sha512Once(std::nullopt));
 }
 
-// Multi-row evaluation: distinct rows get distinct digests of the expected
-// length (32/40/56/64/96/128 lowercase hex chars).
+// F. Multi-row evaluation: distinct rows get distinct digests of the
+// expected length (32/40/56/64/96/128 lowercase hex chars).
 TEST_F(FlinkHashTest, MultiRow) {
   auto data = makeRowVector(std::vector<VectorPtr>{
       makeNullableFlatVector<std::string>({kEmpty, kTest, kUtf8, kLong})});
@@ -265,20 +265,20 @@ TEST_F(FlinkHashTest, MultiRow) {
   EXPECT_EQ(kSha1Long, sha1Flat->valueAt(3).str());
   EXPECT_EQ(40, sha1Flat->valueAt(0).size());
 
-  auto sha256 = evaluate("sha256(c0)", data);
-  auto flat = sha256->asFlatVector<StringView>();
+  auto result = evaluate("sha256(c0)", data);
+  auto flat = result->asFlatVector<StringView>();
   ASSERT_EQ(4, flat->size());
   EXPECT_EQ(kSha256Empty, flat->valueAt(0).str());
   EXPECT_EQ(kSha256Test, flat->valueAt(1).str());
   EXPECT_EQ(kSha256Utf8, flat->valueAt(2).str());
   EXPECT_EQ(kSha256Long, flat->valueAt(3).str());
 
-  auto sha224 = evaluate("sha224(c0)", data);
-  EXPECT_EQ(56, sha224->asFlatVector<StringView>()->valueAt(0).size());
-  auto sha384 = evaluate("sha384(c0)", data);
-  EXPECT_EQ(96, sha384->asFlatVector<StringView>()->valueAt(0).size());
-  auto sha512 = evaluate("sha512(c0)", data);
-  EXPECT_EQ(128, sha512->asFlatVector<StringView>()->valueAt(0).size());
+  auto result224 = evaluate("sha224(c0)", data);
+  EXPECT_EQ(56, result224->asFlatVector<StringView>()->valueAt(0).size());
+  auto result384 = evaluate("sha384(c0)", data);
+  EXPECT_EQ(96, result384->asFlatVector<StringView>()->valueAt(0).size());
+  auto result512 = evaluate("sha512(c0)", data);
+  EXPECT_EQ(128, result512->asFlatVector<StringView>()->valueAt(0).size());
 }
 
 } // namespace facebook::velox::functions::flinksql::test
