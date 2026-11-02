@@ -32,21 +32,23 @@ class StreamOperatorStateHandler {
       : operatorId_(operatorId),
         keyedStateBackend_(std::move(keyedStateBackend)) {}
 
-  KeyedStateBackend getKeyedStateBackend() const;
-
-  State getOrCreateKeyedState() const;
-
   void snapshotState(int64_t checkpointId) {
-    keyedStateBackend_->snapshot(
-        operatorId_, checkpointId, CheckpointOptions::defaultOptions());
+    if (keyedStateBackend_) {
+      keyedStateBackend_->snapshot(
+          operatorId_, checkpointId, CheckpointOptions::defaultOptions());
+    }
   }
 
   void notifyCheckpointComplete(int64_t checkpointId) {
-    keyedStateBackend_->notifyCheckpointComplete(checkpointId);
+    if (keyedStateBackend_) {
+      keyedStateBackend_->notifyCheckpointComplete(checkpointId);
+    }
   }
 
   void notifyCheckpointAborted(int64_t checkpointId) {
-    keyedStateBackend_->notifyCheckpointAborted(checkpointId);
+    if (keyedStateBackend_) {
+      keyedStateBackend_->notifyCheckpointAborted(checkpointId);
+    }
   }
 
   // The type of state has to be specified as C++ does not support templates
@@ -91,10 +93,6 @@ class StreamOperatorStateHandler {
   createGroupWindowAggTimerService(
       Triggerable<int64_t, TimeWindow>* triggerable) {
     return keyedStateBackend_->createGroupWindowAggTimerService(triggerable);
-  }
-
-  void setCurrentKey(uint32_t key) {
-    keyedStateBackend_->setCurrentKey(key);
   }
 
  private:

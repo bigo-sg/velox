@@ -57,6 +57,11 @@ void WindowAggregator::initialize() {
 }
 
 void WindowAggregator::initializeState() {
+  // TODO: migrate this operator to operator-owned keyed state (cf.
+  // GroupAggregator::initializeStateBackend) and remove this guard.
+  VELOX_NYI(
+      "WindowAggregator is not yet migrated to operator-owned keyed state; "
+      "there is no state handler to initialize");
   StateDescriptor stateDesc("window-aggs", "", memoryPool());
   windowState_ = stateHandler()->getValueState(stateDesc);
   windowTimerService_ = stateHandler()->createTimerService(this);
@@ -314,9 +319,15 @@ void WindowAggregator::close() {
     localAggregator_->close();
   }
   input_.reset();
-  windowTimerService_->close();
+  // State members are created in initializeState(), which fails fast when the
+  // operator has no state handler; they can be null at close time.
+  if (windowTimerService_) {
+    windowTimerService_->close();
+  }
   windowBuffer_->clear();
-  windowState_->clear();
+  if (windowState_) {
+    windowState_->clear();
+  }
   currentProgress_ = 0;
   nextTriggerWatermark_ = 0;
 }

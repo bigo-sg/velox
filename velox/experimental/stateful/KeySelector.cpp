@@ -14,9 +14,135 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/KeySelector.h"
+
+#include <optional>
+
+#include "velox/exec/HashTable.h"
 #include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 
 namespace facebook::velox::stateful {
+
+KeySelector::~KeySelector() = default;
+
+KeySelector::KeySelector(
+    KeyIndex& keyIndex,
+    std::vector<column_index_t> keyChannels)
+    : keyIndex_(&keyIndex), keyChannels_(std::move(keyChannels)) {
+  VELOX_CHECK(!keyChannels_.empty(), "KeySelector requires a key channel");
+  VELOX_CHECK_EQ(
+      keyChannels_.size(),
+      keyIndex.keySchema()->keyTypes().size(),
+      "One key channel per key column of the bound key table is required");
+  // This selector's own probe scratch; it references the table's hashers,
+  // so it is created by the table and dies with this selector.
+  lookup_ = keyIndex.newLookup();
+}
+
+void KeySelector::probe(const RowVectorPtr& input) {
+  const auto numInput = input->size();
+  lastNumInput_ = numInput;
+  distinctValid_ = false;
+
+  if (numInput == 0) {
+    stableHashes_.resize(0);
+    keys_.clear();
+    probed_ = true;
+    return;
+  }
+
+  // Key-only view of the input: the bound table's hashers read sequential
+  // channels, so every client feeds the same shape.
+  std::vector<VectorPtr> keyChildren;
+  keyChildren.reserve(keyChannels_.size());
+  for (auto channel : keyChannels_) {
+    // Loaded through the shared owner: the view's children must be
+    // shared_ptr, and a lazy child must be loaded before the probe.
+    keyChildren.push_back(
+        BaseVector::loadedVectorShared(input->childAt(channel)));
+  }
+  keyIndex_->probe(std::move(keyChildren), *lookup_, stableHashes_);
+
+  keys_.clear();
+  keys_.reserve(numInput);
+  for (vector_size_t row = 0; row < numInput; ++row) {
+    keys_.emplace_back(
+        keyIndex_->keySchema(),
+        lookup_->hits[row],
+        stableHashes_[row],
+        keyIndex_->maxParallelism());
+  }
+  probed_ = true;
+}
+
+std::shared_ptr<RowContainerStateKeySerializer> KeySelector::keySerializer() {
+  return keyIndex_->keySerializer();
+}
+
+folly::Range<const RowContainerStateKey*> KeySelector::keys() const {
+  VELOX_CHECK(probed_, "probe() must be called before keys()");
+  return folly::Range<const RowContainerStateKey*>(keys_.data(), keys_.size());
+}
+
+folly::Range<const RowContainerStateKey*> KeySelector::distinctKeys() const {
+  ensureDistinct();
+  return folly::Range<const RowContainerStateKey*>(
+      distinctKeys_.data(), distinctKeys_.size());
+}
+
+const std::vector<SelectivityVector>& KeySelector::groupRows() const {
+  ensureDistinct();
+  return groupRows_;
+}
+
+folly::Range<const vector_size_t*> KeySelector::newGroups() const {
+  VELOX_CHECK(probed_, "probe() must be called before newGroups()");
+  return folly::Range<const vector_size_t*>(
+      lookup_->newGroups.data(), lookup_->newGroups.size());
+}
+
+exec::RowContainer* KeySelector::keyRowContainer() const {
+  return keyIndex_->keyRows();
+}
+
+const RowContainerKeySchema* KeySelector::schema() const {
+  return keyIndex_->keySchema();
+}
+
+void KeySelector::ensureDistinct() const {
+  VELOX_CHECK(probed_, "probe() must be called before distinctKeys()");
+  if (distinctValid_) {
+    return;
+  }
+  distinctKeys_.clear();
+  groupRows_.clear();
+  rowToDistinct_.clear();
+  for (vector_size_t row = 0; row < lastNumInput_; ++row) {
+    // Rows with equal user keys share one group row in the key RowContainer
+    // (allowDuplicates is false and row pointers are stable), so the row
+    // pointer is a faithful identity for deduplication.
+    char* groupRow = lookup_->hits[row];
+    auto [iter, inserted] = rowToDistinct_.emplace(
+        groupRow, static_cast<vector_size_t>(distinctKeys_.size()));
+    if (inserted) {
+      distinctKeys_.emplace_back(
+          keyIndex_->keySchema(),
+          groupRow,
+          stableHashes_[row],
+          keyIndex_->maxParallelism());
+      groupRows_.emplace_back(lastNumInput_, false);
+    }
+    groupRows_[iter->second].setValid(row, true);
+  }
+  for (auto& rows : groupRows_) {
+    rows.updateBounds();
+  }
+  distinctValid_ = true;
+}
+
+// -----------------------------------------------------------------------------
+// Deprecated partition(): hash-derived partition id as key identity. Removed
+// once the stateful operators migrate to probe().
+// -----------------------------------------------------------------------------
 
 KeySelector::KeySelector(
     std::unique_ptr<core::PartitionFunction> partitionFunction,

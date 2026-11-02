@@ -44,12 +44,9 @@ InputSideHasNoUniqueKey::InputSideHasNoUniqueKey(
 }
 
 void InputSideHasNoUniqueKey::addRecord(uint32_t key, RowVectorPtr record) {
-  int cnt = recordState_->get(key, ns_, record);
-  if (cnt != -1) {
-    cnt += 1;
-  } else {
-    cnt = 1;
-  }
+  // A first-seen record counts 0 previous occurrences, a stored one its
+  // count; either way the record goes back with one more.
+  int cnt = recordState_->get(key, ns_, record).value_or(0) + 1;
   recordState_->put(key, ns_, std::move(record), cnt);
 }
 

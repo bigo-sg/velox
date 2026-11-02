@@ -14,6 +14,7 @@
 
 add_executable(
   velox_functions_flinksql_test
+  ArithmeticFunctionsTest.cpp
   ConditionalFunctionsTest.cpp
   StringFunctionsTest.cpp
   TemporalFunctionsTest.cpp
@@ -35,4 +36,3 @@ target_link_libraries(
   GTest::gtest
   GTest::gtest_main
   GTest::gmock)
-add_test(velox_functions_flinksql_test velox_functions_flinksql_test)

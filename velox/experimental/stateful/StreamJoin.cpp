@@ -39,6 +39,11 @@ void StreamJoin::initialize() {
 }
 
 void StreamJoin::initializeState() {
+  // TODO: migrate this operator to operator-owned keyed state (cf.
+  // GroupAggregator::initializeStateBackend) and remove this guard.
+  VELOX_NYI(
+      "StreamJoin is not yet migrated to operator-owned keyed state; there "
+      "is no state handler to initialize");
   leftRecordStateView_ =
       JoinRecordStateViews::create(stateHandler().get(), "left-records", 0);
   rightRecordStateView_ =
@@ -57,8 +62,14 @@ void StreamJoin::close() {
   StatefulOperator::close();
   leftInput_->close();
   rightInput_->close();
-  leftRecordStateView_->close();
-  rightRecordStateView_->close();
+  // State members are created in initializeState(), which fails fast when the
+  // operator has no state handler; they can be null at close time.
+  if (leftRecordStateView_) {
+    leftRecordStateView_->close();
+  }
+  if (rightRecordStateView_) {
+    rightRecordStateView_->close();
+  }
 }
 
 void StreamJoin::advance() {
