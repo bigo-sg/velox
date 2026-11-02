@@ -13,12 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "velox/functions/flinksql/DateTimeFunctions.h"
 #include "velox/functions/flinksql/TemporalFunctions.h"
 
 #include "velox/functions/Registerer.h"
-
-#include "velox/functions/Registerer.h"
-#include "velox/functions/flinksql/DateTimeFunctions.h"
 
 namespace facebook::velox::functions::flinksql {
 
