@@ -21,6 +21,9 @@
 namespace facebook::velox::functions::flinksql {
 
 void registerHashFunctions(const std::string& prefix) {
+  registerFunction<Md5Function, Varchar, Varchar>({prefix + "md5"});
+  registerFunction<Sha1Function, Varchar, Varchar>({prefix + "sha1"});
+
   registerFunction<Sha2Function, Varchar, Varchar, int8_t>({prefix + "sha2"});
   registerFunction<Sha2Function, Varchar, Varchar, int16_t>({prefix + "sha2"});
   registerFunction<Sha2Function, Varchar, Varchar, int32_t>({prefix + "sha2"});
