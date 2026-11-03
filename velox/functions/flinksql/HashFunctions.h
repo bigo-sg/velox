@@ -20,6 +20,7 @@
 
 #include "folly/ssl/OpenSSLHash.h"
 #include "velox/functions/Udf.h"
+#include "velox/functions/lib/string/StringImpl.h"
 
 namespace facebook::velox::functions::flinksql {
 
@@ -29,12 +30,13 @@ namespace facebook::velox::functions::flinksql {
 // return varbinary raw digests, so the flinksql varchar signatures coexist
 // with them. Digest primitive here: folly::ssl::OpenSSLHash.
 //
-// Implemented: the SHA-2 family — sha2(s, hashLength) plus the fixed-length
-// spellings sha224/sha256/sha384/sha512 that bind the hash length and route
-// to the same core. sha2 renders hashLength/4 lowercase hex chars; hashLength
-// 0 is rejected like any other unsupported length, mirroring Flink 1.19.2,
-// which rejects 0 outright — Hive's 0-means-256 convention is deliberately
-// not adopted so the offloaded and native execution paths stay consistent.
+// Implemented: MD5 and the SHA family. md5(s) and sha1(s) render 32 and 40
+// lowercase hex chars respectively; sha2(s, hashLength) plus the fixed-length
+// spellings sha224/sha256/sha384/sha512 bind the hash length and route to the
+// same core. sha2 renders hashLength/4 lowercase hex chars; hashLength 0 is
+// rejected like any other unsupported length, mirroring Flink 1.19.2, which
+// rejects 0 outright — Hive's 0-means-256 convention is deliberately not
+// adopted so the offloaded and native execution paths stay consistent.
 //
 // Implementation pattern: one struct per function with
 // VELOX_DEFINE_FUNCTION_TYPES, registered with explicit signatures in
@@ -56,6 +58,37 @@ FOLLY_ALWAYS_INLINE void encodeDigestToHexString(
     output[i * 2 + 1] = kHexDigits[digestByte & 0xf];
   }
 }
+
+/// MD5(string) -> string: digest of the input's UTF-8 bytes as 32 lowercase
+/// hex digits, via the shared stringImpl::md5_radix helper.
+template <typename TExec>
+struct Md5Function {
+  VELOX_DEFINE_FUNCTION_TYPES(TExec);
+
+  FOLLY_ALWAYS_INLINE void call(
+      out_type<Varchar>& result,
+      const arg_type<Varchar>& input) {
+    stringImpl::md5_radix(result, input, 16);
+  }
+};
+
+/// SHA1(string) -> string: digest of the input's UTF-8 bytes as 40 lowercase
+/// hex digits, via folly::ssl::OpenSSLHash::sha1.
+template <typename TExec>
+struct Sha1Function {
+  VELOX_DEFINE_FUNCTION_TYPES(TExec);
+
+  FOLLY_ALWAYS_INLINE void call(
+      out_type<Varchar>& result,
+      const arg_type<Varchar>& input) {
+    static const int kSha1Length = 20;
+    result.resize(kSha1Length * 2);
+    folly::ssl::OpenSSLHash::sha1(
+        folly::MutableByteRange((uint8_t*)result.data(), kSha1Length),
+        folly::ByteRange((const uint8_t*)input.data(), input.size()));
+    encodeDigestToHexString((uint8_t*)result.data(), kSha1Length);
+  }
+};
 
 // SHA-2 core shared by the whole family: computes the digest selected by
 // hashLength over the bytes of s and renders it as lowercase hex in result.
