@@ -128,8 +128,7 @@ class IntervalArithmeticTest : public functions::test::FunctionBaseTest {
         makeNullableFlatVector<int64_t>({a}, INTERVAL_DAY_TIME()),
         makeNullableFlatVector<int64_t>({b}, INTERVAL_DAY_TIME()),
     });
-    auto result =
-        evaluate(makeTypedExpr(expr, asRowType(data->type())), data);
+    auto result = evaluate(makeTypedExpr(expr, asRowType(data->type())), data);
     auto flat = std::reinterpret_pointer_cast<FlatVector<bool>>(result);
     return flat->isNullAt(0) ? std::nullopt
                              : std::optional<bool>(flat->valueAt(0));
@@ -143,8 +142,7 @@ class IntervalArithmeticTest : public functions::test::FunctionBaseTest {
         makeNullableFlatVector<int32_t>({a}, INTERVAL_YEAR_MONTH()),
         makeNullableFlatVector<int32_t>({b}, INTERVAL_YEAR_MONTH()),
     });
-    auto result =
-        evaluate(makeTypedExpr(expr, asRowType(data->type())), data);
+    auto result = evaluate(makeTypedExpr(expr, asRowType(data->type())), data);
     auto flat = std::reinterpret_pointer_cast<FlatVector<bool>>(result);
     return flat->isNullAt(0) ? std::nullopt
                              : std::optional<bool>(flat->valueAt(0));
@@ -229,22 +227,55 @@ TEST_F(IntervalArithmeticTest, intervalMultiply) {
 
 TEST_F(IntervalArithmeticTest, intervalComparisons) {
   // Same-family day-time comparison compares the underlying millis.
-  EXPECT_EQ(true, compareDayTime("interval_greaterthan(c0, c1)", 3 * kHourMillis, 2 * kHourMillis));
-  EXPECT_EQ(false, compareDayTime("interval_greaterthan(c0, c1)", -2 * kHourMillis, 2 * kHourMillis));
-  EXPECT_EQ(true, compareDayTime("interval_lessthan(c0, c1)", -2 * kHourMillis, kHourMillis));
-  EXPECT_EQ(true, compareDayTime("interval_lessthanorequal(c0, c1)", 2 * kHourMillis, 2 * kHourMillis));
-  EXPECT_EQ(false, compareDayTime("interval_greaterthanorequal(c0, c1)", 2 * kHourMillis, 3 * kHourMillis));
-  EXPECT_EQ(true, compareDayTime("interval_equalto(c0, c1)", kHourMillis, kHourMillis));
-  EXPECT_EQ(true, compareDayTime("interval_notequalto(c0, c1)", 2 * kHourMillis, 3 * kHourMillis));
-  EXPECT_EQ(false, compareDayTime("interval_notequalto(c0, c1)", kHourMillis, kHourMillis));
+  EXPECT_EQ(
+      true,
+      compareDayTime(
+          "interval_greaterthan(c0, c1)", 3 * kHourMillis, 2 * kHourMillis));
+  EXPECT_EQ(
+      false,
+      compareDayTime(
+          "interval_greaterthan(c0, c1)", -2 * kHourMillis, 2 * kHourMillis));
+  EXPECT_EQ(
+      true,
+      compareDayTime(
+          "interval_lessthan(c0, c1)", -2 * kHourMillis, kHourMillis));
+  EXPECT_EQ(
+      true,
+      compareDayTime(
+          "interval_lessthanorequal(c0, c1)",
+          2 * kHourMillis,
+          2 * kHourMillis));
+  EXPECT_EQ(
+      false,
+      compareDayTime(
+          "interval_greaterthanorequal(c0, c1)",
+          2 * kHourMillis,
+          3 * kHourMillis));
+  EXPECT_EQ(
+      true,
+      compareDayTime("interval_equalto(c0, c1)", kHourMillis, kHourMillis));
+  EXPECT_EQ(
+      true,
+      compareDayTime(
+          "interval_notequalto(c0, c1)", 2 * kHourMillis, 3 * kHourMillis));
+  EXPECT_EQ(
+      false,
+      compareDayTime("interval_notequalto(c0, c1)", kHourMillis, kHourMillis));
   // NULL propagates through every operator.
-  EXPECT_EQ(std::nullopt, compareDayTime("interval_greaterthan(c0, c1)", std::nullopt, kHourMillis));
-  EXPECT_EQ(std::nullopt, compareDayTime("interval_notequalto(c0, c1)", kHourMillis, std::nullopt));
+  EXPECT_EQ(
+      std::nullopt,
+      compareDayTime(
+          "interval_greaterthan(c0, c1)", std::nullopt, kHourMillis));
+  EXPECT_EQ(
+      std::nullopt,
+      compareDayTime("interval_notequalto(c0, c1)", kHourMillis, std::nullopt));
   // Year-month family compares the underlying months.
   EXPECT_EQ(true, compareYearMonth("interval_greaterthan(c0, c1)", 3, 2));
   EXPECT_EQ(true, compareYearMonth("interval_equalto(c0, c1)", 3, 3));
   EXPECT_EQ(true, compareYearMonth("interval_notequalto(c0, c1)", 3, 2));
-  EXPECT_EQ(std::nullopt, compareYearMonth("interval_lessthan(c0, c1)", std::nullopt, 2));
+  EXPECT_EQ(
+      std::nullopt,
+      compareYearMonth("interval_lessthan(c0, c1)", std::nullopt, 2));
 }
 
 TEST_F(IntervalArithmeticTest, timestampPlusMinusIntervalPreservesNanos) {
