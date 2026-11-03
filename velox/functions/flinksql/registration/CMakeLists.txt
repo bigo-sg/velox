@@ -23,8 +23,7 @@ velox_add_library(
   StringFunctionsRegistration.cpp
   TemporalFunctionsRegistration.cpp)
 
-velox_link_libraries(velox_functions_flink velox_functions_lib Folly::folly)
-
-if(${VELOX_BUILD_TESTING})
-  add_subdirectory(tests)
-endif()
+# The flinksql "not" registration reuses the prestosql udf_not implementation
+# (velox/functions/prestosql/Not.cpp), the way sparksql does.
+velox_link_libraries(velox_functions_flink velox_functions_prestosql_impl
+                     velox_functions_lib Folly::folly)

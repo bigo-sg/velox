@@ -67,20 +67,20 @@ TimeWindow MergingWindowSet::addWindow(
     }
 
     // pick any of the merged windows and choose that window's state window
-    // as the state window for the merge result
+    // as the state window for the merge result. Every merged window comes
+    // from the sorted window set, whose windows always have a mapping entry.
     TimeWindow mergedStateNamespace =
-        mapping_->get(key, 0, *mergedWindows.begin());
+        mapping_->get(key, 0, *mergedWindows.begin()).value();
 
     // figure out the state windows that we are merging
     std::vector<TimeWindow> mergedStateWindows;
     for (TimeWindow mergedWindow : mergedWindows) {
-      TimeWindow res = mapping_->get(key, 0, mergedWindow);
-      if (res.valid()) {
+      if (auto res = mapping_->get(key, 0, mergedWindow)) {
         mapping_->remove(key, 0, mergedWindow);
         sortedWindows_.erase(mergedWindow);
         // don't put the target state window into the merged windows
-        if (!(res == mergedStateNamespace)) {
-          mergedStateWindows.push_back(res);
+        if (!(*res == mergedStateNamespace)) {
+          mergedStateWindows.push_back(*res);
         }
       }
     }
@@ -109,7 +109,9 @@ TimeWindow MergingWindowSet::addWindow(
 }
 
 TimeWindow MergingWindowSet::getStateWindow(uint32_t key, TimeWindow window) {
-  return mapping_->get(key, 0, window);
+  // Callers pass windows that addWindow just mapped, so a miss here is a
+  // bookkeeping bug, not an expected miss.
+  return mapping_->get(key, 0, window).value();
 }
 
 void MergingWindowSet::retireWindow(uint32_t key, TimeWindow window) {
