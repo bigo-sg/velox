@@ -17,7 +17,6 @@ add_executable(
   ArithmeticFunctionsTest.cpp
   ConditionalFunctionsTest.cpp
   HashFunctionsTest.cpp
-  LikeFunctionsTest.cpp
   LogicalFunctionsTest.cpp
   StringFunctionsTest.cpp
   TemporalFunctionsTest.cpp

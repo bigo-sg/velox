@@ -13,16 +13,47 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/LikeFunctions.h"
+#include "velox/functions/flinksql/StringFunctions.h"
 
+#include <cstring>
 #include <optional>
 #include <string>
+#include <string_view>
 
+#include "velox/expression/EvalCtx.h"
+#include "velox/expression/StringWriter.h"
+#include "velox/expression/VectorFunction.h"
 #include "velox/functions/lib/Re2Functions.h"
+#include "velox/functions/lib/StringEncodingUtils.h"
+#include "velox/functions/lib/string/StringImpl.h"
+#include "velox/vector/FlatVector.h"
 #include "velox/vector/FunctionVector.h"
 
 namespace facebook::velox::functions::flinksql {
 namespace {
+
+inline size_t utf8CharLength(char c) {
+  const unsigned char u = static_cast<unsigned char>(c);
+  if (u < 0x80) {
+    return 1;
+  }
+  if ((u & 0xE0) == 0xC0) {
+    return 2;
+  }
+  if ((u & 0xF0) == 0xE0) {
+    return 3;
+  }
+  return 4;
+}
+
+// True when s is exactly one UTF-8 code point. Flink's LIKE escape is one Java
+// char, which is a single code point but may be a multi-byte UTF-8 sequence
+// (e.g. 'é' is 2 bytes).
+inline bool isSingleCodePoint(StringView s) {
+  return !s.empty() && utf8CharLength(s.data()[0]) == s.size();
+}
+
+// -------------------- LIKE --------------------
 
 template <typename T>
 re2::StringPiece toStringPiece(const T& s) {
@@ -56,51 +87,83 @@ bool re2FullMatch(StringView str, const RE2& re) {
 //   '%' -> '.*' (combined with dot_nl(true), matches any sequence incl. \n).
 std::string likePatternToRe2Flink(
     StringView pattern,
-    std::optional<char> escapeChar,
+    const std::optional<std::string>& escapeChar,
     bool& validPattern) {
   std::string regex;
   validPattern = true;
   regex.reserve(pattern.size() * 2);
   regex.append("^");
+
+  const size_t escapeSize = escapeChar.has_value() ? escapeChar->size() : 0;
+  auto isEscapeAt = [&](size_t pos) {
+    return escapeSize > 0 && pos + escapeSize <= pattern.size() &&
+        std::memcmp(pattern.data() + pos, escapeChar->data(), escapeSize) == 0;
+  };
+
   bool escaped = false;
-  for (const char c : pattern) {
-    if (escaped && !(c == '%' || c == '_' || c == escapeChar)) {
-      validPattern = false;
-    }
-    if (!escaped && c == escapeChar) {
-      escaped = true;
-    } else {
-      switch (c) {
-        case '%':
-          regex.append(escaped ? "%" : ".*");
-          escaped = false;
-          break;
-        case '_':
-          regex.append(escaped ? "_" : "[^\\n\\r\\x{85}\\x{2028}\\x{2029}]");
-          escaped = false;
-          break;
-        // Escape all the meta characters in re2.
-        case '\\':
-        case '|':
-        case '^':
-        case '$':
-        case '.':
-        case '*':
-        case '+':
-        case '?':
-        case '(':
-        case ')':
-        case '[':
-        case ']':
-        case '{':
-        case '}':
-          regex.append("\\");
-          [[fallthrough]];
-        default:
-          regex.append(1, c);
-          escaped = false;
+  size_t pos = 0;
+  while (pos < pattern.size()) {
+    const char c = pattern.data()[pos];
+    if (escaped) {
+      // The escaped character is a literal; only '%', '_' and the escape
+      // character itself may follow an escape.
+      if (c == '%') {
+        regex.append("%");
+        ++pos;
+      } else if (c == '_') {
+        regex.append("_");
+        ++pos;
+      } else if (isEscapeAt(pos)) {
+        regex.append(escapeChar->data(), escapeSize);
+        pos += escapeSize;
+      } else {
+        validPattern = false;
+        ++pos;
       }
+      escaped = false;
+      continue;
     }
+
+    if (isEscapeAt(pos)) {
+      escaped = true;
+      pos += escapeSize;
+      continue;
+    }
+
+    switch (c) {
+      case '%':
+        regex.append(".*");
+        break;
+      case '_':
+        // Flink maps '_' to Java's '.', which counts UTF-16 units, so an astral
+        // character (surrogate pair, e.g. emoji) consumes two '_' in Flink. The
+        // negated class below matches one UTF-8 code point, so here a single
+        // '_' matches one astral character. Accepted platform-representation
+        // difference.
+        regex.append("[^\\n\\r\\x{85}\\x{2028}\\x{2029}]");
+        break;
+      // Escape all the meta characters in re2.
+      case '\\':
+      case '|':
+      case '^':
+      case '$':
+      case '.':
+      case '*':
+      case '+':
+      case '?':
+      case '(':
+      case ')':
+      case '[':
+      case ']':
+      case '{':
+      case '}':
+        regex.append("\\");
+        [[fallthrough]];
+      default:
+        regex.append(1, c);
+        break;
+    }
+    ++pos;
   }
   if (escaped) {
     validPattern = false;
@@ -112,12 +175,13 @@ std::string likePatternToRe2Flink(
 // Constant pattern: compile once.
 class LikeWithRe2Flink final : public exec::VectorFunction {
  public:
-  LikeWithRe2Flink(StringView pattern, std::optional<char> escapeChar)
+  LikeWithRe2Flink(StringView pattern, std::optional<std::string> escapeChar)
       : emptyPattern_(pattern.size() == 0) {
     RE2::Options opt{RE2::Quiet};
     opt.set_dot_nl(true);
     re_.emplace(
-        toStringPiece(likePatternToRe2Flink(pattern, escapeChar, validPattern_)),
+        toStringPiece(
+            likePatternToRe2Flink(pattern, escapeChar, validPattern_)),
         opt);
   }
 
@@ -146,10 +210,12 @@ class LikeWithRe2Flink final : public exec::VectorFunction {
     FlatVector<bool>& result = ensureWritableBool(rows, context, resultRef);
 
     if (emptyPattern_) {
-      // Flink's LikeCallGen routes an empty literal pattern into
-      // SqlLikeChainChecker, whose zero-checker chain vacuously matches every
-      // input. Reproduce that instead of the SQL-standard '^$' (which only
-      // matches the empty string).
+      // An empty pattern matches every input: verified against the Flink
+      // 1.19.2 native runtime by an end-to-end dual-run (the master-only
+      // `mark > 0 && isEmptyPattern` gate of SqlLikeChainChecker is absent
+      // in 1.19.x). This diverges from the SQL standard (an empty pattern
+      // would match only the empty string); we follow the Flink runtime
+      // for parity.
       context.applyToSelectedNoThrow(
           rows, [&](vector_size_t i) { result.set(i, true); });
       return;
@@ -217,9 +283,12 @@ class LikeGenericFlink final : public exec::VectorFunction {
       context.applyToSelectedNoThrow(rows, [&](auto row) {
         vectorWriter.setOffset(row);
         auto escapeChar = escapeReader[row];
-        VELOX_USER_CHECK_EQ(
-            escapeChar.size(), 1, "Escape string must be a single character");
-        auto* re = findOrCompileRegex(patternReader[row], escapeChar.data()[0]);
+        VELOX_USER_CHECK(
+            isSingleCodePoint(escapeChar),
+            "Escape string must be a single character");
+        auto* re = findOrCompileRegex(
+            patternReader[row],
+            std::string(escapeChar.data(), escapeChar.size()));
         vectorWriter.current() = re2FullMatch(inputReader[row], *re);
         vectorWriter.commit(true);
       });
@@ -232,9 +301,9 @@ class LikeGenericFlink final : public exec::VectorFunction {
  private:
   RE2* findOrCompileRegex(
       const StringView& pattern,
-      std::optional<char> escapeChar) const {
+      std::optional<std::string> escapeChar) const {
     const auto key =
-        std::pair<std::string, std::optional<char>>{pattern, escapeChar};
+        std::pair<std::string, std::optional<std::string>>{pattern, escapeChar};
 
     auto reIt = compiledRegularExpressions_.find(key);
     if (reIt != compiledRegularExpressions_.end()) {
@@ -265,13 +334,114 @@ class LikeGenericFlink final : public exec::VectorFunction {
   }
 
   mutable folly::F14FastMap<
-      std::pair<std::string, std::optional<char>>,
+      std::pair<std::string, std::optional<std::string>>,
       std::unique_ptr<RE2>>
       compiledRegularExpressions_;
   int64_t maxCompiledRegexes_;
 };
 
+// -------------------- REPLACE --------------------
+
+// Insert `replacement` once before each UTF-8 code point and once at the end,
+// matching Java's String.replace("", "x").
+void replaceAtCodePointBoundaries(
+    exec::StringWriter& output,
+    const StringView& input,
+    const StringView& replacement) {
+  if (replacement.size() == 0) {
+    output.resize(input.size());
+    if (input.size() > 0) {
+      std::memcpy(output.data(), input.data(), input.size());
+    }
+    return;
+  }
+
+  size_t numChars = 0;
+  for (size_t i = 0; i < input.size();) {
+    i += utf8CharLength(input.data()[i]);
+    ++numChars;
+  }
+
+  output.reserve(input.size() + (numChars + 1) * replacement.size());
+  char* out = output.data();
+  size_t pos = 0;
+  std::memcpy(out + pos, replacement.data(), replacement.size());
+  pos += replacement.size();
+  for (size_t i = 0; i < input.size();) {
+    const size_t charLen = utf8CharLength(input.data()[i]);
+    std::memcpy(out + pos, input.data() + i, charLen);
+    pos += charLen;
+    i += charLen;
+    std::memcpy(out + pos, replacement.data(), replacement.size());
+    pos += replacement.size();
+  }
+  output.resize(pos);
+}
+
+class ReplaceFlink final : public exec::VectorFunction {
+ public:
+  void apply(
+      const SelectivityVector& rows,
+      std::vector<VectorPtr>& args,
+      const TypePtr& /* outputType */,
+      exec::EvalCtx& context,
+      VectorPtr& result) const override {
+    exec::LocalDecodedVector decodedStringHolder(context, *args[0], rows);
+    auto decodedStringInput = decodedStringHolder.get();
+    exec::LocalDecodedVector decodedSearchHolder(context, *args[1], rows);
+    auto decodedSearchInput = decodedSearchHolder.get();
+    exec::LocalDecodedVector decodedReplaceHolder(context, *args[2], rows);
+    auto decodedReplaceInput = decodedReplaceHolder.get();
+
+    auto stringReader = [&](const vector_size_t row) {
+      return decodedStringInput->valueAt<StringView>(row);
+    };
+    auto searchReader = [&](const vector_size_t row) {
+      return decodedSearchInput->valueAt<StringView>(row);
+    };
+    auto replaceReader = [&](const vector_size_t row) {
+      return decodedReplaceInput->valueAt<StringView>(row);
+    };
+
+    VectorPtr emptyVectorPtr;
+    prepareFlatResultsVector(result, rows, context, emptyVectorPtr);
+    auto* resultFlatVector = result->as<FlatVector<StringView>>();
+
+    rows.applyToSelected([&](int row) {
+      auto proxy = exec::StringWriter(resultFlatVector, row);
+      const auto input = stringReader(row);
+      const auto search = searchReader(row);
+      const auto replacement = replaceReader(row);
+      if (search.size() == 0) {
+        replaceAtCodePointBoundaries(proxy, input, replacement);
+      } else {
+        stringImpl::replace(proxy, input, search, replacement, false);
+      }
+      proxy.finalize();
+    });
+  }
+};
+
 } // namespace
+
+std::vector<std::shared_ptr<exec::FunctionSignature>> replaceSignatures() {
+  return {
+      // varchar, varchar, varchar -> varchar
+      exec::FunctionSignatureBuilder()
+          .returnType("varchar")
+          .argumentType("varchar")
+          .argumentType("varchar")
+          .argumentType("varchar")
+          .build(),
+  };
+}
+
+std::shared_ptr<exec::VectorFunction> makeReplaceFlink(
+    const std::string& /* name */,
+    const std::vector<exec::VectorFunctionArg>& /* inputArgs */,
+    const core::QueryConfig& /* config */) {
+  return std::make_shared<ReplaceFlink>();
+}
 
 std::shared_ptr<exec::VectorFunction> makeLikeFlink(
     const std::string& name,
@@ -279,11 +449,12 @@ std::shared_ptr<exec::VectorFunction> makeLikeFlink(
     const core::QueryConfig& config) {
   auto numArgs = inputArgs.size();
 
-  std::optional<char> escapeChar;
+  std::optional<std::string> escapeChar;
   if (numArgs == 3) {
     BaseVector* escape = inputArgs[2].constantValue.get();
     if (!escape) {
-      return std::make_shared<LikeGenericFlink>(config.exprMaxCompiledRegexes());
+      return std::make_shared<LikeGenericFlink>(
+          config.exprMaxCompiledRegexes());
     }
 
     auto constantEscape = escape->as<ConstantVector<StringView>>();
@@ -292,15 +463,15 @@ std::shared_ptr<exec::VectorFunction> makeLikeFlink(
     }
 
     try {
-      VELOX_USER_CHECK_EQ(
-          constantEscape->valueAt(0).size(),
-          1,
+      VELOX_USER_CHECK(
+          isSingleCodePoint(constantEscape->valueAt(0)),
           "Escape string must be a single character");
     } catch (...) {
       return std::make_shared<exec::AlwaysFailingVectorFunction>(
           std::current_exception());
     }
-    escapeChar = constantEscape->valueAt(0).data()[0];
+    auto escapeStr = constantEscape->valueAt(0);
+    escapeChar = std::string(escapeStr.data(), escapeStr.size());
   }
 
   BaseVector* constantPattern = inputArgs[1].constantValue.get();

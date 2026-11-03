@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "velox/functions/flinksql/LikeFunctions.h"
 #include "velox/functions/flinksql/StringFunctions.h"
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
@@ -35,8 +34,6 @@ std::shared_ptr<exec::VectorFunction> makeRegexExtract(
 
 void registerStringFunctions(const std::string& prefix) {
   exec::registerStatefulVectorFunction(
-      prefix + "regexp_extract", re2ExtractSignatures(), makeRegexExtract);
-exec::registerStatefulVectorFunction(
       prefix + "regexp_extract", re2ExtractSignatures(), makeRegexExtract);
 
   // Flink-semantics string functions; registered with an empty prefix by
@@ -68,8 +65,11 @@ exec::registerStatefulVectorFunction(
       {prefix + "lpad"});
   registerFunction<RPadFunction, Varchar, Varchar, int32_t, Varchar>(
       {prefix + "rpad"});
-  registerFunction<ReplaceFunction, Varchar, Varchar, Varchar, Varchar>(
-      {prefix + "replace"});
+  // Stateful vector function so it overrides prestosql's byte-level `replace`
+  // in the vector-function registry (vector functions take precedence over
+  // simple functions of the same signature).
+  exec::registerStatefulVectorFunction(
+      prefix + "replace", replaceSignatures(), makeReplaceFlink);
   registerFunction<RightFunction, Varchar, Varchar, int32_t>(
       {prefix + "right"});
   registerFunction<FromBase64FlinkFunction, Varchar, Varchar>(
