@@ -17,13 +17,11 @@
 
 #include "velox/functions/Macros.h"
 
-#include "velox/functions/lib/DateTimeFormatter.h"
-#include "velox/type/Timestamp.h"
-
 #include <date/date.h>
 #include <chrono>
+#include <limits>
 
-#include "velox/functions/lib/DateTimeFormatter.h"
+#include "velox/functions/lib/DateTimeFormatter.h" // DateTimeUnit
 #include "velox/type/Timestamp.h"
 
 namespace facebook::velox::functions::flinksql {
@@ -125,11 +123,19 @@ inline Timestamp plusMillisKeepMicros(
 // part of the interval is truncated toward zero: Calcite evaluates
 // date + (intervalMillis / MILLIS_PER_DAY) where the division is Java
 // integer division (truncate toward zero). C++ integer division has the
-// same semantics, so no adjustment is needed.
+// same semantics, so no adjustment is needed. The interval's day count is
+// narrowed with Math.toIntExact (ScalarOperatorGens.scala:162-165), so an
+// interval exceeding the int day range fails the query instead of
+// truncating — mirrored here with a user error.
 inline int32_t plusMillisTruncateToDay(
     const int32_t date,
     const int64_t millis) {
   const int64_t days = millis / kMillisPerDay;
+  VELOX_USER_CHECK(
+      days >= std::numeric_limits<int32_t>::min() &&
+          days <= std::numeric_limits<int32_t>::max(),
+      "interval day count out of int range: {}",
+      days);
   return static_cast<int32_t>(date + days);
 }
 

@@ -216,6 +216,17 @@ TEST_F(IntervalArithmeticTest, datePlusInterval) {
   EXPECT_EQ(20088, plusDateMonths(20119, -1));
   // NULL propagates.
   EXPECT_EQ(std::nullopt, plusDate(std::nullopt, kHourMillis));
+  // An interval whose day count exceeds the int range fails the query,
+  // matching Flink's Math.toIntExact(r / 86400000L) ArithmeticException.
+  // INT32_MIN itself is in range for toIntExact, so the negative side needs
+  // one more day to overflow.
+  const int64_t overflowDays = 2'147'483'648LL; // INT32_MAX + 1
+  VELOX_ASSERT_USER_THROW(
+      plusDate(17499, overflowDays * 86'400'000LL),
+      "interval day count out of int range");
+  VELOX_ASSERT_USER_THROW(
+      plusDate(17499, -(overflowDays + 1) * 86'400'000LL),
+      "interval day count out of int range");
 }
 
 TEST_F(IntervalArithmeticTest, intervalMultiply) {
