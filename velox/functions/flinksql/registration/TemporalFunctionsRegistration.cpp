@@ -18,6 +18,7 @@
 #include "velox/functions/Registerer.h"
 #include "velox/functions/flinksql/DateTimeFunctions.h"
 #include "velox/functions/flinksql/IntervalArithmetic.h"
+#include "velox/functions/lib/IntervalComparisons.h"
 
 namespace facebook::velox::functions::flinksql {
 
@@ -88,6 +89,74 @@ void registerTemporalFunctions(const std::string& prefix) {
       IntervalYearMonth,
       IntervalYearMonth,
       int64_t>({prefix + "multiply"});
+
+  // Interval-to-interval comparisons (Flink compares same-family intervals by
+  // their underlying storage). The implementations are the common ones in
+  // velox/functions/lib/IntervalComparisons.h. They are registered under
+  // dedicated flinksql names: the sparksql baseline already owns the standard
+  // comparison names as stateful vector functions with interval-covering
+  // signatures, and vector functions take precedence over simple functions at
+  // resolution time, so same-name simple registrations would be shadowed.
+  registerFunction<
+      lib::IntervalDayTimeLessThanFunction,
+      bool,
+      IntervalDayTime,
+      IntervalDayTime>({prefix + "interval_lessthan"});
+  registerFunction<
+      lib::IntervalDayTimeLessThanOrEqualFunction,
+      bool,
+      IntervalDayTime,
+      IntervalDayTime>({prefix + "interval_lessthanorequal"});
+  registerFunction<
+      lib::IntervalDayTimeGreaterThanFunction,
+      bool,
+      IntervalDayTime,
+      IntervalDayTime>({prefix + "interval_greaterthan"});
+  registerFunction<
+      lib::IntervalDayTimeGreaterThanOrEqualFunction,
+      bool,
+      IntervalDayTime,
+      IntervalDayTime>({prefix + "interval_greaterthanorequal"});
+  registerFunction<
+      lib::IntervalDayTimeEqualToFunction,
+      bool,
+      IntervalDayTime,
+      IntervalDayTime>({prefix + "interval_equalto"});
+  registerFunction<
+      lib::IntervalDayTimeNotEqualToFunction,
+      bool,
+      IntervalDayTime,
+      IntervalDayTime>({prefix + "interval_notequalto"});
+  registerFunction<
+      lib::IntervalYearMonthLessThanFunction,
+      bool,
+      IntervalYearMonth,
+      IntervalYearMonth>({prefix + "interval_lessthan"});
+  registerFunction<
+      lib::IntervalYearMonthLessThanOrEqualFunction,
+      bool,
+      IntervalYearMonth,
+      IntervalYearMonth>({prefix + "interval_lessthanorequal"});
+  registerFunction<
+      lib::IntervalYearMonthGreaterThanFunction,
+      bool,
+      IntervalYearMonth,
+      IntervalYearMonth>({prefix + "interval_greaterthan"});
+  registerFunction<
+      lib::IntervalYearMonthGreaterThanOrEqualFunction,
+      bool,
+      IntervalYearMonth,
+      IntervalYearMonth>({prefix + "interval_greaterthanorequal"});
+  registerFunction<
+      lib::IntervalYearMonthEqualToFunction,
+      bool,
+      IntervalYearMonth,
+      IntervalYearMonth>({prefix + "interval_equalto"});
+  registerFunction<
+      lib::IntervalYearMonthNotEqualToFunction,
+      bool,
+      IntervalYearMonth,
+      IntervalYearMonth>({prefix + "interval_notequalto"});
 
   registerFunction<CurrentDateFunction, Date>({prefix + "current_date"});
   registerFunction<CurrentTimeFunction, int32_t>({prefix + "current_time"});
