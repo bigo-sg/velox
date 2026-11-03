@@ -15,10 +15,21 @@
  */
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
+#include "velox/functions/Registerer.h"
+#include "velox/functions/flinksql/HashFunctions.h"
+
 namespace facebook::velox::functions::flinksql {
 
-void registerHashFunctions(const std::string& /*prefix*/) {
-  // TODO: add the Flink Hash expression registrations.
+void registerHashFunctions(const std::string& prefix) {
+  registerFunction<Sha2Function, Varchar, Varchar, int8_t>({prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varchar, int16_t>({prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varchar, int32_t>({prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varchar, int64_t>({prefix + "sha2"});
+
+  registerFunction<Sha224Function, Varchar, Varchar>({prefix + "sha224"});
+  registerFunction<Sha256Function, Varchar, Varchar>({prefix + "sha256"});
+  registerFunction<Sha384Function, Varchar, Varchar>({prefix + "sha384"});
+  registerFunction<Sha512Function, Varchar, Varchar>({prefix + "sha512"});
 }
 
 } // namespace facebook::velox::functions::flinksql
