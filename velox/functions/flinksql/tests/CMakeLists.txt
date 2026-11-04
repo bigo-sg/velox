@@ -22,7 +22,8 @@ add_executable(
   TemporalFunctionsTest.cpp
   ToDateTest.cpp
   ToTimestampTest.cpp
-  ToTimestampLtzTest.cpp)
+  ToTimestampLtzTest.cpp
+  JsonFunctionsTest.cpp)
 
 add_test(velox_functions_flinksql_test velox_functions_flinksql_test)
 
