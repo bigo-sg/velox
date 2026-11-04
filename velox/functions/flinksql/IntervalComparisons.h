@@ -17,12 +17,11 @@
 
 #include "velox/type/Type.h"
 
-namespace facebook::velox::functions::lib {
+namespace facebook::velox::functions::flinksql {
 
-// Interval-to-interval comparisons, common to all dialects: comparing two
-// intervals of the same family compares their underlying storage (millis
-// for day-time, months for year-month). Registered per dialect under
-// dialect-owned names.
+// Interval-to-interval comparisons: comparing two intervals of the same
+// family compares their underlying storage (millis for day-time, months for
+// year-month).
 template <typename T>
 struct IntervalDayTimeLessThanFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
@@ -167,4 +166,4 @@ struct IntervalYearMonthNotEqualToFunction {
   }
 };
 
-} // namespace facebook::velox::functions::lib
+} // namespace facebook::velox::functions::flinksql
