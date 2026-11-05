@@ -27,7 +27,7 @@ velox_add_library(
 # (velox/functions/prestosql/Not.cpp), the way sparksql does.
 velox_link_libraries(
   velox_functions_flink
+  velox_functions_flink_impl
   velox_functions_prestosql_impl
-  velox_functions_lib
   velox_functions_json
   Folly::folly)
