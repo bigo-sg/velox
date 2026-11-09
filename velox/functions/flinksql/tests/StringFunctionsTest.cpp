@@ -13,9 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <gtest/gtest.h>
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
-#include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 
+#include <cstdint>
+#include <optional>
+#include <string>
+
+#include "velox/functions/prestosql/tests/utils/FunctionBaseTest.h"
 namespace facebook::velox::functions::flinksql::test {
 namespace {
 
@@ -32,6 +37,10 @@ class FlinkStringTest : public functions::test::FunctionBaseTest {
     // name lookups below resolve to the Flink implementations.
     FunctionBaseTest::SetUpTestCase();
     registerStringFunctions();
+  }
+
+  VectorPtr eval(const std::string& expr, const VectorPtr& input) {
+    return evaluate(expr, makeRowVector({input}));
   }
 };
 
@@ -334,6 +343,386 @@ TEST_F(FlinkStringTest, trimRuntimeSeekDegradesToSpaces) {
 
   // NULL propagation keeps the default behavior.
   EXPECT_EQ(rtrimRuntime("abc", std::nullopt), std::nullopt);
+}
+
+// from_base64
+
+TEST_F(FlinkStringTest, fromBase64) {
+  auto result = eval(
+      "from_base64(c0)",
+      makeNullableFlatVector<std::string>({"QTNGMTlDMjdCNEUw"}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"A3F19C27B4E0"}), result);
+}
+
+TEST_F(FlinkStringTest, fromBase64LongInput) {
+  std::string raw(100, 'a');
+  auto result = eval(
+      "from_base64(c0)",
+      makeNullableFlatVector<std::string>(
+          {"YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYQ=="}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({raw}), result);
+}
+
+TEST_F(FlinkStringTest, fromBase64Batch) {
+  auto result = evaluate(
+      "from_base64(c0)",
+      makeRowVector({makeNullableFlatVector<std::string>(
+          {"dGVzdA==", "", std::nullopt, "QQ=="})}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"test", "", std::nullopt, "A"}),
+      result);
+}
+
+TEST_F(FlinkStringTest, fromBase64Unpadded) {
+  auto result = eval(
+      "from_base64(c0)", makeNullableFlatVector<std::string>({"dGVzdA", "YQ"}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"test", "a"}), result);
+}
+
+TEST_F(FlinkStringTest, fromBase64Empty) {
+  // An empty input decodes to an empty string, matching Flink's
+  // Base64.getDecoder() on "".
+  auto result =
+      eval("from_base64(c0)", makeNullableFlatVector<std::string>({""}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({""}), result);
+}
+
+TEST_F(FlinkStringTest, fromBase64InvalidInput) {
+  // Invalid characters and a dangling unit (length % 4 == 1) error out on both
+  // sides: velox raises a user error, Flink's Base64.getDecoder() throws.
+  EXPECT_THROW(
+      eval("from_base64(c0)", makeNullableFlatVector<std::string>({"!@#$"})),
+      VeloxUserError);
+  EXPECT_THROW(
+      eval("from_base64(c0)", makeNullableFlatVector<std::string>({"a"})),
+      VeloxUserError);
+}
+
+// replace
+
+TEST_F(FlinkStringTest, replaceBasic) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"hello"}),
+          makeNullableFlatVector<std::string>({"l"}),
+          makeNullableFlatVector<std::string>({"x"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"hexxo"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceEmptyOldStr) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abc"}),
+          makeNullableFlatVector<std::string>({""}),
+          makeNullableFlatVector<std::string>({"x"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"xaxbxcx"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceEmptyOldStrMultibyte) {
+  // Empty `from` inserts the replacement at UTF-8 character boundaries, not
+  // between bytes: replace("你", "", "x") yields "x你x", not invalid UTF-8.
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"你", "a你b"}),
+          makeNullableFlatVector<std::string>({"", ""}),
+          makeNullableFlatVector<std::string>({"x", "x"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"x你x", "xax你xbx"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceNullInput) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({std::nullopt}),
+          makeNullableFlatVector<std::string>({"a"}),
+          makeNullableFlatVector<std::string>({"b"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({std::nullopt}), result);
+}
+
+TEST_F(FlinkStringTest, replaceEmptyInput) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({""}),
+          makeNullableFlatVector<std::string>({"a"}),
+          makeNullableFlatVector<std::string>({"b"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({""}), result);
+}
+
+TEST_F(FlinkStringTest, replaceEmptyReplacement) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abc"}),
+          makeNullableFlatVector<std::string>({"b"}),
+          makeNullableFlatVector<std::string>({""}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"ac"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceNoMatch) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abc"}),
+          makeNullableFlatVector<std::string>({"d"}),
+          makeNullableFlatVector<std::string>({"x"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"abc"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceLargeInputEmptyOld) {
+  std::string input(1024 * 1024, 'a');
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({input}),
+          makeNullableFlatVector<std::string>({""}),
+          makeNullableFlatVector<std::string>({"xx"}),
+      }));
+  auto sv = result->as<SimpleVector<StringView>>()->valueAt(0);
+  EXPECT_EQ((1024 * 1024 + 1) * 2 + 1024 * 1024, sv.size());
+  EXPECT_EQ("xxaxx", std::string(sv).substr(0, 5));
+}
+
+TEST_F(FlinkStringTest, replaceOverlappingOld) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abbbbc"}),
+          makeNullableFlatVector<std::string>({"bb"}),
+          makeNullableFlatVector<std::string>({"d"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"addc"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceOverlappingOldOdd) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abbbbbc"}),
+          makeNullableFlatVector<std::string>({"bb"}),
+          makeNullableFlatVector<std::string>({"d"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"addbc"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceOverlappingDelete) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abbbbc"}),
+          makeNullableFlatVector<std::string>({"bb"}),
+          makeNullableFlatVector<std::string>({""}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"ac"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceGrowingReplacement) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abbbbc"}),
+          makeNullableFlatVector<std::string>({"b"}),
+          makeNullableFlatVector<std::string>({"bb"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"abbbbbbbbc"}), result);
+}
+
+TEST_F(FlinkStringTest, replaceBatch) {
+  auto result = evaluate(
+      "replace(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>(
+              {"hello", "abc", std::nullopt, "aXbXc"}),
+          makeNullableFlatVector<std::string>({"l", "", "b", "X"}),
+          makeNullableFlatVector<std::string>({"x", "x", "y", std::nullopt}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>(
+          {"hexxo", "xaxbxcx", std::nullopt, std::nullopt}),
+      result);
+}
+
+// right
+
+TEST_F(FlinkStringTest, rightBasic) {
+  auto result = evaluate(
+      "right(c0, c1)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"abc"}),
+          makeNullableFlatVector<int32_t>({2}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"bc"}), result);
+}
+
+TEST_F(FlinkStringTest, rightZeroAndNegative) {
+  auto data = makeRowVector({
+      makeNullableFlatVector<std::string>({"abc", "abc"}),
+      makeNullableFlatVector<int32_t>({0, -5}),
+  });
+  auto result = evaluate("right(c0, c1)", data);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"", ""}), result);
+}
+
+TEST_F(FlinkStringTest, rightWholeString) {
+  auto data = makeRowVector({
+      makeNullableFlatVector<std::string>({"abc", "abc"}),
+      makeNullableFlatVector<int32_t>({3, 5}),
+  });
+  auto result = evaluate("right(c0, c1)", data);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"abc", "abc"}), result);
+}
+
+TEST_F(FlinkStringTest, rightMultibyte) {
+  auto data = makeRowVector({
+      makeNullableFlatVector<std::string>({"abc你好", "abc你好"}),
+      makeNullableFlatVector<int32_t>({2, 5}),
+  });
+  auto result = evaluate("right(c0, c1)", data);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"你好", "abc你好"}), result);
+}
+
+TEST_F(FlinkStringTest, rightNullAndEmpty) {
+  auto data = makeRowVector({
+      makeNullableFlatVector<std::string>({std::nullopt, "abc", ""}),
+      makeNullableFlatVector<int32_t>({2, std::nullopt, 1}),
+  });
+  auto result = evaluate("right(c0, c1)", data);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({std::nullopt, std::nullopt, ""}),
+      result);
+}
+
+TEST_F(FlinkStringTest, rightExtremeN) {
+  auto data = makeRowVector({
+      makeNullableFlatVector<std::string>({"abc", "abc"}),
+      makeNullableFlatVector<int32_t>({2147483647, -2147483647 - 1}),
+  });
+  auto result = evaluate("right(c0, c1)", data);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"abc", ""}), result);
+}
+
+TEST_F(FlinkStringTest, rightBatch) {
+  auto result = evaluate(
+      "right(c0, c1)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>(
+              {"abc", "hello", std::nullopt, "abc你好"}),
+          makeNullableFlatVector<int32_t>({2, 1, 2, 2}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<std::string>({"bc", "o", std::nullopt, "你好"}),
+      result);
+}
+
+// -------------------- like --------------------
+
+TEST_F(FlinkStringTest, likeEmptyPattern) {
+  // A constant empty pattern vacuously matches every input: verified against
+  // the Flink 1.19.2 native runtime by an end-to-end dual-run (the
+  // master-only `mark > 0 && isEmptyPattern` gate of SqlLikeChainChecker is
+  // absent in 1.19.x). This diverges from the SQL standard; we follow the
+  // Flink runtime for parity.
+  auto result = evaluate(
+      "like(c0, '')",
+      makeRowVector(
+          {makeNullableFlatVector<std::string>({"abc", "", "a\nb"})}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<bool>({true, true, true}), result);
+}
+
+TEST_F(FlinkStringTest, likeBatch) {
+  auto result = evaluate(
+      "like(c0, c1)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>(
+              {"abc", "abc", std::nullopt, "你好", "", "abc"}),
+          makeNullableFlatVector<std::string>(
+              {"a%", "_bc", "a%", "__", "", ""}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<bool>(
+          {true, true, std::nullopt, true, true, false}),
+      result);
+}
+
+TEST_F(FlinkStringTest, likeLineTerminator) {
+  auto underscore = makeRowVector({
+      makeNullableFlatVector<std::string>(
+          {"\n",
+           "\r",
+           "\xC2\x85",
+           "\xE2\x80\xA8",
+           "\xE2\x80\xA9",
+           "a\nb",
+           "aXb"}),
+      makeNullableFlatVector<std::string>(
+          {"_", "_", "_", "_", "_", "a_b", "a_b"}),
+  });
+  auto result1 = evaluate("like(c0, c1)", underscore);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<bool>(
+          {false, false, false, false, false, false, true}),
+      result1);
+
+  auto percent = makeRowVector({
+      makeNullableFlatVector<std::string>({"\n", "a\nb"}),
+      makeNullableFlatVector<std::string>({"%", "a%b"}),
+  });
+  auto result2 = evaluate("like(c0, c1)", percent);
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<bool>({true, true}), result2);
+}
+
+TEST_F(FlinkStringTest, likeNonAsciiEscape) {
+  // A non-ASCII escape (one Java char, multi-byte UTF-8) is valid: the escaped
+  // '%' becomes a literal percent.
+  auto result = evaluate(
+      "like(c0, 'aé%b', 'é')",
+      makeRowVector({makeNullableFlatVector<std::string>({"a%b", "axb"})}));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<bool>({true, false}), result);
+}
+
+TEST_F(FlinkStringTest, likeNonAsciiEscapeDynamic) {
+  auto result = evaluate(
+      "like(c0, c1, c2)",
+      makeRowVector({
+          makeNullableFlatVector<std::string>({"a%b", "axb", "aé"}),
+          makeNullableFlatVector<std::string>({"aé%b", "aé%b", "aéé"}),
+          makeNullableFlatVector<std::string>({"é", "é", "é"}),
+      }));
+  velox::test::assertEqualVectors(
+      makeNullableFlatVector<bool>({true, false, true}), result);
 }
 
 } // namespace

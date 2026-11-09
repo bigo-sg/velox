@@ -16,15 +16,41 @@
 #pragma once
 
 #include <cstring>
+#include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
+#include "velox/common/encode/Base64.h"
+#include "velox/expression/Expr.h"
 #include "velox/functions/Macros.h"
 #include "velox/functions/Udf.h"
 #include "velox/functions/lib/string/StringCore.h"
 #include "velox/functions/lib/string/StringImpl.h"
+#include "velox/vector/BaseVector.h"
 
 namespace facebook::velox::functions::flinksql {
+
+/// Flink REPLACE: empty `from` inserts `to` around each UTF-8 character (at
+/// character boundaries, matching Java's String.replace). Registered as a
+/// stateful vector function so it overrides prestosql's byte-level `replace`.
+std::vector<std::shared_ptr<exec::FunctionSignature>> replaceSignatures();
+
+std::shared_ptr<exec::VectorFunction> makeReplaceFlink(
+    const std::string& name,
+    const std::vector<exec::VectorFunctionArg>& inputArgs,
+    const core::QueryConfig& config);
+
+/// Flink-aligned LIKE.
+///
+/// Mirrors Flink's SqlLikeUtils.sqlToRegexLike semantics:
+///   '_' -> '.' (matches any single character except line terminators);
+///   '%' -> '(?s:.*)' (matches any sequence including line terminators).
+std::shared_ptr<exec::VectorFunction> makeLikeFlink(
+    const std::string& name,
+    const std::vector<exec::VectorFunctionArg>& inputArgs,
+    const core::QueryConfig& config);
 
 /// Flink TRIM family. Unlike prestosql (which removes all Unicode
 /// whitespace), Flink's default trim removes only the 0x20 space character;
@@ -341,5 +367,55 @@ struct LPadFunction : public PadFunctionBase<T, true> {};
 
 template <typename T>
 struct RPadFunction : public PadFunctionBase<T, false> {};
+
+/// Flink RIGHT: rightmost n UTF-8 code points; n <= 0 returns empty, n >= len
+/// returns whole.
+template <typename TExec>
+struct RightFunction {
+  VELOX_DEFINE_FUNCTION_TYPES(TExec);
+
+  FOLLY_ALWAYS_INLINE void call(
+      out_type<Varchar>& result,
+      const arg_type<Varchar>& input,
+      const arg_type<int32_t>& n) {
+    if (n <= 0) {
+      result.resize(0);
+      return;
+    }
+    int32_t remaining = n;
+    size_t offset = input.size();
+    while (offset > 0 && remaining > 0) {
+      --offset;
+      if ((static_cast<unsigned char>(input.data()[offset]) & 0xC0) != 0x80) {
+        --remaining;
+      }
+    }
+    if (remaining > 0) {
+      offset = 0;
+    }
+    result.copy_from(
+        std::string_view(input.data() + offset, input.size() - offset));
+  }
+};
+
+/// Flink FROM_BASE64: decodes base64 VARCHAR to VARCHAR (presto returns
+/// VARBINARY).
+template <typename TExec>
+struct FromBase64FlinkFunction {
+  VELOX_DEFINE_FUNCTION_TYPES(TExec);
+
+  FOLLY_ALWAYS_INLINE Status
+  call(out_type<Varchar>& result, const arg_type<Varchar>& input) {
+    auto inputSize = input.size();
+    auto decodedSize =
+        encoding::Base64::calculateDecodedSize(input.data(), inputSize);
+    if (decodedSize.hasError()) {
+      return decodedSize.error();
+    }
+    result.resize(decodedSize.value());
+    return encoding::Base64::decode(
+        input.data(), inputSize, result.data(), result.size());
+  }
+};
 
 } // namespace facebook::velox::functions::flinksql
