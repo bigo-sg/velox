@@ -296,10 +296,16 @@ TEST_F(ToTimestampTest, TwoArgDeviationsPinned) {
   EXPECT_EQ(
       std::nullopt,
       toTimestampOnce(std::string("2026-13-01 10:00:00"), std::string(kFull)));
-  // T3: a parsed date field lazily defaults the year to 2000 (Flink: 1970).
+  // T3 closed: a parsed date field defaults the year to 1970, matching
+  // Flink (the engine lazily sets 2000; the wrapper rewrites it).
   EXPECT_EQ(
-      Timestamp(968630400, 0),
+      Timestamp(21859200, 0),
       toTimestampOnce(std::string("09-11"), std::string("MM-dd")));
+  // SMART recomposition: Feb 29 of the non-leap default year clamps to
+  // Feb 28, as Flink's java.time resolver.
+  EXPECT_EQ(
+      Timestamp(5011200, 0),
+      toTimestampOnce(std::string("02-29"), std::string("MM-dd")));
   // T1: no fallback chain (Flink's Timestamp.valueOf leniently carries
   // 02-30 -> 03-02).
   EXPECT_EQ(

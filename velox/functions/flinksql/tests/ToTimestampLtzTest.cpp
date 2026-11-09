@@ -111,6 +111,35 @@ TEST_F(ToTimestampLtzTest, IntegralFamily) {
   EXPECT_EQ(std::nullopt, ltzOnce<int64_t>(-62167219201, 0));
 }
 
+// Flink's INTEGER_NUMERIC also accepts BIGINT precision columns; the
+// narrowing to the int parameter keeps the low 32 bits, as Java's (int) cast.
+TEST_F(ToTimestampLtzTest, BigintPrecisionColumn) {
+  EXPECT_EQ(
+      Timestamp(1760000, 0),
+      evaluateOnce<Timestamp>(
+          "to_timestamp_ltz(c0, c1)",
+          std::optional<int64_t>(1760000000),
+          std::optional<int64_t>(3)));
+  EXPECT_EQ(
+      Timestamp(1760000, 0),
+      evaluateOnce<Timestamp>(
+          "to_timestamp_ltz(c0, c1)",
+          std::optional<int64_t>(1760000000),
+          std::optional<int64_t>(4294967299LL)));
+  EXPECT_EQ(
+      std::nullopt,
+      evaluateOnce<Timestamp>(
+          "to_timestamp_ltz(c0, c1)",
+          std::optional<int64_t>(1760000000),
+          std::optional<int64_t>(std::nullopt)));
+  EXPECT_EQ(
+      Timestamp(1760000, 0),
+      evaluateOnce<Timestamp>(
+          "to_timestamp_ltz(c0, c1)",
+          std::optional<double>(1760000000.0),
+          std::optional<int64_t>(3)));
+}
+
 // N. Decimal family: unscaled value + scale from the input type; the
 // fraction truncates toward zero (Flink setScale(0, DOWN)).
 TEST_F(ToTimestampLtzTest, DecimalFamily) {

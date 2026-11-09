@@ -790,6 +790,9 @@ struct ToDateWithFormatFunction {
                        .thenOrThrow(folly::identity, [](const Status& status) {
                          VELOX_USER_FAIL("{}", status.message());
                        });
+      // Flink defaults a missing year to 1970, the engine to 2000 (see
+      // detail::defaultsMissingYearTo2000).
+      needsEpochDefaultYear_ = detail::defaultsMissingYearTo2000(*formatter_);
       isConstFormat_ = true;
     }
   }
@@ -805,11 +808,15 @@ struct ToDateWithFormatFunction {
                        .thenOrThrow(folly::identity, [](const Status& status) {
                          VELOX_USER_FAIL("{}", status.message());
                        });
+      needsEpochDefaultYear_ = detail::defaultsMissingYearTo2000(*formatter_);
     }
     auto dateTimeResult = formatter_->parse(std::string_view(s));
     // Parse failure -> NULL (Flink's JDK engine yields a garbage date).
     if (dateTimeResult.hasError()) {
       return false;
+    }
+    if (needsEpochDefaultYear_) {
+      detail::applyEpochDefaultYear(dateTimeResult->timestamp);
     }
     auto days = toDateDays(*dateTimeResult, *gmt_);
     if (!days.has_value()) {
@@ -822,6 +829,7 @@ struct ToDateWithFormatFunction {
  private:
   std::shared_ptr<DateTimeFormatter> formatter_;
   bool isConstFormat_ = false;
+  bool needsEpochDefaultYear_{false};
   // Flink hard-codes UTC: the fallback zone is GMT, not the session zone.
   const tz::TimeZone* gmt_{tz::locateZone(0)};
 };
@@ -1049,10 +1057,12 @@ template <typename TExec>
 struct ToTimestampLtzIntegralFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  template <typename A>
-  FOLLY_ALWAYS_INLINE bool
-  call(out_type<Timestamp>& result, A v, int32_t precision) {
-    auto ts = flinkToTimestampLtzIntegral(static_cast<int64_t>(v), precision);
+  // P covers the INTEGER_NUMERIC precision types (INT / BIGINT columns);
+  // the narrowing mirrors Java's (int) cast in Flink's method binding.
+  template <typename A, typename P>
+  FOLLY_ALWAYS_INLINE bool call(out_type<Timestamp>& result, A v, P precision) {
+    auto ts = flinkToTimestampLtzIntegral(
+        static_cast<int64_t>(v), static_cast<int32_t>(precision));
     if (!ts.has_value()) {
       return false; // NULL (out-of-range epoch)
     }
@@ -1067,9 +1077,10 @@ template <typename TExec>
 struct ToTimestampLtzDoubleFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
+  template <typename P>
   FOLLY_ALWAYS_INLINE bool
-  call(out_type<Timestamp>& result, double v, int32_t precision) {
-    auto ts = flinkToTimestampLtzDouble(v, precision);
+  call(out_type<Timestamp>& result, double v, P precision) {
+    auto ts = flinkToTimestampLtzDouble(v, static_cast<int32_t>(precision));
     if (!ts.has_value()) {
       return false;
     }
@@ -1086,20 +1097,22 @@ template <typename TExec>
 struct ToTimestampLtzDecimalFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  template <typename A>
+  template <typename A, typename P>
   FOLLY_ALWAYS_INLINE void initialize(
       const std::vector<TypePtr>& inputTypes,
       const core::QueryConfig& /*config*/,
       const A* /*unscaled*/,
-      const int32_t* /*precision*/) {
+      const P* /*precision*/) {
     scale_ = getDecimalPrecisionScale(*inputTypes[0]).second;
   }
 
-  template <typename A>
+  template <typename A, typename P>
   FOLLY_ALWAYS_INLINE bool
-  call(out_type<Timestamp>& result, const A& unscaled, int32_t precision) {
+  call(out_type<Timestamp>& result, const A& unscaled, P precision) {
     auto ts = flinkToTimestampLtzDecimal(
-        static_cast<int128_t>(unscaled), scale_, precision);
+        static_cast<int128_t>(unscaled),
+        scale_,
+        static_cast<int32_t>(precision));
     if (!ts.has_value()) {
       return false;
     }

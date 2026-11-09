@@ -196,7 +196,18 @@ void registerTemporalFunctions(const std::string& prefix) {
       {prefix + "to_timestamp_ltz"});
   registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int64_t, int32_t>(
       {prefix + "to_timestamp_ltz"});
+  // Flink's INTEGER_NUMERIC also accepts BIGINT precision columns.
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int8_t, int64_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int16_t, int64_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int32_t, int64_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzIntegralFunction, Timestamp, int64_t, int64_t>(
+      {prefix + "to_timestamp_ltz"});
   registerFunction<ToTimestampLtzDoubleFunction, Timestamp, double, int32_t>(
+      {prefix + "to_timestamp_ltz"});
+  registerFunction<ToTimestampLtzDoubleFunction, Timestamp, double, int64_t>(
       {prefix + "to_timestamp_ltz"});
   registerFunction<
       ToTimestampLtzDecimalFunction,
@@ -208,6 +219,16 @@ void registerTemporalFunctions(const std::string& prefix) {
       Timestamp,
       LongDecimal<P1, S1>,
       int32_t>({prefix + "to_timestamp_ltz"});
+  registerFunction<
+      ToTimestampLtzDecimalFunction,
+      Timestamp,
+      ShortDecimal<P1, S1>,
+      int64_t>({prefix + "to_timestamp_ltz"});
+  registerFunction<
+      ToTimestampLtzDecimalFunction,
+      Timestamp,
+      LongDecimal<P1, S1>,
+      int64_t>({prefix + "to_timestamp_ltz"});
 }
 
 } // namespace facebook::velox::functions::flinksql

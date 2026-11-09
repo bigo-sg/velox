@@ -285,6 +285,10 @@ std::optional<int32_t> flinkParseDateWithFormat(
   if (dateTimeResult.hasError()) {
     return std::nullopt;
   }
+  // Flink defaults a missing year to 1970, the engine to 2000.
+  if (detail::defaultsMissingYearTo2000(*built.value())) {
+    detail::applyEpochDefaultYear(dateTimeResult->timestamp);
+  }
   return toDateDays(*dateTimeResult, *tz::locateZone(0));
 }
 
@@ -462,6 +466,24 @@ std::optional<Timestamp> flinkParseTimestamp(std::string_view s) {
   return Timestamp(seconds, nanos);
 }
 
+// The SMART-flavored counterpart of detail::applyEpochDefaultYear for
+// to_timestamp: java.time clamps Feb 29 of the non-leap default year to
+// Feb 28 instead of leniently rolling into March.
+namespace {
+void applyEpochDefaultYearSmart(Timestamp& timestamp) {
+  std::tm dateTime{};
+  if (!Timestamp::epochToCalendarUtc(timestamp.getSeconds(), dateTime)) {
+    return;
+  }
+  if (dateTime.tm_mon == 1 && dateTime.tm_mday == 29) {
+    --dateTime.tm_mday; // 1970 is not a leap year; SMART clamps.
+  }
+  dateTime.tm_year = 70;
+  timestamp =
+      Timestamp(Timestamp::calendarUtcToEpoch(dateTime), timestamp.getNanos());
+}
+} // namespace
+
 std::optional<Timestamp> flinkParseTimestampWithFormatter(
     const DateTimeFormatter& formatter,
     std::string_view s) {
@@ -483,6 +505,11 @@ std::optional<Timestamp> flinkParseTimestampWithFormatter(
   // Timestamp constructor; guard it into a NULL row.
   if (parsed->timestamp.getNanos() > Timestamp::kMaxNanos) {
     return std::nullopt;
+  }
+  // Flink's fromTemporalAccessor defaults a missing year to 1970, the engine
+  // to 2000; SMART recomposition (Feb 29 -> Feb 28) for this function.
+  if (detail::defaultsMissingYearTo2000(formatter)) {
+    applyEpochDefaultYearSmart(parsed->timestamp);
   }
   // delta-1: the engine result is already the wall-clock GMT frame — the
   // parsed timezone is ignored (Flink's fromTemporalAccessor reads fields
