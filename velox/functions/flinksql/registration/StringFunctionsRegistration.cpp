@@ -13,11 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "velox/functions/flinksql/StringFunctions.h"
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 
 #include "velox/expression/VectorFunction.h"
 #include "velox/functions/Registerer.h"
-#include "velox/functions/flinksql/StringFunctions.h"
 #include "velox/functions/lib/Re2Functions.h"
 
 namespace facebook::velox::functions::flinksql {
@@ -65,6 +65,17 @@ void registerStringFunctions(const std::string& prefix) {
       {prefix + "lpad"});
   registerFunction<RPadFunction, Varchar, Varchar, int32_t, Varchar>(
       {prefix + "rpad"});
+  // Stateful vector function so it overrides prestosql's byte-level `replace`
+  // in the vector-function registry (vector functions take precedence over
+  // simple functions of the same signature).
+  exec::registerStatefulVectorFunction(
+      prefix + "replace", replaceSignatures(), makeReplaceFlink);
+  registerFunction<RightFunction, Varchar, Varchar, int32_t>(
+      {prefix + "right"});
+  registerFunction<FromBase64FlinkFunction, Varchar, Varchar>(
+      {prefix + "from_base64"});
+  exec::registerStatefulVectorFunction(
+      prefix + "like", likeSignatures(), makeLikeFlink);
 }
 
 } // namespace facebook::velox::functions::flinksql
