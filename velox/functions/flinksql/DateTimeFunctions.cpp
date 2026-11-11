@@ -285,6 +285,10 @@ std::optional<int32_t> flinkParseDateWithFormat(
   if (dateTimeResult.hasError()) {
     return std::nullopt;
   }
+  // Flink defaults a missing year to 1970, the engine to 2000.
+  if (detail::defaultsMissingYearTo2000(*built.value())) {
+    detail::applyEpochDefaultYear(dateTimeResult->timestamp);
+  }
   return toDateDays(*dateTimeResult, *tz::locateZone(0));
 }
 
@@ -462,6 +466,25 @@ std::optional<Timestamp> flinkParseTimestamp(std::string_view s) {
   return Timestamp(seconds, nanos);
 }
 
+// java.time recomposes the default year with a strict factory: Feb 29 of
+// the non-leap default year throws (Flink's fallible wrapper yields NULL),
+// anything else recomposes fine.
+namespace {
+bool applyEpochDefaultYearStrict(Timestamp& timestamp) {
+  std::tm dateTime{};
+  if (!Timestamp::epochToCalendarUtc(timestamp.getSeconds(), dateTime)) {
+    return true;
+  }
+  if (dateTime.tm_mon == 1 && dateTime.tm_mday == 29) {
+    return false; // 1970 is not a leap year; the strict recomposition throws.
+  }
+  dateTime.tm_year = 70;
+  timestamp =
+      Timestamp(Timestamp::calendarUtcToEpoch(dateTime), timestamp.getNanos());
+  return true;
+}
+} // namespace
+
 std::optional<Timestamp> flinkParseTimestampWithFormatter(
     const DateTimeFormatter& formatter,
     std::string_view s) {
@@ -483,6 +506,14 @@ std::optional<Timestamp> flinkParseTimestampWithFormatter(
   // Timestamp constructor; guard it into a NULL row.
   if (parsed->timestamp.getNanos() > Timestamp::kMaxNanos) {
     return std::nullopt;
+  }
+  // Flink's fromTemporalAccessor defaults a missing year to 1970, the engine
+  // to 2000; the recomposition is strict — Feb 29 of the non-leap default
+  // year throws on Flink, and the fallible wrapper yields NULL.
+  if (detail::defaultsMissingYearTo2000(formatter)) {
+    if (!applyEpochDefaultYearStrict(parsed->timestamp)) {
+      return std::nullopt;
+    }
   }
   // delta-1: the engine result is already the wall-clock GMT frame — the
   // parsed timezone is ignored (Flink's fromTemporalAccessor reads fields

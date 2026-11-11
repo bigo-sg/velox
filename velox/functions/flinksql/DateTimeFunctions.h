@@ -790,6 +790,9 @@ struct ToDateWithFormatFunction {
                        .thenOrThrow(folly::identity, [](const Status& status) {
                          VELOX_USER_FAIL("{}", status.message());
                        });
+      // Flink defaults a missing year to 1970, the engine to 2000 (see
+      // detail::defaultsMissingYearTo2000).
+      needsEpochDefaultYear_ = detail::defaultsMissingYearTo2000(*formatter_);
       isConstFormat_ = true;
     }
   }
@@ -805,11 +808,15 @@ struct ToDateWithFormatFunction {
                        .thenOrThrow(folly::identity, [](const Status& status) {
                          VELOX_USER_FAIL("{}", status.message());
                        });
+      needsEpochDefaultYear_ = detail::defaultsMissingYearTo2000(*formatter_);
     }
     auto dateTimeResult = formatter_->parse(std::string_view(s));
     // Parse failure -> NULL (Flink's JDK engine yields a garbage date).
     if (dateTimeResult.hasError()) {
       return false;
+    }
+    if (needsEpochDefaultYear_) {
+      detail::applyEpochDefaultYear(dateTimeResult->timestamp);
     }
     auto days = toDateDays(*dateTimeResult, *gmt_);
     if (!days.has_value()) {
@@ -822,6 +829,7 @@ struct ToDateWithFormatFunction {
  private:
   std::shared_ptr<DateTimeFormatter> formatter_;
   bool isConstFormat_ = false;
+  bool needsEpochDefaultYear_{false};
   // Flink hard-codes UTC: the fallback zone is GMT, not the session zone.
   const tz::TimeZone* gmt_{tz::locateZone(0)};
 };

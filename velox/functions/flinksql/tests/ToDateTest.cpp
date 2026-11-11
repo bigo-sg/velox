@@ -284,8 +284,9 @@ TEST_F(ToDateTest, TwoArgWhitespaceAndDigits) {
   EXPECT_EQ(
       std::nullopt,
       toDateOnce(std::string("2026-09-11"), std::string("yyyy-MM-ddHH")));
-  // A parsed time field lazily defaults the year to 2000.
-  EXPECT_EQ(10967, toDateOnce(std::string("11 05"), std::string("dd HH")));
+  // A parsed day field defaults the year to 1970, matching Flink's cleared
+  // calendar (the engine lazily sets 2000; the wrapper rewrites it).
+  EXPECT_EQ(10, toDateOnce(std::string("11 05"), std::string("dd HH")));
   EXPECT_EQ(
       std::nullopt, toDateOnce(std::string("11  05"), std::string("dd HH")));
 }
@@ -293,11 +294,14 @@ TEST_F(ToDateTest, TwoArgWhitespaceAndDigits) {
 TEST_F(ToDateTest, TwoArgDefaultedFields) {
   EXPECT_EQ(20454, toDateOnce(std::string("2026"), std::string("yyyy")));
   EXPECT_EQ(0, toDateOnce(std::string("12:30:00"), std::string("HH:mm:ss")));
-  // A parsed date field lazily defaults the year to 2000.
-  EXPECT_EQ(11211, toDateOnce(std::string("09-11"), std::string("MM-dd")));
-  EXPECT_EQ(10981, toDateOnce(std::string("25"), std::string("dd")));
-  EXPECT_EQ(11201, toDateOnce(std::string("09"), std::string("MM")));
+  // A parsed date field defaults the year to 1970, matching Flink.
+  EXPECT_EQ(253, toDateOnce(std::string("09-11"), std::string("MM-dd")));
+  EXPECT_EQ(24, toDateOnce(std::string("25"), std::string("dd")));
+  EXPECT_EQ(243, toDateOnce(std::string("09"), std::string("MM")));
   EXPECT_EQ(std::nullopt, toDateOnce(std::string("0"), std::string("dd")));
+  // Feb 29 of the non-leap default year leniently rolls to Mar 1, as
+  // Flink's SimpleDateFormat.
+  EXPECT_EQ(59, toDateOnce(std::string("02-29"), std::string("MM-dd")));
 }
 
 TEST_F(ToDateTest, TwoArgSignsAndYearDomain) {
