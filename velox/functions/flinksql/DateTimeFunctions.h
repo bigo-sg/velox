@@ -1057,12 +1057,10 @@ template <typename TExec>
 struct ToTimestampLtzIntegralFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  // P covers the INTEGER_NUMERIC precision types (INT / BIGINT columns);
-  // the narrowing mirrors Java's (int) cast in Flink's method binding.
-  template <typename A, typename P>
-  FOLLY_ALWAYS_INLINE bool call(out_type<Timestamp>& result, A v, P precision) {
-    auto ts = flinkToTimestampLtzIntegral(
-        static_cast<int64_t>(v), static_cast<int32_t>(precision));
+  template <typename A>
+  FOLLY_ALWAYS_INLINE bool
+  call(out_type<Timestamp>& result, A v, int32_t precision) {
+    auto ts = flinkToTimestampLtzIntegral(static_cast<int64_t>(v), precision);
     if (!ts.has_value()) {
       return false; // NULL (out-of-range epoch)
     }
@@ -1077,10 +1075,9 @@ template <typename TExec>
 struct ToTimestampLtzDoubleFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  template <typename P>
   FOLLY_ALWAYS_INLINE bool
-  call(out_type<Timestamp>& result, double v, P precision) {
-    auto ts = flinkToTimestampLtzDouble(v, static_cast<int32_t>(precision));
+  call(out_type<Timestamp>& result, double v, int32_t precision) {
+    auto ts = flinkToTimestampLtzDouble(v, precision);
     if (!ts.has_value()) {
       return false;
     }
@@ -1097,22 +1094,20 @@ template <typename TExec>
 struct ToTimestampLtzDecimalFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  template <typename A, typename P>
+  template <typename A>
   FOLLY_ALWAYS_INLINE void initialize(
       const std::vector<TypePtr>& inputTypes,
       const core::QueryConfig& /*config*/,
       const A* /*unscaled*/,
-      const P* /*precision*/) {
+      const int32_t* /*precision*/) {
     scale_ = getDecimalPrecisionScale(*inputTypes[0]).second;
   }
 
-  template <typename A, typename P>
+  template <typename A>
   FOLLY_ALWAYS_INLINE bool
-  call(out_type<Timestamp>& result, const A& unscaled, P precision) {
+  call(out_type<Timestamp>& result, const A& unscaled, int32_t precision) {
     auto ts = flinkToTimestampLtzDecimal(
-        static_cast<int128_t>(unscaled),
-        scale_,
-        static_cast<int32_t>(precision));
+        static_cast<int128_t>(unscaled), scale_, precision);
     if (!ts.has_value()) {
       return false;
     }

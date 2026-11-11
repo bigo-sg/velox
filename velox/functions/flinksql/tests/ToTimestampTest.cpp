@@ -301,10 +301,10 @@ TEST_F(ToTimestampTest, TwoArgDeviationsPinned) {
   EXPECT_EQ(
       Timestamp(21859200, 0),
       toTimestampOnce(std::string("09-11"), std::string("MM-dd")));
-  // SMART recomposition: Feb 29 of the non-leap default year clamps to
-  // Feb 28, as Flink's java.time resolver.
+  // Strict recomposition: Feb 29 of the non-leap default year throws on
+  // Flink (the fallible wrapper yields NULL), not a clamped date.
   EXPECT_EQ(
-      Timestamp(5011200, 0),
+      std::nullopt,
       toTimestampOnce(std::string("02-29"), std::string("MM-dd")));
   // T1: no fallback chain (Flink's Timestamp.valueOf leniently carries
   // 02-30 -> 03-02).
