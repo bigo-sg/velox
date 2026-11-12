@@ -1,17 +1,6 @@
 /*
  * Copyright (c) Contributors to the GFVBot project.
  * Licensed under the Apache License, Version 2.0.
- *
- * Flink's DATE_FORMAT on a TIMESTAMP (no timezone) renders the wall clock:
- * the wall-as-UTC storage millis are formatted in UTC, mirroring Flink's
- * DateTimeUtils.formatTimestamp(TimestampData, String) which hardcodes
- * ZoneId.of("UTC"). The session timezone does NOT apply to the no-timezone
- * type — unlike FROM_UNIXTIME whose epoch input is a real moment and is
- * rendered in the session timezone.
- *
- * DATE_FORMAT on TIMESTAMP WITH TIME ZONE renders the real moment in the
- * session timezone (a TIMESTAMP_LTZ carries a genuine instant, so
- * zone-based rendering is correct — same policy as FROM_UNIXTIME).
  */
 #pragma once
 
@@ -59,8 +48,6 @@ struct DateFormatFlinkFunction {
       const core::QueryConfig& /*config*/,
       const arg_type<Timestamp>* /*timestamp*/,
       const arg_type<Varchar>* formatString) {
-    // Deliberately do NOT read the session timezone: Flink renders the
-    // no-timezone TIMESTAMP as its wall clock regardless of the session zone.
     if (formatString != nullptr) {
       setFormatter(*formatString);
       isConstFormat_ = true;
@@ -123,8 +110,6 @@ struct DateFormatWithTzFlinkFunction {
     if (!isConstFormat_) {
       setFormatter(formatString);
     }
-    // The packed value is (utcMillis << shift) | zoneKey; dereference the
-    // view to the underlying int64_t before unpacking.
     const auto timestamp = unpackTimestampUtc(*timestampWithTimezone);
     result.reserve(maxResultSize_);
     const auto resultSize = formatter_->format(

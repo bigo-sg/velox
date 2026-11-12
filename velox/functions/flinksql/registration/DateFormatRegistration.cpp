@@ -11,20 +11,16 @@
 namespace facebook::velox::functions::flinksql {
 
 void registerDateFormatFunctions(const std::string& prefix) {
-  // The TIMESTAMP WITH TIME ZONE overload needs the custom type registered
-  // before its signature is validated (same pattern as prestosql's
-  // registerComparisonFunctions).
+  // Required before the TIMESTAMP WITH TIME ZONE signature is validated.
   registerTimestampWithTimeZoneType();
 
-  // TIMESTAMP (no timezone): wall-clock rendering, session timezone does NOT
-  // apply (Flink's DateTimeUtils.formatTimestamp hardcodes UTC). Overrides
-  // the inherited sparksql FormatDateTimeFunction under the FLINK preset.
+  // Wall-clock rendering; overrides the inherited sparksql
+  // FormatDateTimeFunction.
   registerFunction<DateFormatFlinkFunction, Varchar, Timestamp, Varchar>(
       {prefix + "date_format"});
 
-  // TIMESTAMP WITH TIME ZONE: render the real moment in the session
-  // timezone (same policy as FROM_UNIXTIME). Overrides the inherited
-  // sparksql implementation, which renders in the value's embedded zone.
+  // Session-timezone rendering; overrides the inherited sparksql
+  // implementation (embedded-zone rendering).
   registerFunction<
       DateFormatWithTzFlinkFunction,
       Varchar,
