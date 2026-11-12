@@ -20,6 +20,7 @@ namespace facebook::velox::functions::flinksql {
 void registerFunctions(const std::string& prefix) {
   registerArithmeticFunctions(prefix);
   registerConditionalFunctions(prefix);
+  registerDateFormatFunctions(prefix);
   registerHashFunctions(prefix);
   registerJsonFunctions(prefix);
   registerLogicalFunctions(prefix);
