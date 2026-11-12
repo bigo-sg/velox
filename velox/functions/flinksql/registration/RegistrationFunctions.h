@@ -24,6 +24,7 @@ void registerFunctions(const std::string& prefix = "");
 
 void registerArithmeticFunctions(const std::string& prefix = "");
 void registerConditionalFunctions(const std::string& prefix = "");
+void registerDateFormatFunctions(const std::string& prefix = "");
 void registerHashFunctions(const std::string& prefix = "");
 void registerJsonFunctions(const std::string& prefix = "");
 void registerLogicalFunctions(const std::string& prefix = "");

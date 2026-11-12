@@ -16,6 +16,7 @@ velox_add_library(
   velox_functions_flink
   ArithmeticFunctionsRegistration.cpp
   ConditionalFunctionsRegistration.cpp
+  DateFormatRegistration.cpp
   HashFunctionsRegistration.cpp
   JsonFunctionsRegistration.cpp
   LogicalFunctionsRegistration.cpp
