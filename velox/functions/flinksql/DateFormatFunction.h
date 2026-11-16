@@ -1,6 +1,17 @@
 /*
- * Copyright (c) Contributors to the GFVBot project.
- * Licensed under the Apache License, Version 2.0.
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 #pragma once
 
@@ -13,27 +24,12 @@
 #include "velox/common/base/Exceptions.h"
 #include "velox/core/QueryConfig.h"
 #include "velox/functions/Macros.h"
+#include "velox/functions/flinksql/DateTimeFunctions.h"
 #include "velox/functions/lib/DateTimeFormatter.h"
 #include "velox/functions/prestosql/types/TimestampWithTimeZoneType.h"
 #include "velox/type/Timestamp.h"
 #include "velox/type/Type.h"
 #include "velox/type/tz/TimeZoneMap.h"
-
-namespace facebook::velox::functions::flinksql::detail {
-
-// Shared with FromUnixtimeFunction: reads sessionTimezone() directly,
-// bypassing the adjust_timestamp_to_timezone flag (that flag governs
-// TIMESTAMP storage/comparison, not rendering).
-inline const tz::TimeZone* getSessionTimeZoneForRendering(
-    const core::QueryConfig& config) {
-  const auto sessionTzName = config.sessionTimezone();
-  if (!sessionTzName.empty()) {
-    return tz::locateZone(sessionTzName);
-  }
-  return nullptr;
-}
-
-} // namespace facebook::velox::functions::flinksql::detail
 
 namespace facebook::velox::functions::flinksql {
 
@@ -84,9 +80,9 @@ struct DateFormatFlinkFunction {
 
 // DATE_FORMAT(timestamp, format) over TIMESTAMP WITH TIME ZONE:
 // renders the real moment in the session timezone (a TIMESTAMP_LTZ
-// carries a genuine instant — same policy as FROM_UNIXTIME). This
-// diverges from the inherited sparksql implementation, which renders
-// in the value's embedded zone instead of the session zone.
+// carries a genuine instant — same policy as FROM_UNIXTIME). The
+// sparksql layer registers date_format only for TIMESTAMP, so this
+// overload adds LTZ coverage with Flink semantics.
 template <typename T>
 struct DateFormatWithTzFlinkFunction {
   VELOX_DEFINE_FUNCTION_TYPES(T);
@@ -96,7 +92,7 @@ struct DateFormatWithTzFlinkFunction {
       const core::QueryConfig& config,
       const arg_type<TimestampWithTimezone>* /*timestamp*/,
       const arg_type<Varchar>* formatString) {
-    sessionTimeZone_ = detail::getSessionTimeZoneForRendering(config);
+    sessionTimeZone_ = detail::getSessionTimeZone(config);
     if (formatString != nullptr) {
       setFormatter(*formatString);
       isConstFormat_ = true;
