@@ -21,18 +21,32 @@
 namespace facebook::velox::functions::flinksql {
 
 void registerHashFunctions(const std::string& prefix) {
+  // Flink's hash expressions accept VARCHAR and VARBINARY alike.
   registerFunction<Md5Function, Varchar, Varchar>({prefix + "md5"});
+  registerFunction<Md5Function, Varchar, Varbinary>({prefix + "md5"});
   registerFunction<Sha1Function, Varchar, Varchar>({prefix + "sha1"});
+  registerFunction<Sha1Function, Varchar, Varbinary>({prefix + "sha1"});
 
   registerFunction<Sha2Function, Varchar, Varchar, int8_t>({prefix + "sha2"});
   registerFunction<Sha2Function, Varchar, Varchar, int16_t>({prefix + "sha2"});
   registerFunction<Sha2Function, Varchar, Varchar, int32_t>({prefix + "sha2"});
   registerFunction<Sha2Function, Varchar, Varchar, int64_t>({prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varbinary, int8_t>({prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varbinary, int16_t>(
+      {prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varbinary, int32_t>(
+      {prefix + "sha2"});
+  registerFunction<Sha2Function, Varchar, Varbinary, int64_t>(
+      {prefix + "sha2"});
 
   registerFunction<Sha224Function, Varchar, Varchar>({prefix + "sha224"});
+  registerFunction<Sha224Function, Varchar, Varbinary>({prefix + "sha224"});
   registerFunction<Sha256Function, Varchar, Varchar>({prefix + "sha256"});
+  registerFunction<Sha256Function, Varchar, Varbinary>({prefix + "sha256"});
   registerFunction<Sha384Function, Varchar, Varchar>({prefix + "sha384"});
+  registerFunction<Sha384Function, Varchar, Varbinary>({prefix + "sha384"});
   registerFunction<Sha512Function, Varchar, Varchar>({prefix + "sha512"});
+  registerFunction<Sha512Function, Varchar, Varbinary>({prefix + "sha512"});
 }
 
 } // namespace facebook::velox::functions::flinksql
