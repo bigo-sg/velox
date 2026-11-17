@@ -31,6 +31,7 @@
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/state/HashMapStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
@@ -178,8 +179,9 @@ class GroupAggregatorTest : public exec::test::OperatorTestBase {
     core::AggregationNode::Aggregate aggregate;
     aggregate.call = std::make_shared<core::CallTypedExpr>(
         BIGINT(),
-        std::vector<core::TypedExprPtr>{std::make_shared<
-            core::ConstantTypedExpr>(BIGINT(), variant(int64_t(10)))},
+        std::vector<core::TypedExprPtr>{
+            std::make_shared<core::ConstantTypedExpr>(
+                BIGINT(), variant(int64_t(10)))},
         "sum");
     aggregate.rawInputTypes = {BIGINT()};
     return aggregate;
@@ -717,14 +719,16 @@ TEST_F(GroupAggregatorTest, testCompositeKeyAggregates) {
 
   // Batch 1: three distinct keys sharing k2 values, +I in first-occurrence
   // order.
-  aggregator->addInput(compositeKeyRecord({1, 1, 2}, {"a", "b", "a"}, {10, 5, 7}));
+  aggregator->addInput(
+      compositeKeyRecord({1, 1, 2}, {"a", "b", "a"}, {10, 5, 7}));
   ASSERT_EQ(capturePtr->records().size(), 1);
   auto record = recordAt(*capturePtr, 0);
   assertRowKinds(record, {RowKind::INSERT, RowKind::INSERT, RowKind::INSERT});
   facebook::velox::test::assertEqualVectors(
       bigints({1, 1, 2}), record->record()->childAt(0));
   facebook::velox::test::assertEqualVectors(
-      makeFlatVector<std::string>({"a", "b", "a"}), record->record()->childAt(1));
+      makeFlatVector<std::string>({"a", "b", "a"}),
+      record->record()->childAt(1));
   facebook::velox::test::assertEqualVectors(
       bigints({10, 5, 7}), record->record()->childAt(2));
   capturePtr->clear();
@@ -859,7 +863,7 @@ TEST_F(GroupAggregatorTest, testSnapshotRestoreRoundTrip) {
       std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId()));
   aggregatorA->addInput(appendOnlyRecord({1, 2}, {10, 5}));
   aggregatorA->addInput(appendOnlyRecord({1}, {7}));
-  const auto bytes = aggregatorA->keyedStateBackend().snapshot();
+  const auto bytes = aggregatorA->ownedKeyedStateBackend()->snapshotBytes();
 
   auto capture =
       std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
@@ -870,7 +874,7 @@ TEST_F(GroupAggregatorTest, testSnapshotRestoreRoundTrip) {
           ROW({"k", "s"}, {BIGINT(), BIGINT()}),
           /*generateUpdateBefore=*/true),
       std::move(capture));
-  aggregatorB->keyedStateBackend().restore(bytes);
+  aggregatorB->ownedKeyedStateBackend()->restoreBytes(bytes);
 
   // Both keys exist with their pre-snapshot sums (1 -> 17, 2 -> 5): the
   // batch emits each key's -U row with the pre-batch value and +U row with
@@ -903,7 +907,7 @@ TEST_F(GroupAggregatorTest, testAvgSnapshotRestoreRoundTrip) {
       std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId()));
   aggregatorA->addInput(appendOnlyRecord({1}, {10}));
   aggregatorA->addInput(appendOnlyRecord({1}, {11}));
-  const auto bytes = aggregatorA->keyedStateBackend().snapshot();
+  const auto bytes = aggregatorA->ownedKeyedStateBackend()->snapshotBytes();
 
   auto capture =
       std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
@@ -914,7 +918,7 @@ TEST_F(GroupAggregatorTest, testAvgSnapshotRestoreRoundTrip) {
           ROW({"k", "a"}, {BIGINT(), BIGINT()}),
           /*generateUpdateBefore=*/true),
       std::move(capture));
-  aggregatorB->keyedStateBackend().restore(bytes);
+  aggregatorB->ownedKeyedStateBackend()->restoreBytes(bytes);
 
   aggregatorB->addInput(appendOnlyRecord({1}, {1}));
   ASSERT_EQ(capturePtr->records().size(), 1);
@@ -924,6 +928,80 @@ TEST_F(GroupAggregatorTest, testAvgSnapshotRestoreRoundTrip) {
       bigints({1, 1}), record->record()->childAt(0));
   facebook::velox::test::assertEqualVectors(
       bigints({10, 7}), record->record()->childAt(1));
+}
+
+// Recovery through the task checkpoint path: StatefulTask::snapshotState
+// collects the operator-owned backend's bytes through the operator-chain
+// walk, and StatefulTask::initializeState routes them back, so a new task
+// deployed over the same plan resumes from the checkpointed accumulators
+// instead of starting from empty ones.
+TEST_F(GroupAggregatorTest, testSnapshotRestoreThroughTaskCheckpoint) {
+  // One aggregation node shared by both tasks, as a recovery redeploys the
+  // same plan: the walk frames the record with the node's id, and the
+  // restore walk routes it to the operator carrying the same id.
+  auto aggregationNode = makeNode(
+      {sumOfC()},
+      ROW({"k", "s"}, {BIGINT(), BIGINT()}),
+      /*generateUpdateBefore=*/true);
+  const auto params = std::make_shared<const KeyedStateBackendParameters>(
+      StateBackendType::HEAP, "job", "group-agg");
+  auto makeTask = [&](const std::string& taskId,
+                      const std::vector<RowVectorPtr>& input) {
+    core::PlanFragment planFragment;
+    planFragment.planNode = std::make_shared<StatefulPlanNode>(
+        std::make_shared<core::ValuesNode>(
+            core::PlanNodeId{taskId + "-values"}, input),
+        std::vector<core::PlanNodePtr>{std::make_shared<StatefulPlanNode>(
+            aggregationNode, std::vector<core::PlanNodePtr>{})});
+    auto task = StatefulTask::create(
+        taskId,
+        std::move(planFragment),
+        core::QueryCtx::create(executor_.get()));
+    task->init();
+    return task;
+  };
+
+  // Task A: two batches warm the aggregation up (1 -> 17, 2 -> 5).
+  auto taskA = makeTask(
+      "group-agg-checkpoint-a",
+      {makeRowVector({"k", "c"}, {bigints({1, 2}), bigints({10, 5})}),
+       makeRowVector({"k", "c"}, {bigints({1}), bigints({7})})});
+  taskA->initializeState(params);
+  int32_t retCode = 0;
+  // Drain the two changelog records before finishing the task; the walk
+  // needs the operator chain alive to snapshot it.
+  ASSERT_NE(nullptr, taskA->next(retCode));
+  ASSERT_NE(nullptr, taskA->next(retCode));
+  const auto records = taskA->snapshotState(1);
+  ASSERT_EQ(1, records.size());
+  // The drained task finishes with its outputs consumed.
+  ASSERT_EQ(nullptr, taskA->next(retCode));
+  ASSERT_EQ(1, retCode);
+
+  // Task B: initialized from A's checkpoint records, then fed one more row
+  // per key.
+  auto taskB = makeTask(
+      "group-agg-restore-b",
+      {makeRowVector({"k", "c"}, {bigints({1, 2}), bigints({1, 1})})});
+  taskB->initializeState(params, records);
+  auto output = taskB->next(retCode);
+  ASSERT_NE(nullptr, output);
+  auto record = std::static_pointer_cast<StreamRecord>(output);
+  ASSERT_TRUE(record->isRecord());
+  // The restored groups continue from their pre-snapshot accumulators:
+  // 1 -> 17 -> 18 and 2 -> 5 -> 6, each key's -U row ahead of its +U row.
+  assertRowKinds(
+      record,
+      {RowKind::UPDATE_BEFORE,
+       RowKind::UPDATE_AFTER,
+       RowKind::UPDATE_BEFORE,
+       RowKind::UPDATE_AFTER});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1, 1, 2, 2}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({17, 18, 5, 6}), record->record()->childAt(1));
+  ASSERT_EQ(nullptr, taskB->next(retCode));
+  ASSERT_EQ(1, retCode);
 }
 
 } // namespace

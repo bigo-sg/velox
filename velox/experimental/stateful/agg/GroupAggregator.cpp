@@ -21,6 +21,7 @@
 #include "velox/exec/AggregationMasks.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/agg/AggregateInfos.h"
+#include "velox/experimental/stateful/state/KeyedStateBackendFactory.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/type/Type.h"
@@ -82,10 +83,10 @@ void GroupAggregator::mergeRow(
 
 void GroupAggregator::initializeStateBackend(StateBackend* stateBackend) {
   const auto& spec = *node_->keyedStateSpec();
-  keyedBackend_ = createKeyedStateBackend<RowContainerStateKey>(
+  auto keyedBackend = createKeyedStateBackend<RowContainerStateKey>(
       *stateBackend, spec, memoryPool());
   keySelector_ = std::make_unique<KeySelector>(
-      keyedBackend_->keyIndex(), spec.keyChannels());
+      keyedBackend->keyIndex(), spec.keyChannels());
 
   std::vector<exec::Accumulator> accumulators;
   accumulators.reserve(aggregates_.size());
@@ -101,8 +102,9 @@ void GroupAggregator::initializeStateBackend(StateBackend* stateBackend) {
         mergeRow(row, columns);
       },
       memoryPool());
-  state_ = keyedBackend_->getOrCreateAggregatingState(
+  state_ = keyedBackend->getOrCreateAggregatingState(
       descriptor, NamespaceSerializerTraits<VoidNamespace>::create());
+  keyedBackend_ = std::move(keyedBackend);
 
   // Wire before the first rows() call (and before restore, which also
   // materializes rows): the aggregate functions must write the offsets the

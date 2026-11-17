@@ -122,8 +122,8 @@ class HeapKeyedStateBackend : public TypedKeyedStateBackend<K> {
 
   /// Batch-boundary key reclamation: erases key rows no state entry
   /// references any more (see KeyTable::advance). Operators call this at
-  /// the end of each input batch; snapshot() runs it first, so dead key
-  /// rows never sit across a checkpoint barrier.
+  /// the end of each input batch; snapshotBytes() runs it first, so dead
+  /// key rows never sit across a checkpoint barrier.
   void advance() override {
     keyTable_->advance();
   }
@@ -174,7 +174,8 @@ class HeapKeyedStateBackend : public TypedKeyedStateBackend<K> {
   }
 
   // The pre-generic snapshot plane stays a no-op until the stateful
-  // operators migrate; the typed plane is snapshot() / restore() below.
+  // operators migrate; the real plane is snapshotBytes() / restoreBytes()
+  // below.
   void snapshot(
       int64_t /*checkpointId*/,
       int64_t /*timestamp*/,
@@ -273,7 +274,7 @@ class HeapKeyedStateBackend : public TypedKeyedStateBackend<K> {
   /// plays the role of Flink's per-state metadata snapshots: restore
   /// cross-checks it against the backend and its registered states instead
   /// of relying on registration order.
-  std::string snapshot() override {
+  std::string snapshotBytes() override {
     // Dead key rows do not cross the checkpoint barrier: reclaim first.
     advance();
     std::vector<std::pair<std::string, StatePtr>> states(
@@ -307,11 +308,11 @@ class HeapKeyedStateBackend : public TypedKeyedStateBackend<K> {
     return bytes;
   }
 
-  /// Restores the stream written by snapshot() into the states this backend
-  /// has registered. The header must carry this backend's maxParallelism —
-  /// it defines the key-group space and is stable across rescale, so
-  /// equality is required — and the schema table must match the registered
-  /// states one-for-one, same ids and same schema ids. The stream's
+  /// Restores the stream written by snapshotBytes() into the states this
+  /// backend has registered. The header must carry this backend's
+  /// maxParallelism — it defines the key-group space and is stable across
+  /// rescale, so equality is required — and the schema table must match the
+  /// registered states one-for-one, same ids and same schema ids. The stream's
   /// key-group range must overlap this backend's; key groups of the stream
   /// outside the range are skipped, so a checkpoint written under a
   /// different parallelism restores into this backend — one covering
@@ -321,7 +322,7 @@ class HeapKeyedStateBackend : public TypedKeyedStateBackend<K> {
   /// is what makes handle-owned state tables possible; the byte layout of
   /// the entries is the same. When the flags announce a CRC-32 trailer it
   /// is verified over the whole stream before any state is touched.
-  void restore(const std::string& bytes) override {
+  void restoreBytes(const std::string& bytes) override {
     CheckpointReader headerReader(bytes.data(), bytes.size());
     const auto header = readCheckpointHeader(headerReader);
     size_t bodySize = bytes.size();

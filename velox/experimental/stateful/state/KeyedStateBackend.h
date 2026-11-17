@@ -61,6 +61,22 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   virtual std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
   createGroupWindowAggTimerService(
       Triggerable<int64_t, TimeWindow>* triggerable) = 0;
+
+  /// Serializes the whole backend into one checkpoint byte stream. This is
+  /// what the stateful operators' checkpoint walk collects through
+  /// StatefulOperator::snapshotState - the migration of the pre-generic
+  /// snapshot() above: byte-level checkpointing owned by the backend, not
+  /// the operator.
+  virtual std::string snapshotBytes() = 0;
+
+  /// Restores the stream written by snapshotBytes() into the states this
+  /// backend has registered; the states must be registered before the call.
+  virtual void restoreBytes(const std::string& bytes) = 0;
+
+  /// Batch-boundary key reclamation (see KeyTable::advance); operators
+  /// call it at the end of each input batch, and it runs first inside
+  /// snapshotBytes().
+  virtual void advance() = 0;
 };
 
 class KeyIndex;
@@ -79,9 +95,6 @@ class KeyIndex;
 /// aggregating factory fits below this interface as a single virtual, with
 /// the namespace demoted to a runtime serializer object.
 ///
-/// The typed snapshot() / restore() pair is the operator-facing plane of
-/// the erased snapshotBytes() / restoreBytes() above.
-///
 /// This class is relevant to Flink
 /// org.apache.flink.runtime.state.KeyedStateBackend<K>.
 template <typename K>
@@ -98,20 +111,6 @@ class TypedKeyedStateBackend : public KeyedStateBackend {
 
   /// Number of key groups in this backend's sub-range.
   virtual uint32_t numKeyGroups() const = 0;
-
-  /// Batch-boundary key reclamation (see KeyTable::advance); operators
-  /// call it at the end of each input batch, and it runs first inside
-  /// snapshot().
-  virtual void advance() = 0;
-
-  /// Serializes the entries of all registered states into one checkpoint
-  /// stream (the format is the backend's).
-  virtual std::string snapshot() = 0;
-
-  /// Restores the stream written by snapshot() into the states this
-  /// backend has registered; the states must be registered before the
-  /// call.
-  virtual void restore(const std::string& bytes) = 0;
 
   /// Creates or returns the aggregating state of 'descriptor' under the
   /// namespace type carried by 'nsSerializer' — the namespace as a runtime

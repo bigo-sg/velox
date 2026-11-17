@@ -196,6 +196,21 @@ void RocksDBKeyedStateBackend::snapshot(
     int64_t timestamp,
     CheckpointOptions checkpointOptions) {}
 
+std::string RocksDBKeyedStateBackend::snapshotBytes() {
+  // TODO: implement this
+  VELOX_NYI("snapshotBytes is not available on the RocksDB backend");
+}
+
+void RocksDBKeyedStateBackend::restoreBytes(const std::string& bytes) {
+  // TODO: implement this
+  VELOX_NYI("restoreBytes is not available on the RocksDB backend");
+}
+
+void RocksDBKeyedStateBackend::advance() {
+  // TODO: implement this
+  VELOX_NYI("advance is not available on the RocksDB backend");
+}
+
 void RocksDBKeyedStateBackend::notifyCheckpointComplete(int64_t checkpointId) {}
 
 void RocksDBKeyedStateBackend::notifyCheckpointAborted(int64_t checkpointId) {}

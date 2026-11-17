@@ -27,7 +27,6 @@
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamElement.h"
-#include "velox/experimental/stateful/state/KeyedStateBackendFactory.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/State.h"
 
@@ -77,15 +76,7 @@ class GroupAggregator : public StatefulOperator {
     return "GroupAggregator";
   }
 
-  /// The keyed state backend this operator owns. Checkpoint drivers
-  /// snapshot and restore the aggregation state through it; the task-level
-  /// wiring that persists the checkpoint bytes is delivered separately.
-  TypedKeyedStateBackend<RowContainerStateKey>& keyedStateBackend() {
-    return *keyedBackend_;
-  }
-
  private:
-
   // Initializes freshly materialized value rows: one initializeNewGroups
   // per aggregate, over the whole batch. Registered as the descriptor's init
   // callback, so it runs inside the state on each batch of misses.
@@ -135,15 +126,18 @@ class GroupAggregator : public StatefulOperator {
 
   // Declared before the state members below: the state's callbacks capture
   // these functions by raw pointer, so the aggregates must outlive every
-  // state handle and the backend that owns them (members destruct in
-  // reverse declaration order, and close() resets the backend first).
+  // state handle (members destruct in reverse declaration order). The
+  // owned backend lives in the StatefulOperator base and therefore
+  // destructs after these members; that ordering is safe because
+  // destruction never fires the descriptor callbacks (they run only on
+  // materialize and restore), and close() resets the backend explicitly
+  // before teardown.
   std::vector<exec::AggregateInfo> aggregates_;
 
   std::shared_ptr<const GroupAggregationNode> node_;
   const uint32_t numKeys_;
   const bool generateUpdateBefore_;
 
-  std::unique_ptr<TypedKeyedStateBackend<RowContainerStateKey>> keyedBackend_;
   std::unique_ptr<KeySelector> keySelector_;
   std::shared_ptr<AggregatingState<RowContainerStateKey>> state_;
 
