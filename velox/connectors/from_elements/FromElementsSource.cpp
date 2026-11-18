@@ -26,9 +26,11 @@ FromElementsSource::FromElementsSource(
     const std::vector<std::string>& s)
     : outputType_(outputType),
       queryCtx_(queryCtx),
-      formatter_(createFormatter(
-          outputType,
-          tz::locateZone(queryCtx->sessionTimezone()))) {
+      // Zone-free TIMESTAMP strings are wall clock: the values-table rows
+      // serialized by gluten follow Flink's wall-as-UTC storage convention
+      // (TimestampData.fromLocalDateTime), so no session-zone fold must
+      // apply. Strings with an explicit offset keep their own offset.
+      formatter_(createFormatter(outputType, tz::locateZone("UTC"))) {
   VELOX_CHECK(formatter_ != nullptr);
   auto row = RowVector::createEmpty(outputType_, queryCtx->memoryPool());
   row->resize(s.size());
