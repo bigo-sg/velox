@@ -82,6 +82,25 @@ const std::string kMd5Long{"e9b1713db620f1e3a14b6812de523f4b"};
 // SHA-1 case-variant digest, and the uppercase input it corresponds to.
 const std::string kSha1Upper{"3c01bdbb26f358bab27f267924aa2c9a03fcfdb8"};
 const std::string kUpper{"ABC"};
+
+// VARBINARY inputs: a NUL + non-UTF-8 byte (so the digest cannot come from a
+// string re-encoding) and multibyte UTF-8 bytes; digests probed independently.
+const std::string kBinaryRaw{"\x00\xff\x10", 3};
+const std::string kBinaryUtf8{"你好"};
+const std::string kMd5BinaryRaw{"481e4551ec039aada760901cf52b1917"};
+const std::string kSha1BinaryRaw{"a14c2fba17201c1ead45b6c4af4409fbfc16ba8a"};
+const std::string kSha256BinaryRaw{
+    "2da45f2cd1f9c8e69a67abf7a6b26c282533d0a7686787a9533265418680d4d2"};
+const std::string kSha224BinaryRaw{
+    "fb00d9d04bdeeb4c51a031ab62ad806c6b8d293efafb8456deae0320"};
+const std::string kSha384BinaryRaw{
+    "ad8b7bc3149d63462b2b95ce7fc8aa7cec833cd5d3840eab42f92ea63479aefe"
+    "71e79a2e3abfb3d60566aea38f5737a4"};
+const std::string kSha512BinaryRaw{
+    "b29a9bd5abb2e2e27b92298e242f28970486bd49d6999ed928800d749fed69ff"
+    "a8bf4c58cde2cb80018d97e8893ea4067040cfac81bfa891bec7249d4b0fbb33"};
+const std::string kMd5BinaryUtf8{"7eca689f0d3389d9dea66ae112e5cfd7"};
+const std::string kSha1BinaryUtf8{"440ee0853ad1e99f962b63e459ef992d7c211722"};
 } // namespace
 
 // Expected values are pinned from Flink's actual behavior (lowercase hex,
@@ -130,6 +149,43 @@ class FlinkHashTest : public functions::test::FunctionBaseTest {
   std::optional<std::string> sha512Once(const std::optional<std::string>& s) {
     return evaluateOnce<std::string>("sha512(c0)", s);
   }
+
+  std::optional<std::string> md5BinaryOnce(
+      const std::optional<std::string>& b) {
+    return evaluateOnce<std::string>("md5(c0)", VARBINARY(), b);
+  }
+
+  std::optional<std::string> sha1BinaryOnce(
+      const std::optional<std::string>& b) {
+    return evaluateOnce<std::string>("sha1(c0)", VARBINARY(), b);
+  }
+
+  std::optional<std::string> sha2BinaryOnce(
+      const std::optional<std::string>& b,
+      std::optional<int32_t> hashLength) {
+    return evaluateOnce<std::string>(
+        "sha2(c0, c1)", {VARBINARY(), INTEGER()}, b, hashLength);
+  }
+
+  std::optional<std::string> sha224BinaryOnce(
+      const std::optional<std::string>& b) {
+    return evaluateOnce<std::string>("sha224(c0)", VARBINARY(), b);
+  }
+
+  std::optional<std::string> sha384BinaryOnce(
+      const std::optional<std::string>& b) {
+    return evaluateOnce<std::string>("sha384(c0)", VARBINARY(), b);
+  }
+
+  std::optional<std::string> sha256BinaryOnce(
+      const std::optional<std::string>& b) {
+    return evaluateOnce<std::string>("sha256(c0)", VARBINARY(), b);
+  }
+
+  std::optional<std::string> sha512BinaryOnce(
+      const std::optional<std::string>& b) {
+    return evaluateOnce<std::string>("sha512(c0)", VARBINARY(), b);
+  }
 };
 
 // A. sha2 basics: each supported length over empty, plain, UTF-8, and long
@@ -172,6 +228,34 @@ TEST_F(FlinkHashTest, Sha1Basics) {
   EXPECT_EQ(kSha1Upper, sha1Once(kUpper));
   EXPECT_EQ(kSha1Utf8, sha1Once(kUtf8));
   EXPECT_EQ(kSha1Long, sha1Once(kLong));
+}
+
+// VARBINARY input: Flink's hash functions accept BINARY and digest the raw
+// bytes.
+TEST_F(FlinkHashTest, BinaryInput) {
+  EXPECT_EQ(kMd5BinaryRaw, md5BinaryOnce(kBinaryRaw));
+  EXPECT_EQ(kSha1BinaryRaw, sha1BinaryOnce(kBinaryRaw));
+  EXPECT_EQ(kSha224BinaryRaw, sha224BinaryOnce(kBinaryRaw));
+  EXPECT_EQ(kSha256BinaryRaw, sha256BinaryOnce(kBinaryRaw));
+  EXPECT_EQ(kSha384BinaryRaw, sha384BinaryOnce(kBinaryRaw));
+  EXPECT_EQ(kSha512BinaryRaw, sha512BinaryOnce(kBinaryRaw));
+  EXPECT_EQ(kSha224BinaryRaw, sha2BinaryOnce(kBinaryRaw, 224));
+  EXPECT_EQ(kSha256BinaryRaw, sha2BinaryOnce(kBinaryRaw, 256));
+  EXPECT_EQ(kSha384BinaryRaw, sha2BinaryOnce(kBinaryRaw, 384));
+  EXPECT_EQ(kSha512BinaryRaw, sha2BinaryOnce(kBinaryRaw, 512));
+
+  EXPECT_EQ(kMd5BinaryUtf8, md5BinaryOnce(kBinaryUtf8));
+  EXPECT_EQ(kSha1BinaryUtf8, sha1BinaryOnce(kBinaryUtf8));
+
+  // Empty bytes digest like the empty string.
+  EXPECT_EQ(kMd5Empty, md5BinaryOnce(kEmpty));
+  EXPECT_EQ(kSha1Empty, sha1BinaryOnce(kEmpty));
+
+  // NULL in -> NULL out.
+  EXPECT_EQ(std::nullopt, md5BinaryOnce(std::nullopt));
+  EXPECT_EQ(std::nullopt, sha1BinaryOnce(std::nullopt));
+  EXPECT_EQ(std::nullopt, sha256BinaryOnce(std::nullopt));
+  EXPECT_EQ(std::nullopt, sha2BinaryOnce(std::nullopt, 256));
 }
 
 // B. hashLength 0 is rejected like any other unsupported length — Flink

@@ -24,8 +24,8 @@
 
 namespace facebook::velox::functions::flinksql {
 
-// Flink hash expressions take a string (hashed as its UTF-8 bytes) and
-// return a lowercase hex VARCHAR — Flink anchors on commons-codec
+// Flink hash expressions take a string or binary input (hashed as its raw
+// bytes) and return a lowercase hex VARCHAR — Flink anchors on commons-codec
 // DigestUtils.*Hex. The prestosql/sparksql md5/sha1/sha256/sha512 take and
 // return varbinary raw digests, so the flinksql varchar signatures coexist
 // with them. Digest primitive here: folly::ssl::OpenSSLHash.
@@ -59,28 +59,32 @@ FOLLY_ALWAYS_INLINE void encodeDigestToHexString(
   }
 }
 
-/// MD5(string) -> string: digest of the input's UTF-8 bytes as 32 lowercase
+/// MD5(string|binary) -> string: digest of the input's bytes as 32 lowercase
 /// hex digits, via the shared stringImpl::md5_radix helper.
 template <typename TExec>
 struct Md5Function {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
+  // TInput is arg_type<Varchar> or arg_type<Varbinary>; both carry a
+  // StringView, so the same digest path applies.
+  template <typename TInput>
   FOLLY_ALWAYS_INLINE void call(
       out_type<Varchar>& result,
-      const arg_type<Varchar>& input) {
+      const TInput& input) {
     stringImpl::md5_radix(result, input, 16);
   }
 };
 
-/// SHA1(string) -> string: digest of the input's UTF-8 bytes as 40 lowercase
+/// SHA1(string|binary) -> string: digest of the input's bytes as 40 lowercase
 /// hex digits, via folly::ssl::OpenSSLHash::sha1.
 template <typename TExec>
 struct Sha1Function {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
+  template <typename TInput>
   FOLLY_ALWAYS_INLINE void call(
       out_type<Varchar>& result,
-      const arg_type<Varchar>& input) {
+      const TInput& input) {
     static const int kSha1Length = 20;
     result.resize(kSha1Length * 2);
     folly::ssl::OpenSSLHash::sha1(
@@ -144,11 +148,12 @@ struct Sha2Function {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
   // The SQL operator accepts any integer width for hashLength
-  // (NUMERIC_INTEGER family); the core widens each to int64_t.
-  template <typename TBitLength>
+  // (NUMERIC_INTEGER family); the core widens each to int64_t. TInput is
+  // arg_type<Varchar> or arg_type<Varbinary>.
+  template <typename TInput, typename TBitLength>
   FOLLY_ALWAYS_INLINE void call(
       out_type<Varchar>& result,
-      const arg_type<Varchar>& s,
+      const TInput& s,
       const TBitLength& hashLength) {
     sha2Hex(result, std::string_view(s), static_cast<int64_t>(hashLength));
   }
@@ -161,9 +166,9 @@ template <typename TExec, int64_t kHashLength>
 struct Sha2FixedLengthFunction {
   VELOX_DEFINE_FUNCTION_TYPES(TExec);
 
-  FOLLY_ALWAYS_INLINE void call(
-      out_type<Varchar>& result,
-      const arg_type<Varchar>& s) {
+  // TInput is arg_type<Varchar> or arg_type<Varbinary>.
+  template <typename TInput>
+  FOLLY_ALWAYS_INLINE void call(out_type<Varchar>& result, const TInput& s) {
     sha2Hex(result, std::string_view(s), kHashLength);
   }
 };
