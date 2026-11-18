@@ -30,13 +30,22 @@ void registerDateFormatFunctions(const std::string& prefix) {
   registerFunction<DateFormatFlinkFunction, Varchar, Timestamp, Varchar>(
       {prefix + "date_format"});
 
-  // Session-timezone rendering; sparksql registers date_format only for
-  // TIMESTAMP, so this overload is new LTZ coverage with Flink semantics.
+  // TIMESTAMP WITH TIME ZONE: render the real moment in the session
+  // timezone (same policy as FROM_UNIXTIME). The sparksql layer registers
+  // date_format only for TIMESTAMP, so this overload is new LTZ coverage
+  // with Flink semantics.
   registerFunction<
       DateFormatWithTzFlinkFunction,
       Varchar,
       TimestampWithTimezone,
       Varchar>({prefix + "date_format"});
+
+  // TIMESTAMP carrying a genuine instant (the gluten planner's erased
+  // representation of a Timestamp_LTZ column): same session-timezone
+  // rendering, reached by name from the planner's DATE_FORMAT mapping
+  // when the Flink operand type is TIMESTAMP_LTZ.
+  registerFunction<DateFormatLtzFlinkFunction, Varchar, Timestamp, Varchar>(
+      {prefix + "date_format_ltz"});
 }
 
 } // namespace facebook::velox::functions::flinksql

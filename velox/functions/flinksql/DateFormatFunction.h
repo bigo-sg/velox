@@ -129,4 +129,56 @@ struct DateFormatWithTzFlinkFunction {
   bool isConstFormat_{false};
 };
 
+// DATE_FORMAT(timestamp, format) over a TIMESTAMP carrying a genuine
+// instant: renders the real moment in the session timezone. The gluten
+// planner maps Timestamp_LTZ columns to velox TIMESTAMP (the type is
+// erased at the boundary, the value stays the true-UTC instant) and
+// routes DATE_FORMAT calls whose Flink operand type is TIMESTAMP_LTZ to
+// this entry by name, so the session-zone rendering Flink defines for
+// the LTZ type still applies. Same policy as FROM_UNIXTIME.
+template <typename T>
+struct DateFormatLtzFlinkFunction {
+  VELOX_DEFINE_FUNCTION_TYPES(T);
+
+  FOLLY_ALWAYS_INLINE void initialize(
+      const std::vector<TypePtr>& /*inputTypes*/,
+      const core::QueryConfig& config,
+      const arg_type<Timestamp>* /*timestamp*/,
+      const arg_type<Varchar>* formatString) {
+    sessionTimeZone_ = detail::getSessionTimeZone(config);
+    if (formatString != nullptr) {
+      setFormatter(*formatString);
+      isConstFormat_ = true;
+    }
+  }
+
+  FOLLY_ALWAYS_INLINE bool call(
+      out_type<Varchar>& result,
+      const arg_type<Timestamp>& timestamp,
+      const arg_type<Varchar>& formatString) {
+    if (!isConstFormat_) {
+      setFormatter(formatString);
+    }
+    result.reserve(maxResultSize_);
+    const auto resultSize = formatter_->format(
+        timestamp, sessionTimeZone_, maxResultSize_, result.data(), true);
+    result.resize(resultSize);
+    return true;
+  }
+
+ private:
+  FOLLY_ALWAYS_INLINE void setFormatter(const arg_type<Varchar>& formatString) {
+    auto formatter = buildJodaDateTimeFormatter(
+        std::string_view(formatString.data(), formatString.size()));
+    VELOX_USER_CHECK(!formatter.hasError(), "Invalid date format pattern");
+    formatter_ = std::move(formatter.value());
+    maxResultSize_ = formatter_->maxResultSize(sessionTimeZone_);
+  }
+
+  const tz::TimeZone* sessionTimeZone_{nullptr};
+  std::shared_ptr<DateTimeFormatter> formatter_;
+  uint32_t maxResultSize_{0};
+  bool isConstFormat_{false};
+};
+
 } // namespace facebook::velox::functions::flinksql

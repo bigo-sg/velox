@@ -210,4 +210,44 @@ TEST_F(DateFormatFlinkTest, LtzNonConstFormatColumn) {
   EXPECT_EQ("18:15:30", result->valueAt(1).str());
 }
 
+// date_format_ltz: a TIMESTAMP carrying a genuine instant (the planner's
+// erased representation of a Timestamp_LTZ column) renders in the session
+// timezone.
+TEST_F(DateFormatFlinkTest, LtzInstantCarrierRendersInSessionTimezone) {
+  setSessionTimezone("Asia/Shanghai");
+  auto result = evaluate<SimpleVector<StringView>>(
+      "date_format_ltz(c0, 'yyyy-MM-dd HH:mm:ss')",
+      makeRowVector({makeFlatVector<Timestamp>({Timestamp{1710497730, 0}})}));
+  EXPECT_EQ("2024-03-15 18:15:30", result->valueAt(0).str());
+}
+
+TEST_F(DateFormatFlinkTest, LtzInstantCarrierUnderUtcSessionTimezone) {
+  setSessionTimezone("UTC");
+  auto result = evaluate<SimpleVector<StringView>>(
+      "date_format_ltz(c0, 'yyyy-MM-dd HH:mm:ss')",
+      makeRowVector({makeFlatVector<Timestamp>({Timestamp{1710497730, 0}})}));
+  EXPECT_EQ("2024-03-15 10:15:30", result->valueAt(0).str());
+}
+
+// NULL timestamp and a per-row format column propagate through the
+// date_format_ltz entry the same way as through date_format.
+TEST_F(DateFormatFlinkTest, LtzInstantCarrierNullAndNonConstFormat) {
+  auto nullInput = makeRowVector({makeNullableFlatVector<Timestamp>(
+      {std::optional<Timestamp>(Timestamp{1710497730, 0}),
+       std::optional<Timestamp>()})});
+  auto nullResult = evaluate<SimpleVector<StringView>>(
+      "date_format_ltz(c0, 'yyyy')", nullInput);
+  ASSERT_FALSE(nullResult->isNullAt(0));
+  ASSERT_TRUE(nullResult->isNullAt(1));
+
+  auto fmtInput = makeRowVector(
+      {makeFlatVector<Timestamp>(
+           {Timestamp{1710497730, 0}, Timestamp{1710497730, 0}}),
+       makeFlatVector<std::string>({"yyyy-MM-dd", "HH:mm:ss"})});
+  auto fmtResult =
+      evaluate<SimpleVector<StringView>>("date_format_ltz(c0, c1)", fmtInput);
+  EXPECT_EQ("2024-03-15", fmtResult->valueAt(0).str());
+  EXPECT_EQ("10:15:30", fmtResult->valueAt(1).str());
+}
+
 } // namespace facebook::velox::functions::flinksql::test
