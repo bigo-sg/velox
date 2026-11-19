@@ -17,6 +17,8 @@
 #include <cstdint>
 
 #include "velox/core/PlanNode.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
+#include "velox/experimental/stateful/window/Window.h"
 
 namespace facebook::velox::stateful {
 
@@ -574,16 +576,44 @@ class StreamWindowAggregationNode : public core::PlanNode {
   int windowEndIndex_;
 };
 
+/// Handler of a group-window aggregation: the aggregate calls in plan form
+/// (core::AggregationNode::Aggregate entries) plus the operator's output
+/// schema. The runtime handler (GroupWindowAggsHandler) resolves the entries
+/// into function instances; countStarIndex names the COUNT(*) position among
+/// aggregates for the P1 retraction record counter (-1 when absent, unused in
+/// the insert-only P0 whose empty-window check is the state's non-materializing
+/// get - user gate 1 decision #11, scheme A).
 class GroupWindowAggsHandlerNode : public core::PlanNode {
  public:
-  // TODO: finish this class
   GroupWindowAggsHandlerNode(
       const core::PlanNodeId& id,
-      const RowTypePtr& outputType)
-      : PlanNode(id), outputType_(std::move(outputType)) {}
+      const RowTypePtr& outputType,
+      const std::vector<core::AggregationNode::Aggregate>& aggregates,
+      int32_t countStarIndex)
+      : PlanNode(id),
+        outputType_(std::move(outputType)),
+        aggregates_(aggregates),
+        countStarIndex_(countStarIndex) {
+    VELOX_CHECK_GE(
+        countStarIndex_, -1, "countStarIndex is -1 (absent) or an aggregate index");
+    VELOX_CHECK(
+        countStarIndex_ == -1 ||
+            static_cast<size_t>(countStarIndex_) < aggregates_.size(),
+        "countStarIndex {} out of range for {} aggregates",
+        countStarIndex_,
+        aggregates_.size());
+  }
 
   const RowTypePtr& outputType() const override {
     return outputType_;
+  }
+
+  const std::vector<core::AggregationNode::Aggregate>& aggregates() const {
+    return aggregates_;
+  }
+
+  int32_t countStarIndex() const {
+    return countStarIndex_;
   }
 
   std::string_view name() const override {
@@ -600,32 +630,66 @@ class GroupWindowAggsHandlerNode : public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const RowTypePtr outputType_;
+  const std::vector<core::AggregationNode::Aggregate> aggregates_;
+  const int32_t countStarIndex_;
 };
 
+/// Legacy group-window aggregation with Flink changelog semantics. The plan
+/// carries the session-window parameters; the window facilities (assigner,
+/// merging process function) are built by the operator from them. P0 is the
+/// SESSION window only: the constructor CHECK pins the plan constraints
+/// (TUMBLE/HOP arrive in a next phase; produceUpdates / allowedLateness /
+/// proctime are fail-loud planner rejections upstream of this node).
 class GroupWindowAggregationNode : public core::PlanNode {
  public:
   GroupWindowAggregationNode(
       const core::PlanNodeId& id,
-      std::shared_ptr<const GroupWindowAggsHandlerNode>& aggregationNode,
-      const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
-      const std::shared_ptr<const core::PartitionFunctionSpec>&
-          sliceAssignerSpec,
+      const std::shared_ptr<const GroupWindowAggsHandlerNode>& aggregationNode,
+      const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec,
+      const RowTypePtr& inputType,
       int64_t allowedLateness,
       bool produceUpdates,
       int rowtimeIndex,
       bool isEventTime,
       int windowType,
+      int64_t gap,
+      int windowStartIndex,
+      int windowEndIndex,
       const RowTypePtr& outputType)
       : PlanNode(id),
-        aggregation_(std::move(aggregationNode)),
-        keySelectorSpec_(std::move(keySelectorSpec)),
-        sliceAssignerSpec_(std::move(sliceAssignerSpec)),
+        aggregation_(aggregationNode),
+        keyedStateSpec_(keyedStateSpec),
+        inputType_(std::move(inputType)),
         allowedLateness_(allowedLateness),
         produceUpdates_(produceUpdates),
         rowtimeIndex_(rowtimeIndex),
         isEventTime_(isEventTime),
         windowType_(windowType),
-        outputType_(std::move(outputType)) {}
+        gap_(gap),
+        windowStartIndex_(windowStartIndex),
+        windowEndIndex_(windowEndIndex),
+        outputType_(std::move(outputType)) {
+    VELOX_CHECK_NOT_NULL(
+        keyedStateSpec_, "GroupWindowAggregationNode requires a KeyedStateSpec");
+    VELOX_CHECK_NOT_NULL(
+        asRowType(inputType_), "GroupWindowAggregationNode input type must be ROW");
+    // TODO(L12): support TUMBLE/HOP windows in the next phase.
+    VELOX_CHECK_EQ(
+        windowType_,
+        static_cast<int>(WindowType::SESSION),
+        "GroupWindowAggregationNode supports the SESSION window only (TUMBLE/HOP are planned for the next phase)");
+    VELOX_CHECK(
+        isEventTime_, "GroupWindowAggregationNode requires an event-time attribute");
+    // TODO(L2): produceUpdates / non-zero allowedLateness arrive with the
+    // EMIT strategies (P1).
+    VELOX_CHECK(
+        !produceUpdates_, "GroupWindowAggregationNode does not support produceUpdates");
+    VELOX_CHECK_EQ(
+        allowedLateness_,
+        0,
+        "GroupWindowAggregationNode requires allowedLateness = 0");
+    VELOX_CHECK_GT(gap_, 0, "GroupWindowAggregationNode requires a positive session gap");
+  }
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -635,14 +699,12 @@ class GroupWindowAggregationNode : public core::PlanNode {
     return aggregation_;
   }
 
-  const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec()
-      const {
-    return keySelectorSpec_;
+  const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec() const {
+    return keyedStateSpec_;
   }
 
-  const std::shared_ptr<const core::PartitionFunctionSpec>& sliceAssignerSpec()
-      const {
-    return sliceAssignerSpec_;
+  const RowTypePtr& inputType() const {
+    return inputType_;
   }
 
   int64_t allowedLateness() const {
@@ -653,6 +715,10 @@ class GroupWindowAggregationNode : public core::PlanNode {
     return produceUpdates_;
   }
 
+  int rowtimeIndex() const {
+    return rowtimeIndex_;
+  }
+
   bool isEventTime() const {
     return isEventTime_;
   }
@@ -661,8 +727,16 @@ class GroupWindowAggregationNode : public core::PlanNode {
     return windowType_;
   }
 
-  int rowtimeIndex() const {
-    return rowtimeIndex_;
+  int64_t gap() const {
+    return gap_;
+  }
+
+  int windowStartIndex() const {
+    return windowStartIndex_;
+  }
+
+  int windowEndIndex() const {
+    return windowEndIndex_;
   }
 
   const std::vector<core::PlanNodePtr>& sources() const override;
@@ -679,13 +753,16 @@ class GroupWindowAggregationNode : public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const std::shared_ptr<const GroupWindowAggsHandlerNode> aggregation_;
-  const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
-  const std::shared_ptr<const core::PartitionFunctionSpec> sliceAssignerSpec_;
+  const std::shared_ptr<const KeyedStateSpec> keyedStateSpec_;
+  const RowTypePtr inputType_;
   int64_t allowedLateness_ = 0;
   bool produceUpdates_;
   int rowtimeIndex_;
   bool isEventTime_;
   int windowType_;
+  int64_t gap_;
+  int windowStartIndex_;
+  int windowEndIndex_;
   const RowTypePtr outputType_;
 };
 

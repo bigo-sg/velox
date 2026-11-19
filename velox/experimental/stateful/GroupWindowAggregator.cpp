@@ -15,158 +15,326 @@
  */
 
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
-#include <cstdint>
+
+#include <utility>
+
+#include "velox/exec/Aggregate.h"
+#include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
+#include "velox/vector/BaseVector.h"
+#include "velox/vector/FlatVector.h"
+#include "velox/vector/SelectivityVector.h"
 
 namespace facebook::velox::stateful {
 
+namespace {
+
+// Fills one single-row window property column with raw epoch millis: the
+// TIMESTAMP(3) form (the window boundary and time attribute columns) or
+// the BIGINT form.
+void fillWindowPropertyMillis(const VectorPtr& column, int64_t millis) {
+  switch (column->type()->kind()) {
+    case TypeKind::TIMESTAMP: {
+      auto* flat = column->asFlatVector<Timestamp>();
+      flat->set(0, Timestamp::fromMillis(millis));
+      break;
+    }
+    case TypeKind::BIGINT: {
+      auto* flat = column->asFlatVector<int64_t>();
+      flat->set(0, millis);
+      break;
+    }
+    default:
+      VELOX_UNSUPPORTED(
+          "group window aggregation cannot emit a window property column of type {}",
+          column->type()->toString());
+  }
+}
+
+} // namespace
+
 GroupWindowAggregator::GroupWindowAggregator(
-    std::unique_ptr<GroupWindowAggsHandler> windowAggerator,
-    std::shared_ptr<GroupWindowAssigner<TimeWindow>> windowAssigner,
-    std::vector<std::unique_ptr<StatefulOperator>> targets,
-    std::unique_ptr<KeySelector> keySelector,
-    std::unique_ptr<SliceAssigner> sliceAssigner,
-    int64_t allowedLateness,
-    bool produceUpdates,
-    int rowtimeIndex,
-    bool isEventTime,
-    int shiftTimeZone)
-    : StatefulOperator(std::move(windowAggerator), std::move(targets)),
-      windowAssigner_(std::move(windowAssigner)),
-      keySelector_(std::move(keySelector)),
-      sliceAssigner_(std::move(sliceAssigner)),
-      allowedLateness_(allowedLateness),
-      produceUpdates_(produceUpdates),
-      rowtimeIndex_(rowtimeIndex),
-      isEventTime_(isEventTime),
-      shiftTimeZone_(shiftTimeZone) {
-  windowAggregator_ = dynamic_cast<GroupWindowAggsHandler*>(op().get());
+    std::unique_ptr<GroupWindowAggsHandler> windowAggsHandler,
+    std::vector<StatefulOperatorPtr> targets,
+    const std::shared_ptr<const GroupWindowAggregationNode>& node)
+    : StatefulOperator(std::move(windowAggsHandler), std::move(targets)),
+      node_(node),
+      handler_(node->aggregation()) {
+  windowAggsHandler_ = dynamic_cast<GroupWindowAggsHandler*>(op().get());
+  VELOX_CHECK_NOT_NULL(
+      windowAggsHandler_,
+      "GroupWindowAggregator must wrap a GroupWindowAggsHandler");
+  windowAggsHandler_->setOwner(this);
 }
 
 void GroupWindowAggregator::initialize() {
+  // Aggregate details first: the backend wiring below consumes them.
+  windowAggsHandler_->initializeWindowAggregates(
+      node_->inputType(),
+      static_cast<uint32_t>(node_->keyedStateSpec()->keyChannels().size()),
+      op()->operatorCtx()->driverCtx()->queryConfig());
+
+  // Session window facilities: the assigner from the plan's window
+  // parameters, the AfterEndOfWindow trigger, and the operator-owned
+  // event-time timer service (the old stateHandler entry is NYI on the
+  // typed backends).
+  windowAssigner_ =
+      std::make_shared<SessionWindowAssigner>(node_->gap(), node_->isEventTime());
+  trigger_ = std::make_shared<AfterEndOfWindow>();
+  windowTimerService_ =
+      std::make_shared<EventTimeTimerService<RowContainerStateKey, TimeWindow>>(
+          this);
+  triggerContext_ = std::make_shared<WindowTriggerContext>(this);
+  windowContext_ = std::make_shared<WindowContext>(this);
+  triggerContext_->open();
+
   StatefulOperator::initialize();
 }
 
-void GroupWindowAggregator::initializeState() {
-  // TODO: migrate this operator to operator-owned keyed state (cf.
-  // GroupAggregator::initializeStateBackend) and remove this guard.
-  VELOX_NYI(
-      "GroupWindowAggregator is not yet migrated to operator-owned keyed "
-      "state; there is no state handler to initialize");
-  StateDescriptor stateDesc("window-aggs");
-  windowState_ = stateHandler()->getGroupValueState(stateDesc);
-  windowTimerService_ = stateHandler()->createGroupWindowAggTimerService(this);
-  trigger_ = std::make_shared<AfterEndOfWindow>();
-  triggerContext_ = std::make_shared<WindowTriggerContext>(
-      trigger_, windowTimerService_, shiftTimeZone_);
-  triggerContext_->open();
-  // TODO: create windowFunction_ based on windowAssigner type
+void GroupWindowAggregator::initializeStateBackend(
+    StateBackend* stateBackend) {
+  // Five steps per the stateful-operator contract.
+  const auto& spec = *node_->keyedStateSpec();
+  keyedBackend_ = createKeyedStateBackend<RowContainerStateKey>(
+      *stateBackend, spec, memoryPool()); // 1. backend (RocksDB fails loud).
+  keySelector_ = std::make_unique<KeySelector>(
+      keyedBackend_->keyIndex(), spec.keyChannels()); // 2. bind the key table.
+
+  std::vector<exec::Accumulator> accumulators;
+  accumulators.reserve(windowAggsHandler_->aggregates().size());
+  for (const auto& aggregate : windowAggsHandler_->aggregates()) {
+    accumulators.emplace_back(
+        aggregate.function.get(), aggregate.intermediateType);
+  }
+  AggregatingStateDescriptor descriptor(
+      "window-aggs",
+      std::move(accumulators),
+      [this](char** rows, size_t numRows) {
+        windowAggsHandler_->initializeRows(rows, numRows);
+      },
+      [this](char* row, const std::vector<VectorPtr>& columns) {
+        windowAggsHandler_->mergeRow(row, columns);
+      },
+      memoryPool());
+  // 3a. main handle: one accumulator row per (key, state window).
+  state_ = keyedBackend_->getOrCreateAggregatingState<TimeWindow>(descriptor);
+
+  // 3b. session in-flight set: actual window -> state window per key, the
+  // fixed VoidNamespace (the map is the per-key window table).
+  MapStateDescriptor<TimeWindow, TimeWindow> mappingDescriptor(
+      "session-window-mapping",
+      std::make_shared<TimeWindowSerializer>(),
+      std::make_shared<TimeWindowSerializer>(),
+      memoryPool());
+  mappingState_ =
+      keyedBackend_->getOrCreateMapState<VoidNamespace, TimeWindow, TimeWindow>(
+          mappingDescriptor);
+
+  // 4. Wire setAllocator / setOffsets before the first rows() call (and
+  // before restore, which also materializes rows).
+  auto* valueRows = state_->valueRows();
+  for (size_t i = 0; i < windowAggsHandler_->aggregates().size(); ++i) {
+    auto& function = windowAggsHandler_->aggregates()[i].function;
+    function->setAllocator(&valueRows->stringAllocator());
+    const auto rowColumn = valueRows->columnAt(static_cast<int32_t>(i));
+    function->setOffsets(
+        rowColumn.offset(),
+        rowColumn.nullByte(),
+        rowColumn.nullMask(),
+        rowColumn.initializedByte(),
+        rowColumn.initializedMask(),
+        valueRows->rowSizeOffset());
+  }
+
+  // The session process function consumes the typed mapping handle; the
+  // context routes its state access to this operator's handles.
   windowFunction_ = std::make_unique<MergingWindowProcessFunction>(
       std::dynamic_pointer_cast<MergingWindowAssigner>(windowAssigner_),
-      op().get(),
-      allowedLateness_);
-  windowContext_ = std::make_shared<WindowContext>(
-      windowAggregator_,
-      windowState_,
-      windowTimerService_,
-      triggerContext_,
-      stateHandler(),
-      shiftTimeZone_,
-      isEventTime_,
-      allowedLateness_);
+      windowAggsHandler_,
+      node_->allowedLateness(),
+      mappingState_);
   windowFunction_->open(windowContext_);
+
+  // 5. Cascade downstream.
+  StatefulOperator::initializeStateBackend(stateBackend);
+}
+
+void GroupWindowAggregator::checkInputRowKinds(const StreamRecord& record) const {
+  const auto& kinds = record.rowKind();
+  if (kinds == nullptr) {
+    return; // appendOnly: all INSERT.
+  }
+  for (auto i = 0; i < kinds->size(); ++i) {
+    if (kinds->valueAt(i) != static_cast<int8_t>(RowKind::INSERT)) {
+      // TODO(L6): retract input arrives with the P1 retract-to-window chain.
+      VELOX_UNSUPPORTED(
+          "group window aggregation in insert-only mode received a non-INSERT row "
+          "kind {} at row {}",
+          static_cast<int32_t>(kinds->valueAt(i)),
+          i);
+    }
+  }
 }
 
 void GroupWindowAggregator::addInput(StreamElementPtr input) {
-  VELOX_CHECK(!input_, "Last input has not been processed");
   auto record = std::static_pointer_cast<StreamRecord>(input);
-  // TODO: preserve rowKind across this operator.
-  input_ = record->record();
+  checkInputRowKinds(*record); // 1. cast + rowKind validation.
+  const auto& inputVector = record->record();
+  const auto numRows = inputVector->size();
+  if (numRows == 0) {
+    return; // this operator's own empty-batch defense.
+  }
+
+  keySelector_->probe(inputVector); // 2. per-row keys.
+
+  // The rowtime column drives the window assignment. TIMESTAMP(3) passes
+  // through as a velox TIMESTAMP (session zone UTC, shift 0: the raw millis
+  // value is the window algebra's input, SPEC alignment #1); a BIGINT
+  // rowtime column carries raw millis directly.
+  auto rowtimeVector = inputVector->childAt(node_->rowtimeIndex());
+  const auto& rowtimeColumn = *rowtimeVector;
+  std::vector<int64_t> rowtimes;
+  rowtimes.reserve(numRows);
+  switch (rowtimeColumn.typeKind()) {
+    case TypeKind::TIMESTAMP: {
+      const auto* timestamps = rowtimeVector->as<SimpleVector<Timestamp>>();
+      VELOX_CHECK_NOT_NULL(
+          timestamps, "the rowtime TIMESTAMP vector is not a simple vector");
+      for (vector_size_t row = 0; row < numRows; ++row) {
+        VELOX_CHECK(
+            !timestamps->isNullAt(row),
+            "group window aggregation received a null rowtime at row {}",
+            row);
+        rowtimes.push_back(timestamps->valueAt(row).toMillis());
+      }
+      break;
+    }
+    case TypeKind::BIGINT: {
+      const auto* millis = rowtimeVector->as<SimpleVector<int64_t>>();
+      VELOX_CHECK_NOT_NULL(
+          millis, "the rowtime BIGINT vector is not a simple vector");
+      for (vector_size_t row = 0; row < numRows; ++row) {
+        VELOX_CHECK(
+            !millis->isNullAt(row),
+            "group window aggregation received a null rowtime at row {}",
+            row);
+        rowtimes.push_back(millis->valueAt(row));
+      }
+      break;
+    }
+    default:
+      VELOX_UNSUPPORTED(
+          "group window aggregation requires a TIMESTAMP or BIGINT rowtime column, got {}",
+          rowtimeColumn.type()->toString());
+  }
+
+  // One-row selections and per-aggregate arguments, reused across the rows
+  // of this batch (batch scratch).
+  SelectivityVector rowSelection(numRows, false);
+  std::vector<std::vector<VectorPtr>> aggregateArgs;
+  aggregateArgs.reserve(windowAggsHandler_->aggregates().size());
+  for (const auto& aggregate : windowAggsHandler_->aggregates()) {
+    aggregateArgs.push_back(windowAggsHandler_->aggregateArgs(aggregate, inputVector));
+  }
+
+  for (vector_size_t row = 0; row < numRows; ++row) {
+    const int64_t timestamp = rowtimes[row];
+    // 3. assign the state namespace (session merging, lateness filter):
+    // the state windows return in the same order as the actual windows.
+    const auto& key = keySelector_->keys()[row];
+    // The key view copies, it never assigns (RowContainerStateKey deletes
+    // assignment): optional::emplace constructs in place.
+    currentKey_.emplace(key);
+    std::vector<TimeWindow> stateWindows =
+        windowFunction_->assignStateNamespace(key, timestamp);
+    std::vector<TimeWindow> actualWindows =
+        windowFunction_->assignActualWindows();
+    if (actualWindows.empty()) {
+      // Every assigned window is late: drop the row and count it (Flink's
+      // lateRecordsDroppedRate equivalent).
+      ++numLateRecordsDropped_;
+      continue;
+    }
+
+    rowSelection.setValid(row, true);
+    rowSelection.updateBounds();
+    for (size_t w = 0; w < actualWindows.size(); ++w) {
+      // 4. resolve the state row of this row's window and accumulate the
+      // row into it (misses materialize through the descriptor init
+      // callback; the per-row resolution matches Flink's element loop - a
+      // later merge inside this batch may absorb earlier rows' windows,
+      // folding their accumulators into the surviving state window).
+      char* stateRow = state_->row(key, TimeWindow(stateWindows[w]));
+      const auto& aggregates = windowAggsHandler_->aggregates();
+      for (size_t a = 0; a < aggregates.size(); ++a) {
+        aggregates[a].function->addSingleGroupRawInput(
+            stateRow, rowSelection, aggregateArgs[a], false);
+      }
+
+      // 5/6. trigger: register the fire timer (AfterEndOfWindow) and the
+      // cleanup timer; an immediate fire (window already past the
+      // watermark) emits right away - unreachable at allowedLateness = 0
+      // where such a window is late and dropped in step 3.
+      if (triggerContext_->onElement(
+              key, nullptr, timestamp, actualWindows[w])) {
+        emitWindowResult(key, actualWindows[w]);
+      }
+      registerCleanupTimer(key, actualWindows[w]);
+    }
+    rowSelection.setValid(row, false);
+    rowSelection.updateBounds();
+  }
+
+  // Batch boundary: reclaim key rows no state entry references; drop the
+  // in-flight window cache (its keys are row views that must not outlive
+  // the batch - the mapping state reloads on the next access).
+  windowFunction_->clearCache(); // 7. batch boundary.
+  keyedBackend_->advance();
 }
 
-void GroupWindowAggregator::advance() {
-  if (!input_) {
-    return;
+void GroupWindowAggregator::processWatermark(int64_t timestamp) {
+  // C5: the operator-held last watermark drives isWindowLate and the
+  // trigger decisions; advance it before the timers pop.
+  lastWatermark_ = timestamp;
+  if (windowTimerService_) {
+    windowTimerService_->advanceWatermark(timestamp);
   }
-
-  // 1. Partition input by key
-  std::map<int64_t, RowVectorPtr> keyToData = keySelector_->partition(input_);
-  for (const auto& [key, keyedData] : keyToData) {
-    // 2. Set the current key in the context
-    windowContext_->setCurrentKey(key);
-    // 3. Partition the keyed data by rowtime or processing time
-    std::map<int64_t, RowVectorPtr> timestampToData =
-        sliceAssigner_->assignSliceEnd(keyedData);
-    for (const auto& [timestamp, data] : timestampToData) {
-      // 4. Assign data to window
-      std::vector<TimeWindow> windows =
-          windowFunction_->assignStateNamespace(key, data, timestamp);
-      for (const auto& window : windows) {
-        auto acc = windowState_->value(key, window);
-        if (!acc) {
-          // If there is no accumulator for this window, create a new one
-          acc = windowAggregator_->createAccumulators();
-        }
-        windowAggregator_->setAccumulators(window, acc);
-        windowAggregator_->accumulate(data);
-        acc = windowAggregator_->getAccumulators();
-        // windowAggregator->setAccumulators(window, acc);
-        windowState_->update(key, window, acc);
-      }
-      std::vector<TimeWindow> actualWindows =
-          windowFunction_->assignActualWindows(data, timestamp);
-      for (const auto& window : actualWindows) {
-        bool triggerResult =
-            triggerContext_->onElement(key, data, timestamp, window);
-        if (triggerResult) {
-          emitWindowResult(key, window);
-        }
-        // register a clean up timer for the window
-        registerCleanupTimer(key, window);
-      }
-    }
-  }
-
-  input_.reset();
+  StatefulOperator::processWatermark(timestamp);
 }
 
 void GroupWindowAggregator::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<int64_t, TimeWindow>> timer) {
-  windowContext_->setCurrentKey(timer->key());
-  if (triggerContext_->onEventTime(timer->ns(), timer->timestamp())) {
-    // Fire the window and emit result.
-    emitWindowResult(timer->key(), timer->ns());
+    std::shared_ptr<TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>>
+        timer) {
+  // The key view copies, it never assigns (see addInput): optional::emplace
+  // constructs in place.
+  currentKey_.emplace(timer->key());
+  const TimeWindow window = timer->ns();
+  const int64_t time = timer->timestamp();
+  // The callback runs under the timer service's queue lock; the cleanup
+  // chain below re-enters the queue only through a delete of the popped
+  // registration itself - a no-op the flag turns into a plain skip (see
+  // the member comment).
+  inTimerCallback_ = true;
+  if (triggerContext_->onEventTime(window, time)) {
+    // Fire the window and emit its result (empty windows suppressed).
+    emitWindowResult(timer->key(), window);
   }
-
   if (windowAssigner_->isEventTime()) {
-    windowFunction_->cleanWindowIfNeeded(timer->ns(), timer->timestamp());
+    // Clean exactly at the cleanup time (the fire and cleanup timers are
+    // the same (key, window, time) registration at allowedLateness = 0 and
+    // dedup into one pop).
+    windowFunction_->cleanWindowIfNeeded(window, time);
   }
-  auto output = windowState_->value(timer->key(), timer->ns());
-  windowState_->remove(timer->key(), timer->ns());
-  pushOutput(
-      std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
-}
-
-void GroupWindowAggregator::close() {
-  StatefulOperator::close();
-  input_.reset();
-  // State members are created in initializeState(), which fails fast when the
-  // operator has no state handler; they can be null at close time.
-  if (windowFunction_) {
-    windowFunction_->close();
-  }
-  if (windowState_) {
-    windowState_->clear();
-  }
+  inTimerCallback_ = false;
 }
 
 void GroupWindowAggregator::registerCleanupTimer(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window) {
   int64_t cleanupTime = TimeWindowUtil::toEpochMillsForTimer(
       TimeWindowUtil::cleanupTime(
-          window.maxTimestamp(), allowedLateness_, isEventTime_),
-      shiftTimeZone_);
+          window.maxTimestamp(), node_->allowedLateness(), node_->isEventTime()),
+      0);
   if (cleanupTime == INT64_MAX) {
     // Do not set a GC timer for "end of time".
     return;
@@ -179,200 +347,357 @@ void GroupWindowAggregator::registerCleanupTimer(
   }
 }
 
-void GroupWindowAggregator::emitWindowResult(uint32_t key, TimeWindow window) {
-  windowFunction_->prepareAggregateAccumulatorForEmit(key, window);
-  RowVectorPtr acc = windowAggregator_->getAccumulators();
-  RowVectorPtr aggResult = windowAggregator_->getValue(window);
-  if (produceUpdates_) {
-    // TODO: support it.
-  } else {
-    // TODO: use recordCounter_
-    // if (!recordCounter_.recordCountIsZero(acc)) {
-    if (acc) {
-      // send INSERT
-      pushOutput(std::make_shared<StreamRecord>(
-          getPlanNodeId(), std::move(aggResult)));
-    }
-    // if the counter is zero, no need to send accumulate
-    // there is no possible skip `if` branch when `produceUpdates` is false
+void GroupWindowAggregator::emitWindowResult(
+    const RowContainerStateKey& key,
+    TimeWindow window) {
+  // Layout guard: the row assembly below assumes the conventional output
+  // layout - keys at [0, numKeys), aggregates right after, then the window
+  // property columns at the tail. The planner's windowStartIndex /
+  // windowEndIndex helpers always produce it (the upstream window
+  // properties are named start-before-end); a hand-built node with an
+  // interleaved column order would otherwise assemble mismatched names
+  // and types silently.
+  const auto& outputType = node_->outputType();
+  const int32_t numKeys =
+      static_cast<int32_t>(node_->keyedStateSpec()->keyChannels().size());
+  const int32_t numAggs =
+      static_cast<int32_t>(windowAggsHandler_->aggregates().size());
+  const int32_t windowStartIndex = node_->windowStartIndex();
+  const int32_t windowEndIndex = node_->windowEndIndex();
+  VELOX_CHECK(
+      (windowStartIndex == -1 || windowStartIndex == numKeys + numAggs) &&
+          (windowEndIndex == -1 || windowEndIndex == numKeys + numAggs ||
+           windowEndIndex == numKeys + numAggs + 1),
+      "group window aggregation expects the window property columns at the "
+      "output tail (keys, aggregates, then window start / end and the time "
+      "attributes), got "
+      "windowStartIndex={}, windowEndIndex={}, numKeys={}, numAggs={}",
+      windowStartIndex,
+      windowEndIndex,
+      numKeys,
+      numAggs);
+
+  // D1 scheme A: the existence read - an empty window (no state entry)
+  // never materializes state and emits nothing.
+  char* stateRow = windowFunction_->prepareAggregateAccumulatorForEmit(
+      key, window);
+  if (stateRow == nullptr) {
+    return;
   }
+
+  std::vector<std::string> names;
+  std::vector<TypePtr> types;
+  std::vector<VectorPtr> children;
+  names.reserve(outputType->size());
+  types.reserve(outputType->size());
+  children.reserve(outputType->size());
+
+  // Key columns from the key row container.
+  if (numKeys > 0) {
+    char* keyRow = const_cast<char*>(key.row());
+    for (int32_t k = 0; k < numKeys; ++k) {
+      names.push_back(outputType->nameOf(k));
+      types.push_back(outputType->childAt(k));
+      VectorPtr keyColumn =
+          BaseVector::create(outputType->childAt(k), 1, memoryPool());
+      keySelector_->keyRowContainer()->extractColumn(
+          &keyRow, 1, k, keyColumn);
+      children.push_back(std::move(keyColumn));
+    }
+  }
+
+  // Aggregate values from the state row.
+  std::vector<char*> stateRows{stateRow};
+  std::vector<VectorPtr> values;
+  windowAggsHandler_->extractValues(stateRows, values);
+  for (size_t a = 0; a < windowAggsHandler_->aggregates().size(); ++a) {
+    const auto outputIndex = numKeys + static_cast<int32_t>(a);
+    names.push_back(outputType->nameOf(outputIndex));
+    types.push_back(outputType->childAt(outputIndex));
+    children.push_back(std::move(values[a]));
+  }
+
+  // Window property columns at the tail, every declared one: start / end
+  // from the window, the time attributes per the planner's fixed property
+  // order. The planner pushes all four properties of a rowtime window and
+  // orders them [start, end, rowtime, proctime] (WindowPropertiesRule), so
+  // the tail beyond start / end is the time attributes in that order.
+  // Flink's generated handler fills rowtime with window.maxTimestamp()
+  // (the end - 1) and leaves the proctime attribute null at the position
+  // ("it will be null at the position later" - AggsHandlerCodeGenerator.
+  // getWindowExpressions, the TimeWindow branch, emitted through
+  // AggregateWindowOperator.emitWindowResult -> getValue). The emission
+  // width must match the declared outputType width: the Java bridge slices
+  // rowType.size() children off the emitted row. TIMESTAMP(3), session
+  // zone UTC: the raw millis pass through, SPEC alignment #1.
+  int32_t timeAttributeOrdinal = 0;
+  for (int32_t c = numKeys + numAggs; c < outputType->size(); ++c) {
+    names.push_back(outputType->nameOf(c));
+    types.push_back(outputType->childAt(c));
+    VectorPtr column =
+        BaseVector::create(outputType->childAt(c), 1, memoryPool());
+    if (c == windowStartIndex || c == windowEndIndex) {
+      fillWindowPropertyMillis(
+          column, c == windowStartIndex ? window.start() : window.end());
+    } else if (timeAttributeOrdinal == 0) {
+      // The rowtime attribute: the window's maxTimestamp (end - 1).
+      fillWindowPropertyMillis(column, window.maxTimestamp());
+      ++timeAttributeOrdinal;
+    } else if (timeAttributeOrdinal == 1) {
+      // The proctime attribute: null at the position (Flink semantics).
+      column->setNull(0, true);
+      ++timeAttributeOrdinal;
+    } else {
+      VELOX_UNSUPPORTED(
+          "group window aggregation cannot emit more time attribute columns "
+          "than [rowtime, proctime] at column {}",
+          c);
+    }
+    children.push_back(std::move(column));
+  }
+
+  auto output = std::make_shared<RowVector>(
+      memoryPool(),
+      ROW(std::move(names), std::move(types)),
+      BufferPtr(nullptr),
+      1,
+      std::move(children));
+  // P0 default EMIT: every emission is an INSERT.
+  pushOutput(std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
 }
 
-GroupWindowAggregator::WindowTriggerContext::WindowTriggerContext(
-    std::shared_ptr<WindowTrigger> trigger,
-    std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
-        internalTimerService,
-    int shiftTimeZone)
-    : trigger_(std::move(trigger)),
-      internalTimerService_(std::move(internalTimerService)),
-      shiftTimeZone_(shiftTimeZone) {}
+std::vector<std::string> GroupWindowAggregator::snapshotKeyedState() {
+  VELOX_CHECK_NOT_NULL(keyedBackend_, "the keyed state backend is not initialized");
+  return {keyedBackend_->snapshot()};
+}
+
+void GroupWindowAggregator::restoreKeyedState(
+    const std::vector<std::string>& records) {
+  VELOX_CHECK_NOT_NULL(keyedBackend_, "the keyed state backend is not initialized");
+  for (const auto& record : records) {
+    keyedBackend_->restore(record);
+  }
+  // A2: the restore dispatch is complete and both handles are in place -
+  // rebuild the timers before the first input or watermark arrives.
+  rebuildTimersFromState();
+}
+
+void GroupWindowAggregator::rebuildTimersFromState() {
+  // The key set comes from the aggregating state: a key with a live session
+  // always carries an accumulator entry, because addInput, the merge
+  // consumer and cleanWindowIfNeeded maintain the mapping and the
+  // accumulators together. The windows come from the session mapping (the
+  // actual -> state window pairs), the same handle the runtime reads -
+  // every live actual window gets its fire / cleanup pair back, whether or
+  // not any new input follows the restore.
+  state_->visitKeys([this](const RowContainerStateKey& key) {
+    const auto mapping =
+        mappingState_->entries(key, VoidNamespace::instance());
+    for (const auto& entry : mapping) {
+      TimeWindow actualWindow = entry.first;
+      // Fire = the actual window's trigger time (end - 1), the same value
+      // AfterEndOfWindow::onElement registers; cleanup = the same point at
+      // allowedLateness = 0, so the queue dedupes the pair into one entry.
+      const int64_t fireTime = TimeWindowUtil::toEpochMillsForTimer(
+          actualWindow.maxTimestamp(), triggerContext_->getShiftTimeZone());
+      triggerContext_->registerEventTimeTimer(key, actualWindow, fireTime);
+      registerCleanupTimer(key, actualWindow);
+    }
+  });
+}
+
+void GroupWindowAggregator::close() {
+  // Reverse construction order: the state handles capture the handler and
+  // this operator through their descriptor closures, so they go first, then
+  // the timer service, then the backend - the base reset of op() (the
+  // handler) comes last.
+  windowFunction_.reset();
+  state_.reset();
+  mappingState_.reset();
+  if (windowTimerService_) {
+    windowTimerService_->close();
+    windowTimerService_.reset();
+  }
+  triggerContext_.reset();
+  windowContext_.reset();
+  trigger_.reset();
+  windowAssigner_.reset();
+  keyedBackend_.reset();
+  keySelector_.reset();
+  StatefulOperator::close();
+}
+
+// --- WindowTriggerContext ---
 
 void GroupWindowAggregator::WindowTriggerContext::open() {
-  trigger_->open(shared_from_this());
+  owner_->trigger_->open(shared_from_this());
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onElement(
-    uint32_t key,
+    const RowContainerStateKey& key,
     RowVectorPtr row,
     int64_t timestamp,
     TimeWindow window) {
-  return trigger_->onElement(key, row, timestamp, window);
+  return owner_->trigger_->onElement(key, std::move(row), timestamp, window);
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onProcessingTime(
     TimeWindow window,
     int64_t time) {
-  return trigger_->onProcessingTime(window, time);
+  return owner_->trigger_->onProcessingTime(window, time);
 }
 
 bool GroupWindowAggregator::WindowTriggerContext::onEventTime(
     TimeWindow window,
     int64_t time) {
-  return trigger_->onEventTime(window, time);
+  return owner_->trigger_->onEventTime(window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::onMerge(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window) {
-  trigger_->onMerge(key, window, nullptr);
+  owner_->trigger_->onMerge(key, window, nullptr);
 }
 
 int64_t
 GroupWindowAggregator::WindowTriggerContext::getCurrentProcessingTime() {
-  return internalTimerService_->currentProcessingTime();
+  return TimeWindowUtil::getCurrentProcessingTime();
 }
 
 int64_t GroupWindowAggregator::WindowTriggerContext::getCurrentWatermark() {
-  return internalTimerService_->currentWatermark();
+  // C5: the operator-held last watermark (the timer service's
+  // currentWatermark is the earliest pending timer, unusable here).
+  return owner_->lastWatermark_;
 }
 
 void GroupWindowAggregator::WindowTriggerContext::registerProcessingTimeTimer(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window,
     int64_t time) {
-  internalTimerService_->registerProcessingTimeTimer(key, window, time);
+  // TODO(L4): processing-time timers arrive with the proctime windows (P1).
+  VELOX_UNSUPPORTED(
+      "group window aggregation does not support processing-time timers");
 }
 
 void GroupWindowAggregator::WindowTriggerContext::registerEventTimeTimer(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window,
     int64_t time) {
-  internalTimerService_->registerEventTimeTimer(key, window, time);
+  owner_->windowTimerService_->registerTimer(key, window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteProcessingTimeTimer(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window,
     int64_t time) {
-  internalTimerService_->deleteProcessingTimeTimer(key, window, time);
+  VELOX_UNSUPPORTED(
+      "group window aggregation does not support processing-time timers");
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteEventTimeTimer(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window,
     int64_t time) {
-  internalTimerService_->deleteEventTimeTimer(key, window, time);
+  if (owner_->inTimerCallback_) {
+    // Re-entrant delete from the fired window's own cleanup chain: the
+    // pop already removed this registration from the deduplicated queue,
+    // and the service holds its queue lock across the onEventTime
+    // callback - a queue call here would deadlock the plain mutex.
+    return;
+  }
+  owner_->windowTimerService_->deleteTimer(key, window, time);
 }
 
 int GroupWindowAggregator::WindowTriggerContext::getShiftTimeZone() {
-  return shiftTimeZone_;
+  return 0; // TODO(L5): TIMESTAMP_LTZ shift arrives with P1.
 }
 
 void GroupWindowAggregator::WindowTriggerContext::clear(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window) {
-  trigger_->clear(key, window);
+  owner_->trigger_->clear(key, window);
 }
 
 StatePtr GroupWindowAggregator::WindowTriggerContext::getPartitionedState(
-    StateDescriptor& stateDescriptor) {
-  // TODO: implement this method when necessary.
-  VELOX_NYI();
+    StateDescriptor& /*stateDescriptor*/) {
+  // The pre-generic stateHandler plane is gone; trigger-side state arrives
+  // with the EMIT strategies (P1).
+  VELOX_NYI("trigger partitioned state is not supported");
 }
 
 void GroupWindowAggregator::WindowTriggerContext::mergePartitionedState(
-    StateDescriptor& stateDescriptor) {
-  // TODO: implement this method when necessary.
-  VELOX_NYI();
+    StateDescriptor& /*stateDescriptor*/) {
+  VELOX_NYI("trigger partitioned state is not supported");
 }
 
-WindowContext::WindowContext(
-    GroupWindowAggsHandler* windowAggregator,
-    std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>> windowState,
-    std::shared_ptr<InternalTimerService<int64_t, TimeWindow>> timerService,
-    std::shared_ptr<TriggerContext> triggerContext,
-    std::shared_ptr<StreamOperatorStateHandler> stateHandler,
-    int shiftTimeZone,
-    bool isEventTime,
-    int64_t allowedLateness)
-    : windowAggregator_(windowAggregator),
-      windowState_(std::move(windowState)),
-      timerService_(std::move(timerService)),
-      triggerContext_(std::move(triggerContext)),
-      stateHandler_(std::move(stateHandler)),
-      shiftTimeZone_(shiftTimeZone),
-      isEventTime_(isEventTime),
-      allowedLateness_(allowedLateness) {}
+// --- WindowContext ---
 
-StatePtr WindowContext::getPartitionedState(StateDescriptor& stateDescriptor) {
-  return stateHandler_->getGroupMapState(stateDescriptor);
+const RowContainerStateKey&
+GroupWindowAggregator::WindowContext::currentKey() {
+  VELOX_CHECK(
+      owner_->currentKey_.has_value(),
+      "the window context is used before a key is set");
+  return *owner_->currentKey_;
 }
 
-int64_t WindowContext::currentProcessingTime() {
-  return timerService_->currentProcessingTime();
+int64_t GroupWindowAggregator::WindowContext::currentProcessingTime() {
+  return TimeWindowUtil::getCurrentProcessingTime();
 }
 
-int64_t WindowContext::currentWatermark() {
-  return timerService_->currentWatermark();
+int64_t GroupWindowAggregator::WindowContext::currentWatermark() {
+  return owner_->lastWatermark_;
 }
 
-int WindowContext::getShiftTimeZone() {
-  return shiftTimeZone_;
+int GroupWindowAggregator::WindowContext::getShiftTimeZone() {
+  return 0; // TODO(L5): TIMESTAMP_LTZ shift arrives with P1.
 }
 
-RowVectorPtr WindowContext::getWindowAccumulators(TimeWindow window) {
-  return windowState_->value(currentKey_, window);
+char* GroupWindowAggregator::WindowContext::getWindowAccumulators(
+    TimeWindow window) {
+  return owner_->state_->get(currentKey(), TimeWindow(window));
 }
 
-void WindowContext::setWindowAccumulators(TimeWindow window, RowVectorPtr acc) {
-  windowState_->update(currentKey_, window, acc);
+char* GroupWindowAggregator::WindowContext::getOrCreateWindowAccumulators(
+    TimeWindow window) {
+  return owner_->state_->row(currentKey(), TimeWindow(window));
 }
 
-void WindowContext::clearWindowState(TimeWindow window) {
-  windowState_->remove(currentKey_, window);
-  windowAggregator_->cleanup(window);
+void GroupWindowAggregator::WindowContext::clearWindowState(TimeWindow window) {
+  owner_->state_->remove(currentKey(), TimeWindow(window));
 }
 
-void WindowContext::clearPreviousState(TimeWindow window) {
-  if (previousWindowState_ != nullptr) {
-    previousWindowState_->remove(currentKey_, window);
-  }
+void GroupWindowAggregator::WindowContext::clearPreviousState(
+    TimeWindow /*window*/) {
+  // Previous state is disabled in session windows.
 }
 
-void WindowContext::clearTrigger(TimeWindow window) {
-  triggerContext_->clear(currentKey_, window);
+void GroupWindowAggregator::WindowContext::clearTrigger(TimeWindow window) {
+  owner_->triggerContext_->clear(currentKey(), window);
 }
 
-void WindowContext::deleteCleanupTimer(TimeWindow window) {
+void GroupWindowAggregator::WindowContext::onMerge(
+    TimeWindow newWindow,
+    std::vector<TimeWindow>& /*mergedWindows*/) {
+  owner_->triggerContext_->onMerge(currentKey(), newWindow);
+}
+
+void GroupWindowAggregator::WindowContext::deleteCleanupTimer(
+    TimeWindow window) {
   int64_t cleanupTime = TimeWindowUtil::toEpochMillsForTimer(
       TimeWindowUtil::cleanupTime(
-          window.maxTimestamp(), allowedLateness_, isEventTime_),
-      shiftTimeZone_);
+          window.maxTimestamp(),
+          owner_->node_->allowedLateness(),
+          owner_->windowAssigner_->isEventTime()),
+      getShiftTimeZone());
   if (cleanupTime == INT64_MAX) {
     // no need to clean up because we didn't set one
     return;
   }
-  if (isEventTime_) {
-    triggerContext_->deleteEventTimeTimer(currentKey_, window, cleanupTime);
+  if (owner_->windowAssigner_->isEventTime()) {
+    owner_->triggerContext_->deleteEventTimeTimer(currentKey(), window, cleanupTime);
   } else {
-    triggerContext_->deleteProcessingTimeTimer(
-        currentKey_, window, cleanupTime);
+    owner_->triggerContext_->deleteProcessingTimeTimer(currentKey(), window, cleanupTime);
   }
 }
 
-void WindowContext::onMerge(
-    TimeWindow newWindow,
-    std::vector<TimeWindow>& mergedWindows) {
-  triggerContext_->onMerge(currentKey_, newWindow);
-}
 } // namespace facebook::velox::stateful

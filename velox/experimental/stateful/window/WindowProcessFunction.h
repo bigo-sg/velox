@@ -17,34 +17,51 @@
 #include <cstdint>
 
 #include <algorithm>
+#include <memory>
 #include <type_traits>
 #include <vector>
 #include "velox/exec/Operator.h"
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
+#include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
-#include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
+#include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
+#include "velox/experimental/stateful/window/Window.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 
+class GroupWindowAggsHandler;
+class MergingWindowSet;
+class MergingFunction;
+
 // This class is relevant to Flink InternalWindowProcessFunction::Context.
+// The accumulator access is row-based over the typed AggregatingState
+// (char* accumulator rows in the value RowContainer): getWindowAccumulators
+// is the non-materializing existence read (nullptr on a miss, the Flink
+// acc == null probe), getOrCreateWindowAccumulators materializes a fresh row
+// through the descriptor init callback on a miss. The pre-generic
+// getPartitionedState entry of the old stateHandler plane is gone: the
+// operator injects the typed handles directly.
 template <typename W, typename = std::enable_if_t<std::is_base_of_v<Window, W>>>
 class FunctionContext {
  public:
-  virtual StatePtr getPartitionedState(StateDescriptor& stateDescriptor) = 0;
+  virtual ~FunctionContext() = default;
 
-  virtual uint32_t currentKey() = 0;
+  virtual const RowContainerStateKey& currentKey() = 0;
 
   virtual int64_t currentProcessingTime() = 0;
 
+  /// The last watermark the operator has advanced through (C5: not the
+  /// timer service's earliest-pending-timer view).
   virtual int64_t currentWatermark() = 0;
 
   virtual int getShiftTimeZone() = 0;
 
-  virtual RowVectorPtr getWindowAccumulators(W window) = 0;
+  virtual char* getWindowAccumulators(W window) = 0;
 
-  virtual void setWindowAccumulators(W window, RowVectorPtr acc) = 0;
+  virtual char* getOrCreateWindowAccumulators(W window) = 0;
 
   virtual void clearWindowState(W window) = 0;
 
@@ -62,33 +79,47 @@ template <typename W, typename = std::enable_if_t<std::is_base_of_v<Window, W>>>
 class WindowProcessFunction {
  public:
   WindowProcessFunction(
-      GroupWindowAssignerPtr windowAssigner,
-      exec::Operator* windowAggregator,
+      std::shared_ptr<GroupWindowAssigner<W>> windowAssigner,
+      GroupWindowAggsHandler* windowAggregator,
       int64_t allowedLateness)
-      : windowAssigner_(windowAssigner),
-        windowAggregator_(
-            dynamic_cast<GroupWindowAggsHandler*>(windowAggregator)),
+      : windowAssigner_(std::move(windowAssigner)),
+        windowAggregator_(windowAggregator),
         allowedLateness_(allowedLateness) {}
+
+  virtual ~WindowProcessFunction() = default;
 
   virtual void open(std::shared_ptr<FunctionContext<W>> ctx) {
     ctx_ = std::move(ctx);
   }
 
+  /// Assigns the state namespace of one input row: the merging family merges
+  /// the row's window into the in-flight set (mapping mutations and
+  /// accumulator merges happen here) and reports the state windows the row's
+  /// actual windows resolve to. Returns the state windows in the same order
+  /// as assignActualWindows() reports the actual windows.
   virtual std::vector<W> assignStateNamespace(
-      uint32_t key,
-      RowVectorPtr inputRow,
+      const RowContainerStateKey& key,
       int64_t timestamp) = 0;
 
-  virtual std::vector<W> assignActualWindows(
-      RowVectorPtr inputRow,
-      int64_t timestamp) = 0;
+  /// The actual (merged-result) windows of the row assigned by the last
+  /// assignStateNamespace call.
+  virtual std::vector<W> assignActualWindows() = 0;
 
-  // TODO: implement it when necessary.
-  virtual void prepareAggregateAccumulatorForEmit(uint32_t key, W window) = 0;
+  /// Resolves the state window the actual 'window' maps to and reads its
+  /// accumulator row without materializing one: nullptr when the window
+  /// has no state (the empty-window suppression probe).
+  virtual char* prepareAggregateAccumulatorForEmit(
+      const RowContainerStateKey& key,
+      W window) = 0;
 
   virtual void cleanWindowIfNeeded(W window, int64_t currentTime) = 0;
 
-  // TODO: implement it when necessary.
+  /// Drops the per-key in-flight window cache at the batch boundary: the
+  /// cached keys are row views into the backend's key table, and a key whose
+  /// last state entry is gone may have its row reclaimed by advance(); the
+  /// mapping state is the source of truth either way.
+  virtual void clearCache() {}
+
   virtual void close() {}
 
  protected:
@@ -113,8 +144,7 @@ class WindowProcessFunction {
                ctx_->getShiftTimeZone());
   }
 
-  GroupWindowAssignerPtr windowAssigner_;
-  // TODO: windowAggregator may need state
+  std::shared_ptr<GroupWindowAssigner<W>> windowAssigner_;
   GroupWindowAggsHandler* windowAggregator_;
   int64_t allowedLateness_;
   std::shared_ptr<FunctionContext<W>> ctx_;
@@ -123,42 +153,55 @@ class WindowProcessFunction {
 using WindowProcessFunctionPtr =
     std::shared_ptr<WindowProcessFunction<TimeWindow>>;
 
-class MergingWindowSet;
-class MergingFunction;
+/// The typed mapping handle of the session-window in-flight set: one map of
+/// actual window -> state window per key, under the fixed VoidNamespace (the
+/// map is the per-key window table, not a window-indexed state - the state
+/// windows live under the TimeWindow namespace of the aggregating state).
+using SessionWindowMappingState =
+    MapState<RowContainerStateKey, VoidNamespace, TimeWindow, TimeWindow>;
 
+// This class is relevant to Flink MergingWindowProcessFunction. The mapping
+// handle is injected by the operator at construction (the old
+// getPartitionedState entry is gone).
 class MergingWindowProcessFunction : public WindowProcessFunction<TimeWindow> {
  public:
   MergingWindowProcessFunction(
       std::shared_ptr<MergingWindowAssigner> windowAssigner,
-      exec::Operator* windowAggregator,
-      int64_t allowedLateness);
+      GroupWindowAggsHandler* windowAggregator,
+      int64_t allowedLateness,
+      std::shared_ptr<SessionWindowMappingState> mapping);
 
   void open(std::shared_ptr<FunctionContext<TimeWindow>> ctx) override;
 
   std::vector<TimeWindow> assignStateNamespace(
-      uint32_t key,
-      RowVectorPtr inputRow,
+      const RowContainerStateKey& key,
       int64_t timestamp) override;
 
-  std::vector<TimeWindow> assignActualWindows(
-      RowVectorPtr inputRow,
-      int64_t timestamp) override;
+  std::vector<TimeWindow> assignActualWindows() override;
 
   void cleanWindowIfNeeded(TimeWindow window, int64_t currentTime) override;
 
-  void prepareAggregateAccumulatorForEmit(uint32_t key, TimeWindow window)
-      override;
+  char* prepareAggregateAccumulatorForEmit(
+      const RowContainerStateKey& key,
+      TimeWindow window) override;
+
+  void clearCache() override;
 
   void close() override;
 
  private:
   using WindowProcessFunction<TimeWindow>::windowAssigner_;
   using WindowProcessFunction<TimeWindow>::windowAggregator_;
+  using WindowProcessFunction<TimeWindow>::ctx_;
+  std::shared_ptr<SessionWindowMappingState> mapping_;
   std::shared_ptr<MergingWindowSet> mergingWindows_;
   std::shared_ptr<MergingFunction> mergingFunction_;
   std::vector<TimeWindow> reuseActualWindows_;
 };
 
+// This class is relevant to Flink MergingWindowProcessFunction's
+// DefaultAccMergingConsumer: merges the accumulator rows of the merged state
+// windows into the merge result's state window.
 class DefaultAccMergingConsumer {
  public:
   DefaultAccMergingConsumer(

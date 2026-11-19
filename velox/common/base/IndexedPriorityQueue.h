@@ -167,7 +167,19 @@ class IndexedPriorityQueue {
   /// Return negative number if value at i should be ordered before j; positive
   /// number if j should be ordered before i. Otherwise return 0.
   int64_t compare(int i, int j) const {
-    int64_t result = priorities_[i] - priorities_[j];
+    // Overflow-safe three-way comparison: the subtraction below underflowed
+    // for the extreme sentinel priorities HeapPriorityQueue::remove assigns
+    // (INT64_MIN - realPriority wrapped positive, so the sentinel never
+    // percolated up and pop() removed an arbitrary element instead of the
+    // removed value).
+    int64_t result;
+    if (priorities_[i] < priorities_[j]) {
+      result = -1;
+    } else if (priorities_[i] > priorities_[j]) {
+      result = 1;
+    } else {
+      result = 0;
+    }
     if constexpr (kMaxQueue) {
       result = -result;
     }

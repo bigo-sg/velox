@@ -16,6 +16,7 @@
 #pragma once
 
 #include <folly/Range.h>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -111,6 +112,23 @@ class AggregatingState : public State {
   /// Single-key lookup, e.g. for timer callbacks. Same miss semantics as
   /// rows().
   virtual char* row(const K& key, const N& ns) = 0;
+
+  /// Non-materializing existence read: the value row of (key, ns) when the
+  /// entry exists, nullptr on a miss. Unlike rows()/row() a miss creates
+  /// nothing and runs no init callback - read-only consumers (the window
+  /// operator's empty-window suppression, the Flink acc == null probe of
+  /// AccumulationRecordCounter) read through this, so an empty window never
+  /// materializes state.
+  virtual char* get(const K& key, const N& ns) = 0;
+
+  /// Visits the distinct keys that currently have at least one entry, in
+  /// key-group order. Restore paths that rebuild derived structures from
+  /// state walk these keys (the window operator's timer restore-rebuild);
+  /// per-key details then come through get()/rows(). The default fails
+  /// loud, as with the optional snapshot-plane capability above.
+  virtual void visitKeys(const std::function<void(const K&)>& visitor) {
+    VELOX_NYI("This state does not support key enumeration");
+  }
 
   /// Drops the entry of (key, ns) and returns its accumulator row to the
   /// value container; a miss is a no-op.

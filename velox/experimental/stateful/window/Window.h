@@ -20,6 +20,7 @@
 #include <string>
 #include "velox/common/base/BitUtil.h"
 #include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/state/Namespace.h"
 
 namespace facebook::velox::stateful {
 
@@ -44,7 +45,14 @@ class Window {
   }
 };
 
-class TimeWindow : public Window {
+/// A time window: [start, end) in epoch milliseconds. Also carries the
+/// window-namespace identity of the typed keyed state (Namespace.h notes the
+/// window operator's namespace "should be named after its domain concept (the
+/// window)"): the same object is the state address's second dimension, so a
+/// window equals another window exactly when their [start, end) pairs are
+/// equal. The dual inheritance is additive - Window's interface and the TVF
+/// window operators are untouched (user gate 1 decision #12, scheme 1).
+class TimeWindow : public Window, public Namespace {
  public:
   TimeWindow() : start_(-1), end_(-1) {}
 
@@ -92,8 +100,20 @@ class TimeWindow : public Window {
     return start_ >= 0 && end_ >= start_;
   }
 
-  uint64_t hashCode() {
+  uint64_t hashCode() const {
     return bits::hashMix(end_, start_);
+  }
+
+  /// Namespace identity of the typed keyed state: forwards to the existing
+  /// value equality / hash over (start, end).
+  bool equals(const Namespace& other) const override {
+    auto* otherWindow = dynamic_cast<const TimeWindow*>(&other);
+    return otherWindow != nullptr && start_ == otherWindow->start_ &&
+        end_ == otherWindow->end_;
+  }
+
+  uint64_t hash() const override {
+    return hashCode();
   }
 
  private:

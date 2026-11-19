@@ -19,6 +19,7 @@
 #include <folly/container/EvictingCacheMap.h>
 #include <map>
 #include <set>
+#include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
 #include "velox/experimental/stateful/window/Window.h"
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
@@ -28,32 +29,63 @@ namespace facebook::velox::stateful {
 class MergingFunction;
 class DefaultAccMergingConsumer;
 
-// This class is relevant to Flink MergingWindowSet.
+/// Hash / equality over the key row views for the in-flight window cache:
+/// value identity through the StateKey interface (the cached views stay
+/// valid within the batch that produced them; clearCache runs at the batch
+/// boundary).
+struct RowContainerStateKeyHash {
+  size_t operator()(const RowContainerStateKey& key) const {
+    return std::hash<uint64_t>()(key.hash());
+  }
+};
+
+struct RowContainerStateKeyEqual {
+  bool operator()(
+      const RowContainerStateKey& lhs,
+      const RowContainerStateKey& rhs) const {
+    return lhs.equals(rhs);
+  }
+};
+
+// This class is relevant to Flink MergingWindowSet. Keyed by the typed
+// RowContainerStateKey (row views into the backend's key table) over the
+// injected session-window mapping state.
 class MergingWindowSet {
  public:
   MergingWindowSet(
       std::shared_ptr<MergingWindowAssigner> windowAssigner,
-      std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> mapping);
+      std::shared_ptr<SessionWindowMappingState> mapping);
 
-  void initializeCache(uint32_t key);
+  void initializeCache(const RowContainerStateKey& key);
 
   TimeWindow addWindow(
-      uint32_t key,
+      const RowContainerStateKey& key,
       TimeWindow newWindow,
       std::shared_ptr<MergingFunction> mergeFunction);
 
-  void retireWindow(uint32_t key, TimeWindow window);
+  void retireWindow(const RowContainerStateKey& key, TimeWindow window);
 
-  TimeWindow getStateWindow(uint32_t key, TimeWindow window);
+  TimeWindow getStateWindow(const RowContainerStateKey& key, TimeWindow window);
+
+  /// Drops the in-flight window cache. Called at the batch boundary: cached
+  /// keys are row views whose rows may be reclaimed once the key's last
+  /// state entry is gone, so views must not survive the batch that produced
+  /// them (the mapping state reloads on the next initializeCache).
+  void clearCache();
 
   void close();
 
  private:
   static const int MAPPING_CACHE_SIZE = 10000;
   std::shared_ptr<MergingWindowAssigner> windowAssigner_;
-  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> mapping_;
+  std::shared_ptr<SessionWindowMappingState> mapping_;
 
-  folly::EvictingCacheMap<uint32_t, std::set<TimeWindow>> cachedSortedWindows_;
+  folly::EvictingCacheMap<
+      RowContainerStateKey,
+      std::set<TimeWindow>,
+      /*Hash=*/RowContainerStateKeyHash,
+      /*KeyEqual=*/RowContainerStateKeyEqual>
+      cachedSortedWindows_;
   std::set<TimeWindow> sortedWindows_;
 };
 

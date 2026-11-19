@@ -31,3 +31,27 @@ void registerStringFunctions(const std::string& prefix = "");
 void registerTemporalFunctions(const std::string& prefix = "");
 
 } // namespace facebook::velox::functions::flinksql
+
+namespace facebook::velox::aggregate::flinksql {
+
+// Register Flink SQL aggregate functions under bare names (prefix ""),
+// replacing same-name prestosql/sparksql registrations (the Init.cc
+// registration order puts the flinksql registrations last in the FLINK
+// preset). Flink semantics for the P0 window supply: SUM (result type keeps
+// the input type where the baseline widens to BIGINT) and COUNT (BIGINT,
+// never null). Idempotent within a process.
+void registerAggregateFunctions(
+    const std::string& prefix = "",
+    bool withCompanionFunctions = false,
+    bool overwrite = true);
+
+void registerSumAggregate(
+    const std::string& prefix = "",
+    bool withCompanionFunctions = false,
+    bool overwrite = true);
+void registerCountAggregate(
+    const std::string& prefix = "",
+    bool withCompanionFunctions = false,
+    bool overwrite = true);
+
+} // namespace facebook::velox::aggregate::flinksql

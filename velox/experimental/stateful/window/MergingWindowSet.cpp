@@ -22,16 +22,17 @@ namespace facebook::velox::stateful {
 
 MergingWindowSet::MergingWindowSet(
     std::shared_ptr<MergingWindowAssigner> windowAssigner,
-    std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>> mapping)
+    std::shared_ptr<SessionWindowMappingState> mapping)
     : windowAssigner_(std::move(windowAssigner)),
       mapping_(std::move(mapping)),
       cachedSortedWindows_(MAPPING_CACHE_SIZE) {}
 
-void MergingWindowSet::initializeCache(uint32_t key) {
+void MergingWindowSet::initializeCache(const RowContainerStateKey& key) {
   auto sortedWindowsItr = cachedSortedWindows_.find(key);
   if (sortedWindowsItr == cachedSortedWindows_.end()) {
     sortedWindows_ = std::set<TimeWindow>();
-    std::map<TimeWindow, TimeWindow> keyValues = mapping_->entries(key, 0);
+    std::map<TimeWindow, TimeWindow> keyValues =
+        mapping_->entries(key, VoidNamespace::instance());
     for (auto [windowKey, value] : keyValues) {
       sortedWindows_.insert(windowKey);
     }
@@ -43,7 +44,7 @@ void MergingWindowSet::initializeCache(uint32_t key) {
 }
 
 TimeWindow MergingWindowSet::addWindow(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow newWindow,
     std::shared_ptr<MergingFunction> mergeFunction) {
   MergeResultCollector collector;
@@ -69,14 +70,20 @@ TimeWindow MergingWindowSet::addWindow(
     // pick any of the merged windows and choose that window's state window
     // as the state window for the merge result. Every merged window comes
     // from the sorted window set, whose windows always have a mapping entry.
-    TimeWindow mergedStateNamespace =
-        mapping_->get(key, 0, *mergedWindows.begin()).value();
+    auto mergedStateNamespaceOpt =
+        mapping_->get(key, VoidNamespace::instance(), *mergedWindows.begin());
+    VELOX_CHECK(
+        mergedStateNamespaceOpt.has_value(),
+        "merge-state window lookup missed for window {}",
+        mergedWindows.begin()->toString());
+    TimeWindow mergedStateNamespace = *mergedStateNamespaceOpt;
 
     // figure out the state windows that we are merging
     std::vector<TimeWindow> mergedStateWindows;
     for (TimeWindow mergedWindow : mergedWindows) {
-      if (auto res = mapping_->get(key, 0, mergedWindow)) {
-        mapping_->remove(key, 0, mergedWindow);
+      if (auto res = mapping_->get(
+              key, VoidNamespace::instance(), mergedWindow)) {
+        mapping_->remove(key, VoidNamespace::instance(), mergedWindow);
         sortedWindows_.erase(mergedWindow);
         // don't put the target state window into the merged windows
         if (!(*res == mergedStateNamespace)) {
@@ -85,7 +92,8 @@ TimeWindow MergingWindowSet::addWindow(
       }
     }
 
-    mapping_->put(key, 0, mergeResult, mergedStateNamespace);
+    mapping_->put(
+        key, VoidNamespace::instance(), mergeResult, mergedStateNamespace);
     sortedWindows_.insert(mergeResult);
 
     // don't merge the new window itself, it never had any state associated with
@@ -98,32 +106,61 @@ TimeWindow MergingWindowSet::addWindow(
     }
   }
 
+  // The in-flight set of this key is a member copy of the cached snapshot;
+  // write it back so the next initializeCache of the same batch (another
+  // row of the same key) sees this row's windows. The mapping state carries
+  // the authoritative (actual -> state) pairs across batches.
+  cachedSortedWindows_.set(key, sortedWindows_);
+
   // the new window created a new, self-contained window without merging
   if (collector.mergeResults().empty() ||
       (resultWindow == newWindow && !isNewWindowMerged)) {
-    mapping_->put(key, 0, resultWindow, resultWindow);
+    mapping_->put(
+        key, VoidNamespace::instance(), resultWindow, resultWindow);
     sortedWindows_.insert(resultWindow);
+    cachedSortedWindows_.set(key, sortedWindows_);
   }
 
   return resultWindow;
 }
 
-TimeWindow MergingWindowSet::getStateWindow(uint32_t key, TimeWindow window) {
+TimeWindow MergingWindowSet::getStateWindow(
+    const RowContainerStateKey& key,
+    TimeWindow window) {
   // Callers pass windows that addWindow just mapped, so a miss here is a
   // bookkeeping bug, not an expected miss.
-  return mapping_->get(key, 0, window).value();
+  auto result = mapping_->get(key, VoidNamespace::instance(), window);
+  VELOX_CHECK(
+      result.has_value(),
+      "state window lookup missed for window {}",
+      window.toString());
+  return *result;
 }
 
-void MergingWindowSet::retireWindow(uint32_t key, TimeWindow window) {
-  mapping_->remove(key, 0, window);
+void MergingWindowSet::retireWindow(
+    const RowContainerStateKey& key,
+    TimeWindow window) {
+  mapping_->remove(key, VoidNamespace::instance(), window);
   VELOX_CHECK(
       sortedWindows_.erase(window),
       "Window " + window.toString() + " is not in in-flight window set.");
+  cachedSortedWindows_.set(key, sortedWindows_);
+}
+
+void MergingWindowSet::clearCache() {
+  cachedSortedWindows_.clear();
+  sortedWindows_.clear();
 }
 
 void MergingWindowSet::close() {
-  cachedSortedWindows_.clear();
-  sortedWindows_.clear();
+  clearCache();
+  // Dead path by design - do not wire it back on. Nothing reaches this method
+  // today: the operator tears windowFunction_ down via unique_ptr::reset
+  // (destructor only, no close() call). And if this were ever called, the
+  // clear() below would wipe the authoritative (actual -> state) window
+  // mapping of EVERY key at once - the per-window retireWindow() is the only
+  // sanctioned removal during the operator lifetime (CODE_REVIEW r1 item 4,
+  // annotation-only fix; removing the call is deferred to a later round).
   mapping_->clear();
 }
 
@@ -133,7 +170,7 @@ MergingFunction::MergingFunction(
     int64_t allowedLateness,
     bool isEventTime)
     : accMergingConsumer_(std::move(accMergingConsumer)),
-      ctx_(ctx),
+      ctx_(std::move(ctx)),
       allowedLateness_(allowedLateness),
       isEventTime_(isEventTime) {}
 
@@ -144,6 +181,10 @@ void MergingFunction::merge(
     std::vector<TimeWindow>& stateWindowsToBeMerged) {
   int64_t mergeResultMaxTs = TimeWindowUtil::toEpochMillsForTimer(
       mergeResult.maxTimestamp(), ctx_->getShiftTimeZone());
+  // The merge guard kept as a fail-loud VELOX_CHECK (user gate 1 decision
+  // #15): a merging window may not become earlier than the current
+  // watermark - same observable behavior as Flink's
+  // UnsupportedOperationException.
   VELOX_CHECK(
       !(isEventTime_ &&
         mergeResultMaxTs + allowedLateness_ <= ctx_->currentWatermark()),

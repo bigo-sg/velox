@@ -19,6 +19,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -103,6 +104,11 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return newRow;
   }
 
+  char* get(const K& key, const N& ns) override {
+    // Existence read only: a miss stays a miss (no row, no init callback).
+    return stateTable_->get(key, ns);
+  }
+
   exec::RowContainer* valueRows() override {
     return valueRows_.get();
   }
@@ -121,6 +127,29 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     // bookkeeping; the container clear then frees all accumulator rows.
     stateTable_->clear();
     valueRows_->clear();
+  }
+
+  void visitKeys(
+      const std::function<void(const K&)>& visitor) override {
+    // One key row may host several windows (one entry per namespace):
+    // visit each key once, in key-group order - the deterministic order
+    // the checkpoint plane streams in. The snapshot-head walk is the same
+    // synchronous read-only pattern snapshotKeyGroup uses.
+    std::unordered_set<const char*> seen;
+    for (uint32_t keyGroup = stateTable_->startKeyGroup();
+         keyGroup < stateTable_->startKeyGroup() + stateTable_->numKeyGroups();
+         ++keyGroup) {
+      auto& map = stateTable_->stateMapForKeyGroup(keyGroup);
+      auto snapshot = map.createSnapshot();
+      for (const auto& head : snapshot.heads) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          if (seen.insert(entry->key_.row()).second) {
+            visitor(entry->key_);
+          }
+        }
+      }
+      map.releaseSnapshot(snapshot.version);
+    }
   }
 
   // Synchronous snapshots only: entries are serialized inline while the

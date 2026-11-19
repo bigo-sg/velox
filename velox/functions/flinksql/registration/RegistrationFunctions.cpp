@@ -25,6 +25,10 @@ void registerFunctions(const std::string& prefix) {
   registerLogicalFunctions(prefix);
   registerStringFunctions(prefix);
   registerTemporalFunctions(prefix);
+  // Aggregate registrations under bare names overwrite the prestosql/
+  // sparksql baseline (see the Init.cc registration order in the FLINK
+  // preset); the P0 supply is SUM + COUNT.
+  aggregate::flinksql::registerAggregateFunctions();
 }
 
 } // namespace facebook::velox::functions::flinksql

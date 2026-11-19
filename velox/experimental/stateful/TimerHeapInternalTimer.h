@@ -15,24 +15,35 @@
  */
 #pragma once
 #include <cstdint>
+#include <memory>
 
 #include "velox/common/base/BitUtil.h"
 
 namespace facebook::velox::stateful {
 
 // This class is relevant to Flink InternalTimerServiceImpl.
+//
+// The key rides the heap of an IndexedPriorityQueue, whose percolation
+// assigns elements: state keys that are immutable views with const members
+// (RowContainerStateKey) delete copy assignment. Storing the key behind a
+// shared_ptr keeps copy assignment available for any K while preserving the
+// value semantics - key() returns const K&, and operator== compares the
+// pointees, not the pointers.
 template <typename K, typename N>
 class TimerHeapInternalTimer {
  public:
   TimerHeapInternalTimer(int64_t timestamp, const K& key, const N& ns)
-      : timestamp_(timestamp), key_(key), ns_(ns), keyGroupIndex_(0) {}
+      : timestamp_(timestamp),
+        key_(std::make_shared<const K>(key)),
+        ns_(ns),
+        keyGroupIndex_(0) {}
 
   int64_t timestamp() const {
     return timestamp_;
   }
 
   const K& key() const {
-    return key_;
+    return *key_;
   }
 
   const N& ns() const {
@@ -44,13 +55,17 @@ class TimerHeapInternalTimer {
   }
 
   bool operator==(const TimerHeapInternalTimer& other) const {
-    return timestamp_ == other.timestamp_ && key_ == other.key_ &&
+    return timestamp_ == other.timestamp_ && *key_ == *other.key_ &&
         ns_ == other.ns_;
   }
 
  private:
   int64_t timestamp_;
-  K key_;
+  // The key rides the heap behind a shared_ptr (see the class comment): the
+  // heap's percolation assigns elements, and state keys with const members
+  // delete copy assignment; the wrapper restores assignability for any K
+  // while key() keeps returning const K&.
+  std::shared_ptr<const K> key_;
   N ns_;
   int keyGroupIndex_;
 };
