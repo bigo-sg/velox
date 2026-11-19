@@ -429,6 +429,8 @@ folly::dynamic GroupWindowAggregationNode::serialize() const {
   obj["isEventTime"] = isEventTime_;
   obj["windowType"] = windowType_;
   obj["gap"] = gap_;
+  obj["size"] = size_;
+  obj["slide"] = slide_;
   obj["windowStartIndex"] = windowStartIndex_;
   obj["windowEndIndex"] = windowEndIndex_;
   obj["outputType"] = outputType_->serialize();
@@ -440,6 +442,8 @@ void GroupWindowAggregationNode::addDetails(std::stringstream& stream) const {
   stream << ", keyChannels: " << keyedStateSpec_->keyChannels().size();
   stream << ", windowType: " << windowType_;
   stream << ", gap: " << gap_;
+  stream << ", size: " << size_;
+  stream << ", slide: " << slide_;
   stream << ", output: " << outputType_->toString();
 }
 
@@ -465,6 +469,8 @@ core::PlanNodePtr GroupWindowAggregationNode::create(
       obj["isEventTime"].asBool(),
       obj["windowType"].asInt(),
       obj["gap"].asInt(),
+      obj["size"].asInt(),
+      obj["slide"].asInt(),
       obj["windowStartIndex"].asInt(),
       obj["windowEndIndex"].asInt(),
       outputType);

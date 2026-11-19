@@ -71,6 +71,53 @@ class SessionWindowAssigner : public MergingWindowAssigner {
   bool isEventTime_;
 };
 
+// Tumbling group window: [start, start + size) with start aligned to the
+// size grid — one window per event, never overlapping, never merging. The
+// Java template is Flink 1.19 TumblingWindowAssigner.assignWindows
+// (getWindowStartWithOffset(timestamp, offset, size); the legacy group
+// window planner exposes no user offset, so the offset is the fixed 0).
+class TumblingWindowAssigner : public GroupWindowAssigner<TimeWindow> {
+ public:
+  TumblingWindowAssigner(int64_t size, bool isEventTime)
+      : size_(size), isEventTime_(isEventTime) {}
+
+  std::vector<TimeWindow> assignWindows(
+      RowVectorPtr element,
+      int64_t timestamp) override;
+
+  bool isEventTime() override {
+    return isEventTime_;
+  }
+
+ private:
+  int64_t size_;
+  bool isEventTime_;
+};
+
+// Sliding group window (HOP): every event belongs to every size-grid window
+// [start, start + size) whose start lies in (timestamp - size, timestamp]
+// stepping by slide — windows overlap and never merge. The Java template is
+// Flink 1.19 SlidingWindowAssigner.assignWindows: lastStart aligned to the
+// slide grid, then backwards while start > timestamp - size.
+class SlidingWindowAssigner : public GroupWindowAssigner<TimeWindow> {
+ public:
+  SlidingWindowAssigner(int64_t size, int64_t slide, bool isEventTime)
+      : size_(size), slide_(slide), isEventTime_(isEventTime) {}
+
+  std::vector<TimeWindow> assignWindows(
+      RowVectorPtr element,
+      int64_t timestamp) override;
+
+  bool isEventTime() override {
+    return isEventTime_;
+  }
+
+ private:
+  int64_t size_;
+  int64_t slide_;
+  bool isEventTime_;
+};
+
 class MergeResultCollector {
  public:
   void merge(TimeWindow mergeResult, std::set<TimeWindow> toBeMerged);

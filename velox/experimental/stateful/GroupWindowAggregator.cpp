@@ -74,12 +74,28 @@ void GroupWindowAggregator::initialize() {
       static_cast<uint32_t>(node_->keyedStateSpec()->keyChannels().size()),
       op()->operatorCtx()->driverCtx()->queryConfig());
 
-  // Session window facilities: the assigner from the plan's window
-  // parameters, the AfterEndOfWindow trigger, and the operator-owned
-  // event-time timer service (the old stateHandler entry is NYI on the
-  // typed backends).
-  windowAssigner_ =
-      std::make_shared<SessionWindowAssigner>(node_->gap(), node_->isEventTime());
+  // Window facilities from the plan's window parameters: the assigner keyed
+  // by window type (SESSION merges, TUMBLE/HOP do not), the AfterEndOfWindow
+  // trigger, and the operator-owned event-time timer service (the old
+  // stateHandler entry is NYI on the typed backends).
+  switch (static_cast<WindowType>(node_->windowType())) {
+    case WindowType::SESSION:
+      windowAssigner_ =
+          std::make_shared<SessionWindowAssigner>(node_->gap(), node_->isEventTime());
+      break;
+    case WindowType::TUMBLE:
+      windowAssigner_ =
+          std::make_shared<TumblingWindowAssigner>(node_->size(), node_->isEventTime());
+      break;
+    case WindowType::HOP:
+      windowAssigner_ = std::make_shared<SlidingWindowAssigner>(
+          node_->size(), node_->slide(), node_->isEventTime());
+      break;
+    default:
+      VELOX_UNSUPPORTED(
+          "group window aggregation does not support windowType {}",
+          node_->windowType());
+  }
   trigger_ = std::make_shared<AfterEndOfWindow>();
   windowTimerService_ =
       std::make_shared<EventTimeTimerService<RowContainerStateKey, TimeWindow>>(
@@ -119,16 +135,34 @@ void GroupWindowAggregator::initializeStateBackend(
   // 3a. main handle: one accumulator row per (key, state window).
   state_ = keyedBackend_->getOrCreateAggregatingState<TimeWindow>(descriptor);
 
-  // 3b. session in-flight set: actual window -> state window per key, the
-  // fixed VoidNamespace (the map is the per-key window table).
-  MapStateDescriptor<TimeWindow, TimeWindow> mappingDescriptor(
-      "session-window-mapping",
-      std::make_shared<TimeWindowSerializer>(),
-      std::make_shared<TimeWindowSerializer>(),
-      memoryPool());
-  mappingState_ =
-      keyedBackend_->getOrCreateMapState<VoidNamespace, TimeWindow, TimeWindow>(
-          mappingDescriptor);
+  // The window process function keyed by window type. SESSION: the merging
+  // family over the in-flight mapping (3b below builds the handle and the
+  // function consumes it). TUMBLE / HOP: the general non-merging path — the
+  // window IS the state namespace, no mapping handle, no per-key cache.
+  if (static_cast<WindowType>(node_->windowType()) == WindowType::SESSION) {
+    // 3b. session in-flight set: actual window -> state window per key, the
+    // fixed VoidNamespace (the map is the per-key window table).
+    MapStateDescriptor<TimeWindow, TimeWindow> mappingDescriptor(
+        "session-window-mapping",
+        std::make_shared<TimeWindowSerializer>(),
+        std::make_shared<TimeWindowSerializer>(),
+        memoryPool());
+    mappingState_ =
+        keyedBackend_->getOrCreateMapState<VoidNamespace, TimeWindow, TimeWindow>(
+            mappingDescriptor);
+
+    // The session process function consumes the typed mapping handle; the
+    // context routes its state access to this operator's handles.
+    windowFunction_ = std::make_unique<MergingWindowProcessFunction>(
+        std::dynamic_pointer_cast<MergingWindowAssigner>(windowAssigner_),
+        windowAggsHandler_,
+        node_->allowedLateness(),
+        mappingState_);
+  } else {
+    windowFunction_ = std::make_unique<GeneralWindowProcessFunction>(
+        windowAssigner_, windowAggsHandler_, node_->allowedLateness());
+  }
+  windowFunction_->open(windowContext_);
 
   // 4. Wire setAllocator / setOffsets before the first rows() call (and
   // before restore, which also materializes rows).
@@ -148,11 +182,6 @@ void GroupWindowAggregator::initializeStateBackend(
 
   // The session process function consumes the typed mapping handle; the
   // context routes its state access to this operator's handles.
-  windowFunction_ = std::make_unique<MergingWindowProcessFunction>(
-      std::dynamic_pointer_cast<MergingWindowAssigner>(windowAssigner_),
-      windowAggsHandler_,
-      node_->allowedLateness(),
-      mappingState_);
   windowFunction_->open(windowContext_);
 
   // 5. Cascade downstream.

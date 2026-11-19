@@ -635,11 +635,11 @@ class GroupWindowAggsHandlerNode : public core::PlanNode {
 };
 
 /// Legacy group-window aggregation with Flink changelog semantics. The plan
-/// carries the session-window parameters; the window facilities (assigner,
-/// merging process function) are built by the operator from them. P0 is the
-/// SESSION window only: the constructor CHECK pins the plan constraints
-/// (TUMBLE/HOP arrive in a next phase; produceUpdates / allowedLateness /
-/// proctime are fail-loud planner rejections upstream of this node).
+/// carries the window parameters (SESSION gap; TUMBLE size; HOP size +
+/// slide); the window facilities (assigner, merging / general process
+/// function) are built by the operator from them. produceUpdates /
+/// allowedLateness / proctime remain fail-loud planner rejections upstream
+/// of this node.
 class GroupWindowAggregationNode : public core::PlanNode {
  public:
   GroupWindowAggregationNode(
@@ -653,6 +653,8 @@ class GroupWindowAggregationNode : public core::PlanNode {
       bool isEventTime,
       int windowType,
       int64_t gap,
+      int64_t size,
+      int64_t slide,
       int windowStartIndex,
       int windowEndIndex,
       const RowTypePtr& outputType)
@@ -666,6 +668,8 @@ class GroupWindowAggregationNode : public core::PlanNode {
         isEventTime_(isEventTime),
         windowType_(windowType),
         gap_(gap),
+        size_(size),
+        slide_(slide),
         windowStartIndex_(windowStartIndex),
         windowEndIndex_(windowEndIndex),
         outputType_(std::move(outputType)) {
@@ -673,11 +677,6 @@ class GroupWindowAggregationNode : public core::PlanNode {
         keyedStateSpec_, "GroupWindowAggregationNode requires a KeyedStateSpec");
     VELOX_CHECK_NOT_NULL(
         asRowType(inputType_), "GroupWindowAggregationNode input type must be ROW");
-    // TODO(L12): support TUMBLE/HOP windows in the next phase.
-    VELOX_CHECK_EQ(
-        windowType_,
-        static_cast<int>(WindowType::SESSION),
-        "GroupWindowAggregationNode supports the SESSION window only (TUMBLE/HOP are planned for the next phase)");
     VELOX_CHECK(
         isEventTime_, "GroupWindowAggregationNode requires an event-time attribute");
     // TODO(L2): produceUpdates / non-zero allowedLateness arrive with the
@@ -688,7 +687,29 @@ class GroupWindowAggregationNode : public core::PlanNode {
         allowedLateness_,
         0,
         "GroupWindowAggregationNode requires allowedLateness = 0");
-    VELOX_CHECK_GT(gap_, 0, "GroupWindowAggregationNode requires a positive session gap");
+    // Per-window-type parameter validation (the planner pins the rest).
+    switch (static_cast<WindowType>(windowType_)) {
+      case WindowType::SESSION:
+        VELOX_CHECK_GT(
+            gap_, 0, "GroupWindowAggregationNode requires a positive session gap");
+        break;
+      case WindowType::TUMBLE:
+        VELOX_CHECK_GT(
+            size_, 0, "GroupWindowAggregationNode requires a positive tumble size");
+        break;
+      case WindowType::HOP:
+        VELOX_CHECK_GT(
+            slide_, 0, "GroupWindowAggregationNode requires a positive hop slide");
+        VELOX_CHECK_GE(
+            size_,
+            slide_,
+            "GroupWindowAggregationNode requires hop size >= slide");
+        break;
+      default:
+        VELOX_UNSUPPORTED(
+            "GroupWindowAggregationNode does not support windowType {}",
+            windowType_);
+    }
   }
 
   const RowTypePtr& outputType() const override {
@@ -731,6 +752,14 @@ class GroupWindowAggregationNode : public core::PlanNode {
     return gap_;
   }
 
+  int64_t size() const {
+    return size_;
+  }
+
+  int64_t slide() const {
+    return slide_;
+  }
+
   int windowStartIndex() const {
     return windowStartIndex_;
   }
@@ -761,6 +790,8 @@ class GroupWindowAggregationNode : public core::PlanNode {
   bool isEventTime_;
   int windowType_;
   int64_t gap_;
+  int64_t size_;
+  int64_t slide_;
   int windowStartIndex_;
   int windowEndIndex_;
   const RowTypePtr outputType_;

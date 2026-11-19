@@ -16,6 +16,8 @@
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
 #include <cstdint>
 
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
+
 namespace facebook::velox::stateful {
 SessionWindowAssigner::SessionWindowAssigner(int64_t gap, bool isEventTime)
     : gap_(gap), isEventTime_(isEventTime) {}
@@ -75,5 +77,29 @@ void MergeResultCollector::merge(
     TimeWindow mergeResult,
     std::set<TimeWindow> toBeMerged) {
   mergeResults_.insert({mergeResult, toBeMerged});
+}
+
+std::vector<TimeWindow> TumblingWindowAssigner::assignWindows(
+    RowVectorPtr element,
+    int64_t timestamp) {
+  // Flink TumblingWindowAssigner.assignWindows: one aligned window, no
+  // offset (the legacy planner exposes none).
+  const int64_t start =
+      TimeWindowUtil::getWindowStartWithOffset(timestamp, 0, size_);
+  return {TimeWindow(start, start + size_)};
+}
+
+std::vector<TimeWindow> SlidingWindowAssigner::assignWindows(
+    RowVectorPtr element,
+    int64_t timestamp) {
+  // Flink SlidingWindowAssigner.assignWindows: lastStart aligned to the
+  // slide grid, then backwards while the window still covers the event.
+  std::vector<TimeWindow> windows;
+  const int64_t lastStart =
+      TimeWindowUtil::getWindowStartWithOffset(timestamp, 0, slide_);
+  for (int64_t start = lastStart; start > timestamp - size_; start -= slide_) {
+    windows.emplace_back(start, start + size_);
+  }
+  return windows;
 }
 } // namespace facebook::velox::stateful

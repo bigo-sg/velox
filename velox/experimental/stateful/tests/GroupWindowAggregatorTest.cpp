@@ -272,7 +272,10 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
       bool withSum = false,
       int64_t gap = 10,
       std::vector<Agg> aggregates = {},
-      int32_t countStarIndex = 0) {
+      int32_t countStarIndex = 0,
+      int windowType = static_cast<int>(WindowType::SESSION),
+      int64_t size = 0,
+      int64_t slide = 0) {
     if (aggregates.empty()) {
       aggregates = windowAggregates(withSum);
     }
@@ -297,8 +300,10 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
         /*produceUpdates=*/false,
         /*rowtimeIndex=*/1,
         /*isEventTime=*/true,
-        /*windowType=*/static_cast<int>(WindowType::SESSION),
+        /*windowType=*/windowType,
         gap,
+        /*size=*/size,
+        /*slide=*/slide,
         /*windowStartIndex=*/numKeys + numAggs,
         /*windowEndIndex=*/numKeys + numAggs + 1,
         intOutputType(withSum));
@@ -329,6 +334,8 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
         /*isEventTime=*/true,
         /*windowType=*/static_cast<int>(WindowType::SESSION),
         /*gap=*/10,
+        /*size=*/0,
+        /*slide=*/0,
         /*windowStartIndex=*/2,
         /*windowEndIndex=*/3,
         q11OutputType());
@@ -498,6 +505,68 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
   std::unique_ptr<exec::DriverCtx> driverCtx_;
   std::atomic<int32_t> operatorSerial_{0};
 };
+
+// TUMBLE: size-aligned non-overlapping windows. Two events inside one
+// 10 ms window accumulate together; a third event in the next window
+// keeps its own accumulator; each window fires exactly at its end - 1.
+TEST_F(GroupWindowAggregatorTest, tumbleFiresAlignedWindows) {
+  auto node = makeNode(
+      /*withSum=*/false,
+      /*gap=*/0,
+      {},
+      /*countStarIndex=*/0,
+      static_cast<int>(WindowType::TUMBLE),
+      /*size=*/10);
+  auto harness = makeHarness(node);
+  feed(*harness.aggregator, {1, 1, 1}, {100, 105, 111});
+  // [100, 110) fires at maxTimestamp 109.
+  harness.aggregator->processWatermark(109);
+  auto emitted = takeEmitted(harness.target);
+  ASSERT_EQ(emitted.size(), 1);
+  EXPECT_EQ(emitted[0].keys[0], 1);
+  EXPECT_EQ(emitted[0].count[0], 2);
+  EXPECT_EQ(emitted[0].windowStart, 100);
+  EXPECT_EQ(emitted[0].windowEnd, 110);
+  // [110, 120) fires at 119.
+  harness.aggregator->processWatermark(119);
+  emitted = takeEmitted(harness.target);
+  ASSERT_EQ(emitted.size(), 1);
+  EXPECT_EQ(emitted[0].count[0], 1);
+  EXPECT_EQ(emitted[0].windowStart, 110);
+  EXPECT_EQ(emitted[0].windowEnd, 120);
+  EXPECT_TRUE(takeEmitted(harness.target).empty());
+}
+
+// HOP: size 10 / slide 5 - one event at ts=100 lands in both [95, 105)
+// and [100, 110); each overlapping window keeps its own accumulator and
+// fires at its own end - 1, in watermark order.
+TEST_F(GroupWindowAggregatorTest, hopOverlappingWindows) {
+  auto node = makeNode(
+      /*withSum=*/false,
+      /*gap=*/0,
+      {},
+      /*countStarIndex=*/0,
+      static_cast<int>(WindowType::HOP),
+      /*size=*/10,
+      /*slide=*/5);
+  auto harness = makeHarness(node);
+  feed(*harness.aggregator, {1}, {100});
+  // [95, 105) fires at maxTimestamp 104.
+  harness.aggregator->processWatermark(104);
+  auto emitted = takeEmitted(harness.target);
+  ASSERT_EQ(emitted.size(), 1);
+  EXPECT_EQ(emitted[0].count[0], 1);
+  EXPECT_EQ(emitted[0].windowStart, 95);
+  EXPECT_EQ(emitted[0].windowEnd, 105);
+  // [100, 110) fires at 109.
+  harness.aggregator->processWatermark(109);
+  emitted = takeEmitted(harness.target);
+  ASSERT_EQ(emitted.size(), 1);
+  EXPECT_EQ(emitted[0].count[0], 1);
+  EXPECT_EQ(emitted[0].windowStart, 100);
+  EXPECT_EQ(emitted[0].windowEnd, 110);
+  EXPECT_TRUE(takeEmitted(harness.target).empty());
+}
 
 // Append-only input (filesystem source: no rowKind column), gap-adjacent
 // events merge into one window, the watermark fires it exactly at its end
@@ -1050,6 +1119,8 @@ TEST_F(GroupWindowAggregatorTest, emitRejectsInterleavedWindowColumns) {
       /*isEventTime=*/true,
       /*windowType=*/static_cast<int>(WindowType::SESSION),
       /*gap=*/10,
+      /*size=*/0,
+      /*slide=*/0,
       /*windowStartIndex=*/0,
       /*windowEndIndex=*/3,
       intOutputType(false));

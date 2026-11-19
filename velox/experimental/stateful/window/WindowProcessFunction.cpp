@@ -144,4 +144,40 @@ void DefaultAccMergingConsumer::accept(
     ctx_->clearPreviousState(w);
   }
 }
+
+std::vector<TimeWindow> GeneralWindowProcessFunction::assignStateNamespace(
+    const RowContainerStateKey& key,
+    int64_t timestamp) {
+  // Non-merging path: the assigned windows are both the actual and the
+  // state windows (the namespace IS the window). Late windows are dropped
+  // here, exactly like the merging path — the caller only sees kept
+  // windows, in the same order for both assignStateNamespace and
+  // assignActualWindows.
+  std::vector<TimeWindow> windows = windowAssigner_->assignWindows(nullptr, timestamp);
+  reuseWindows_.clear();
+  for (const auto& window : windows) {
+    if (!isWindowLate(window)) {
+      reuseWindows_.push_back(window);
+    }
+  }
+  return reuseWindows_;
+}
+
+void GeneralWindowProcessFunction::cleanWindowIfNeeded(
+    TimeWindow window,
+    int64_t currentTime) {
+  if (isCleanupTime(window, currentTime)) {
+    ctx_->clearTrigger(window);
+    ctx_->clearWindowState(window);
+  }
+}
+
+char* GeneralWindowProcessFunction::prepareAggregateAccumulatorForEmit(
+    const RowContainerStateKey& key,
+    TimeWindow window) {
+  // Existence read under the window's own namespace (the empty-window
+  // suppression — a miss stays a miss).
+  return ctx_->getWindowAccumulators(window);
+}
+
 } // namespace facebook::velox::stateful

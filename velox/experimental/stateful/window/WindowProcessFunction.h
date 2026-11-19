@@ -199,6 +199,44 @@ class MergingWindowProcessFunction : public WindowProcessFunction<TimeWindow> {
   std::vector<TimeWindow> reuseActualWindows_;
 };
 
+// This class is relevant to Flink GeneralWindowProcessFunction (the
+// InternalWindowProcessFunction branch for non-merging assigners): TUMBLE
+// and HOP windows. The state namespace IS the actual window — no in-flight
+// mapping, no merging, no per-key cache; every event accumulates into each
+// of its assigned windows under that window's own namespace, and window
+// cleanup drops the accumulator directly.
+class GeneralWindowProcessFunction : public WindowProcessFunction<TimeWindow> {
+ public:
+  GeneralWindowProcessFunction(
+      std::shared_ptr<GroupWindowAssigner<TimeWindow>> windowAssigner,
+      GroupWindowAggsHandler* windowAggregator,
+      int64_t allowedLateness)
+      : WindowProcessFunction<TimeWindow>(
+            std::move(windowAssigner),
+            windowAggregator,
+            allowedLateness) {}
+
+  std::vector<TimeWindow> assignStateNamespace(
+      const RowContainerStateKey& key,
+      int64_t timestamp) override;
+
+  std::vector<TimeWindow> assignActualWindows() override {
+    return reuseWindows_;
+  }
+
+  void cleanWindowIfNeeded(TimeWindow window, int64_t currentTime) override;
+
+  char* prepareAggregateAccumulatorForEmit(
+      const RowContainerStateKey& key,
+      TimeWindow window) override;
+
+ private:
+  using WindowProcessFunction<TimeWindow>::windowAssigner_;
+  using WindowProcessFunction<TimeWindow>::windowAggregator_;
+  using WindowProcessFunction<TimeWindow>::ctx_;
+  std::vector<TimeWindow> reuseWindows_;
+};
+
 // This class is relevant to Flink MergingWindowProcessFunction's
 // DefaultAccMergingConsumer: merges the accumulator rows of the merged state
 // windows into the merge result's state window.

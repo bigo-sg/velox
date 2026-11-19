@@ -266,7 +266,7 @@ class GroupWindowAggregator : public StatefulOperator,
   // Session window facilities, built in initialize() / wired in
   // initializeStateBackend().
   std::shared_ptr<GroupWindowAssigner<TimeWindow>> windowAssigner_;
-  std::unique_ptr<MergingWindowProcessFunction> windowFunction_;
+  std::unique_ptr<WindowProcessFunction<TimeWindow>> windowFunction_;
   std::shared_ptr<WindowTrigger> trigger_;
   std::shared_ptr<WindowTriggerContext> triggerContext_;
   std::shared_ptr<WindowContext> windowContext_;
