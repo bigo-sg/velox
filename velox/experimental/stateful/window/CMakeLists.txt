@@ -15,7 +15,6 @@
 velox_add_library(
   velox_stateful_window
   OBJECT
-  WindowBuffer.cpp
   WindowPartitionFunction.cpp
   SliceAssigner.cpp
   GroupWindowAssigner.cpp

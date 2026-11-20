@@ -132,8 +132,15 @@ class RowContainerStateKey : public StateKey {
 
 inline bool RowContainerStateKey::equals(const StateKey& other) const {
   auto* otherKey = dynamic_cast<const RowContainerStateKey*>(&other);
-  return otherKey != nullptr && otherKey->schema_ == schema_ &&
-      schema_->rowsEqual(row_, otherKey->row_);
+  if (otherKey == nullptr || otherKey->schema_ != schema_) {
+    return false;
+  }
+  // Pointer fast path: the key table deduplicates keys by content, so
+  // one row pointer corresponds to exactly one key value - two keys
+  // sharing a row pointer are the same key without dereferencing the
+  // rows (the per-probe content comparison costs two row reads plus
+  // per-column packing arithmetic).
+  return otherKey->row_ == row_ || schema_->rowsEqual(row_, otherKey->row_);
 }
 
 inline bool RowContainerKeySchema::rowsEqual(const char* lhs, const char* rhs)

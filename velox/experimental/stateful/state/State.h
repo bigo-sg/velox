@@ -112,6 +112,18 @@ class AggregatingState : public State {
   /// rows().
   virtual char* row(const K& key, const N& ns) = 0;
 
+  /// Read-only single-key lookup: returns nullptr on a miss without
+  /// materializing a row (unlike row()/rows(), which create-and-initialize
+  /// on miss). Fire/trigger paths must use this so an already-cleared
+  /// window is not resurrected as an empty accumulator.
+  virtual char* get(const K& key, const N& ns) = 0;
+
+  /// Visits every live (key, namespace) entry (read-only). The restore
+  /// path of operators that keep a derived in-memory index (e.g. window
+  /// fire indexes) rebuilds it from the restored entries through this.
+  virtual void forEachEntry(
+      const std::function<void(const K&, const N&)>& fn) = 0;
+
   /// Drops the entry of (key, ns) and returns its accumulator row to the
   /// value container; a miss is a no-op.
   virtual void remove(const K& key, const N& ns) = 0;
