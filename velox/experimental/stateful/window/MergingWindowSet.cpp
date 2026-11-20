@@ -81,8 +81,8 @@ TimeWindow MergingWindowSet::addWindow(
     // figure out the state windows that we are merging
     std::vector<TimeWindow> mergedStateWindows;
     for (TimeWindow mergedWindow : mergedWindows) {
-      if (auto res = mapping_->get(
-              key, VoidNamespace::instance(), mergedWindow)) {
+      if (auto res =
+              mapping_->get(key, VoidNamespace::instance(), mergedWindow)) {
         mapping_->remove(key, VoidNamespace::instance(), mergedWindow);
         sortedWindows_.erase(mergedWindow);
         // don't put the target state window into the merged windows
@@ -115,8 +115,7 @@ TimeWindow MergingWindowSet::addWindow(
   // the new window created a new, self-contained window without merging
   if (collector.mergeResults().empty() ||
       (resultWindow == newWindow && !isNewWindowMerged)) {
-    mapping_->put(
-        key, VoidNamespace::instance(), resultWindow, resultWindow);
+    mapping_->put(key, VoidNamespace::instance(), resultWindow, resultWindow);
     sortedWindows_.insert(resultWindow);
     cachedSortedWindows_.set(key, sortedWindows_);
   }

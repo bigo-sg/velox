@@ -25,14 +25,14 @@
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/Triggerable.h"
+#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
+#include "velox/experimental/stateful/state/StateBackend.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
 #include "velox/experimental/stateful/window/GroupWindowAssigner.h"
+#include "velox/experimental/stateful/window/Window.h"
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
 #include "velox/experimental/stateful/window/WindowTrigger.h"
-#include "velox/experimental/stateful/window/Window.h"
-#include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
-#include "velox/experimental/stateful/state/StateBackend.h"
 
 namespace facebook::velox::stateful {
 
@@ -48,8 +48,7 @@ namespace facebook::velox::stateful {
 template <>
 struct HeapTimerHasher<RowContainerStateKey, TimeWindow> {
   size_t operator()(
-      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& a)
-      const {
+      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& a) const {
     return bits::hashMix(a.timestamp(), a.key().hash());
   }
 };
@@ -58,8 +57,7 @@ template <>
 struct HeapTimerEquals<RowContainerStateKey, TimeWindow> {
   bool operator()(
       const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& a,
-      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& b)
-      const {
+      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& b) const {
     return a.timestamp() == b.timestamp() && a.key().equals(b.key()) &&
         a.ns() == b.ns();
   }
@@ -78,8 +76,9 @@ struct HeapTimerEquals<RowContainerStateKey, TimeWindow> {
 /// through the non-materializing existence read (user gate 1 decision #11,
 /// scheme A); merging windows never let the merge result slip past the
 /// watermark (the retained VELOX_CHECK guard, decision #15).
-class GroupWindowAggregator : public StatefulOperator,
-                              public Triggerable<RowContainerStateKey, TimeWindow> {
+class GroupWindowAggregator
+    : public StatefulOperator,
+      public Triggerable<RowContainerStateKey, TimeWindow> {
  public:
   GroupWindowAggregator(
       std::unique_ptr<GroupWindowAggsHandler> windowAggsHandler,
@@ -232,21 +231,22 @@ class GroupWindowAggregator : public StatefulOperator,
     GroupWindowAggregator* owner_;
   };
 
-  void registerCleanupTimer(
-      const RowContainerStateKey& key,
-      TimeWindow window);
+  void registerCleanupTimer(const RowContainerStateKey& key, TimeWindow window);
 
   /// A2 restore-rebuild: rebuilds every live window's fire / cleanup timer
   /// pair from the restored state. Called when the restore dispatch is
   /// complete, before the first input or watermark reaches the operator
   /// (the handles are registered first, then restore, then this - both
   /// handles are in place). The timer queue rides outside the typed
-  /// snapshot plane (C3); the mapping and the accumulators are restored,
-  /// and the timers are derived back from them - fire = the actual
-  /// window's end - 1 (the AfterEndOfWindow trigger time), cleanup at the
-  /// same point at allowedLateness = 0, deduped into one queue entry. The
-  /// last watermark starts from its initial value, so rebuilt timers due
-  /// past it fire as the watermark advances, with or without new input.
+  /// snapshot plane (C3); the timers are derived back from the restored
+  /// state - fire = the window's end - 1 (the AfterEndOfWindow trigger
+  /// time), cleanup at the same point at allowedLateness = 0, deduped into
+  /// one queue entry. SESSION reads the live windows from the session
+  /// mapping (the actual -> state window pairs); TUMBLE / HOP read them
+  /// from the aggregating state's (key, window) entries, where the window
+  /// IS the namespace. The last watermark starts from its initial value,
+  /// so rebuilt timers due past it fire as the watermark advances, with or
+  /// without new input.
   void rebuildTimersFromState();
 
   /// Emits the window's result row: key columns from the key row container,
@@ -255,12 +255,9 @@ class GroupWindowAggregator : public StatefulOperator,
   /// the window's maxTimestamp; the proctime attribute null, the Flink
   /// semantics). Suppressed when the window has no state entry (the D1
   /// existence read).
-  void emitWindowResult(
-      const RowContainerStateKey& key,
-      TimeWindow window);
+  void emitWindowResult(const RowContainerStateKey& key, TimeWindow window);
 
   const std::shared_ptr<const GroupWindowAggregationNode> node_;
-  const std::shared_ptr<const GroupWindowAggsHandlerNode> handler_;
   GroupWindowAggsHandler* windowAggsHandler_;
 
   // Session window facilities, built in initialize() / wired in
@@ -281,17 +278,24 @@ class GroupWindowAggregator : public StatefulOperator,
 
   // The last watermark this operator has processed (C5: the isWindowLate
   // and trigger decisions read it, never the timer service's view).
-  int64_t lastWatermark_ = 0;
+  // INT64_MIN is Flink InternalTimerServiceImpl's initial watermark: no
+  // window is late before the first watermark arrives.
+  int64_t lastWatermark_ = INT64_MIN;
   // True while this operator processes a popped timer inside
   // EventTimeTimerService::advanceWatermark: the service serializes queue
   // access with the Triggerable mutex and holds it across the onEventTime
-  // callback, so a timer deletion that re-enters the queue would deadlock
-  // the plain mutex. The cleanup chain of the fired window (clearTrigger ->
-  // deleteEventTimeTimer) targets the very registration the pop already
-  // removed from the deduplicated queue, so the re-entering delete is a
-  // no-op and skips the queue call (see WindowTriggerContext::
+  // callback, so a queue call that re-enters during the callback would
+  // deadlock the plain mutex. The cleanup chain of the fired window
+  // (clearTrigger -> deleteEventTimeTimer) targets exactly the popped
+  // registration - firedTimer_ carries it, and the matching delete is the
+  // no-op skip; any other re-entrant queue mutation fails loud (see
+  // WindowTriggerContext::registerEventTimeTimer /
   // deleteEventTimeTimer).
   bool inTimerCallback_ = false;
+  // The registration whose onEventTime callback is running (see
+  // inTimerCallback_); null outside the callback.
+  std::shared_ptr<TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>>
+      firedTimer_;
   // The key whose row / windows the process function operates on (engaged
   // before the first assignStateNamespace / onEventTime of every row and
   // timer).

@@ -81,9 +81,8 @@ class TumblingWindowAssigner : public GroupWindowAssigner<TimeWindow> {
   TumblingWindowAssigner(int64_t size, bool isEventTime)
       : size_(size), isEventTime_(isEventTime) {}
 
-  std::vector<TimeWindow> assignWindows(
-      RowVectorPtr element,
-      int64_t timestamp) override;
+  std::vector<TimeWindow> assignWindows(RowVectorPtr element, int64_t timestamp)
+      override;
 
   bool isEventTime() override {
     return isEventTime_;
@@ -104,9 +103,8 @@ class SlidingWindowAssigner : public GroupWindowAssigner<TimeWindow> {
   SlidingWindowAssigner(int64_t size, int64_t slide, bool isEventTime)
       : size_(size), slide_(slide), isEventTime_(isEventTime) {}
 
-  std::vector<TimeWindow> assignWindows(
-      RowVectorPtr element,
-      int64_t timestamp) override;
+  std::vector<TimeWindow> assignWindows(RowVectorPtr element, int64_t timestamp)
+      override;
 
   bool isEventTime() override {
     return isEventTime_;

@@ -58,8 +58,7 @@ GroupWindowAggregator::GroupWindowAggregator(
     std::vector<StatefulOperatorPtr> targets,
     const std::shared_ptr<const GroupWindowAggregationNode>& node)
     : StatefulOperator(std::move(windowAggsHandler), std::move(targets)),
-      node_(node),
-      handler_(node->aggregation()) {
+      node_(node) {
   windowAggsHandler_ = dynamic_cast<GroupWindowAggsHandler*>(op().get());
   VELOX_CHECK_NOT_NULL(
       windowAggsHandler_,
@@ -80,12 +79,12 @@ void GroupWindowAggregator::initialize() {
   // stateHandler entry is NYI on the typed backends).
   switch (static_cast<WindowType>(node_->windowType())) {
     case WindowType::SESSION:
-      windowAssigner_ =
-          std::make_shared<SessionWindowAssigner>(node_->gap(), node_->isEventTime());
+      windowAssigner_ = std::make_shared<SessionWindowAssigner>(
+          node_->gap(), node_->isEventTime());
       break;
     case WindowType::TUMBLE:
-      windowAssigner_ =
-          std::make_shared<TumblingWindowAssigner>(node_->size(), node_->isEventTime());
+      windowAssigner_ = std::make_shared<TumblingWindowAssigner>(
+          node_->size(), node_->isEventTime());
       break;
     case WindowType::HOP:
       windowAssigner_ = std::make_shared<SlidingWindowAssigner>(
@@ -107,8 +106,7 @@ void GroupWindowAggregator::initialize() {
   StatefulOperator::initialize();
 }
 
-void GroupWindowAggregator::initializeStateBackend(
-    StateBackend* stateBackend) {
+void GroupWindowAggregator::initializeStateBackend(StateBackend* stateBackend) {
   // Five steps per the stateful-operator contract.
   const auto& spec = *node_->keyedStateSpec();
   keyedBackend_ = createKeyedStateBackend<RowContainerStateKey>(
@@ -148,8 +146,9 @@ void GroupWindowAggregator::initializeStateBackend(
         std::make_shared<TimeWindowSerializer>(),
         memoryPool());
     mappingState_ =
-        keyedBackend_->getOrCreateMapState<VoidNamespace, TimeWindow, TimeWindow>(
-            mappingDescriptor);
+        keyedBackend_
+            ->getOrCreateMapState<VoidNamespace, TimeWindow, TimeWindow>(
+                mappingDescriptor);
 
     // The session process function consumes the typed mapping handle; the
     // context routes its state access to this operator's handles.
@@ -180,15 +179,12 @@ void GroupWindowAggregator::initializeStateBackend(
         valueRows->rowSizeOffset());
   }
 
-  // The session process function consumes the typed mapping handle; the
-  // context routes its state access to this operator's handles.
-  windowFunction_->open(windowContext_);
-
   // 5. Cascade downstream.
   StatefulOperator::initializeStateBackend(stateBackend);
 }
 
-void GroupWindowAggregator::checkInputRowKinds(const StreamRecord& record) const {
+void GroupWindowAggregator::checkInputRowKinds(
+    const StreamRecord& record) const {
   const auto& kinds = record.rowKind();
   if (kinds == nullptr) {
     return; // appendOnly: all INSERT.
@@ -263,7 +259,8 @@ void GroupWindowAggregator::addInput(StreamElementPtr input) {
   std::vector<std::vector<VectorPtr>> aggregateArgs;
   aggregateArgs.reserve(windowAggsHandler_->aggregates().size());
   for (const auto& aggregate : windowAggsHandler_->aggregates()) {
-    aggregateArgs.push_back(windowAggsHandler_->aggregateArgs(aggregate, inputVector));
+    aggregateArgs.push_back(
+        windowAggsHandler_->aggregateArgs(aggregate, inputVector));
   }
 
   for (vector_size_t row = 0; row < numRows; ++row) {
@@ -341,12 +338,14 @@ void GroupWindowAggregator::onEventTime(
   const int64_t time = timer->timestamp();
   // The callback runs under the timer service's queue lock; the cleanup
   // chain below re-enters the queue only through a delete of the popped
-  // registration itself - a no-op the flag turns into a plain skip (see
-  // the member comment).
+  // registration itself - a no-op the fired-timer match turns into a plain
+  // skip, while any other re-entrant queue mutation fails loud instead of
+  // deadlocking the plain mutex (see the member comment).
   inTimerCallback_ = true;
+  firedTimer_ = std::move(timer);
   if (triggerContext_->onEventTime(window, time)) {
     // Fire the window and emit its result (empty windows suppressed).
-    emitWindowResult(timer->key(), window);
+    emitWindowResult(firedTimer_->key(), window);
   }
   if (windowAssigner_->isEventTime()) {
     // Clean exactly at the cleanup time (the fire and cleanup timers are
@@ -354,6 +353,7 @@ void GroupWindowAggregator::onEventTime(
     // dedup into one pop).
     windowFunction_->cleanWindowIfNeeded(window, time);
   }
+  firedTimer_ = nullptr;
   inTimerCallback_ = false;
 }
 
@@ -362,7 +362,9 @@ void GroupWindowAggregator::registerCleanupTimer(
     TimeWindow window) {
   int64_t cleanupTime = TimeWindowUtil::toEpochMillsForTimer(
       TimeWindowUtil::cleanupTime(
-          window.maxTimestamp(), node_->allowedLateness(), node_->isEventTime()),
+          window.maxTimestamp(),
+          node_->allowedLateness(),
+          node_->isEventTime()),
       0);
   if (cleanupTime == INT64_MAX) {
     // Do not set a GC timer for "end of time".
@@ -408,8 +410,8 @@ void GroupWindowAggregator::emitWindowResult(
 
   // D1 scheme A: the existence read - an empty window (no state entry)
   // never materializes state and emits nothing.
-  char* stateRow = windowFunction_->prepareAggregateAccumulatorForEmit(
-      key, window);
+  char* stateRow =
+      windowFunction_->prepareAggregateAccumulatorForEmit(key, window);
   if (stateRow == nullptr) {
     return;
   }
@@ -429,8 +431,7 @@ void GroupWindowAggregator::emitWindowResult(
       types.push_back(outputType->childAt(k));
       VectorPtr keyColumn =
           BaseVector::create(outputType->childAt(k), 1, memoryPool());
-      keySelector_->keyRowContainer()->extractColumn(
-          &keyRow, 1, k, keyColumn);
+      keySelector_->keyRowContainer()->extractColumn(&keyRow, 1, k, keyColumn);
       children.push_back(std::move(keyColumn));
     }
   }
@@ -492,17 +493,20 @@ void GroupWindowAggregator::emitWindowResult(
       1,
       std::move(children));
   // P0 default EMIT: every emission is an INSERT.
-  pushOutput(std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
+  pushOutput(
+      std::make_shared<StreamRecord>(getPlanNodeId(), std::move(output)));
 }
 
 std::vector<std::string> GroupWindowAggregator::snapshotKeyedState() {
-  VELOX_CHECK_NOT_NULL(keyedBackend_, "the keyed state backend is not initialized");
+  VELOX_CHECK_NOT_NULL(
+      keyedBackend_, "the keyed state backend is not initialized");
   return {keyedBackend_->snapshot()};
 }
 
 void GroupWindowAggregator::restoreKeyedState(
     const std::vector<std::string>& records) {
-  VELOX_CHECK_NOT_NULL(keyedBackend_, "the keyed state backend is not initialized");
+  VELOX_CHECK_NOT_NULL(
+      keyedBackend_, "the keyed state backend is not initialized");
   for (const auto& record : records) {
     keyedBackend_->restore(record);
   }
@@ -512,27 +516,47 @@ void GroupWindowAggregator::restoreKeyedState(
 }
 
 void GroupWindowAggregator::rebuildTimersFromState() {
-  // The key set comes from the aggregating state: a key with a live session
-  // always carries an accumulator entry, because addInput, the merge
-  // consumer and cleanWindowIfNeeded maintain the mapping and the
-  // accumulators together. The windows come from the session mapping (the
-  // actual -> state window pairs), the same handle the runtime reads -
-  // every live actual window gets its fire / cleanup pair back, whether or
-  // not any new input follows the restore.
-  state_->visitKeys([this](const RowContainerStateKey& key) {
-    const auto mapping =
-        mappingState_->entries(key, VoidNamespace::instance());
-    for (const auto& entry : mapping) {
-      TimeWindow actualWindow = entry.first;
-      // Fire = the actual window's trigger time (end - 1), the same value
-      // AfterEndOfWindow::onElement registers; cleanup = the same point at
-      // allowedLateness = 0, so the queue dedupes the pair into one entry.
-      const int64_t fireTime = TimeWindowUtil::toEpochMillsForTimer(
-          actualWindow.maxTimestamp(), triggerContext_->getShiftTimeZone());
-      triggerContext_->registerEventTimeTimer(key, actualWindow, fireTime);
-      registerCleanupTimer(key, actualWindow);
-    }
-  });
+  // The timer queue rides outside the typed snapshot plane (C3); it is
+  // derived back from the restored state before the first input or
+  // watermark arrives. Fire = the window's end - 1 (the AfterEndOfWindow
+  // trigger time), cleanup at the same point at allowedLateness = 0 - one
+  // deduped queue entry per live window. The last watermark starts from
+  // its initial value, so rebuilt timers due past it fire as the watermark
+  // advances, with or without new input.
+  if (static_cast<WindowType>(node_->windowType()) == WindowType::SESSION) {
+    // Session: the key set comes from the aggregating state (a key with a
+    // live session always carries an accumulator entry, because addInput,
+    // the merge consumer and cleanWindowIfNeeded maintain the mapping and
+    // the accumulators together); the windows come from the session
+    // mapping (the actual -> state window pairs), the same handle the
+    // runtime reads - every live actual window gets its fire / cleanup
+    // pair back.
+    state_->visitKeys([this](const RowContainerStateKey& key) {
+      const auto mapping =
+          mappingState_->entries(key, VoidNamespace::instance());
+      for (const auto& entry : mapping) {
+        TimeWindow actualWindow = entry.first;
+        const int64_t fireTime = TimeWindowUtil::toEpochMillsForTimer(
+            actualWindow.maxTimestamp(), triggerContext_->getShiftTimeZone());
+        triggerContext_->registerEventTimeTimer(key, actualWindow, fireTime);
+        registerCleanupTimer(key, actualWindow);
+      }
+    });
+  } else {
+    // TUMBLE / HOP: the window IS the state namespace (the general
+    // non-merging path has no mapping state) - every live (key, window)
+    // entry of the aggregating state gets its fire / cleanup pair back.
+    state_->visitEntries(
+        [this](const RowContainerStateKey& key, const TimeWindow& window) {
+          // Window::maxTimestamp is non-const; the namespace view is copied
+          // (16 bytes) for the timer math.
+          TimeWindow w = window;
+          const int64_t fireTime = TimeWindowUtil::toEpochMillsForTimer(
+              w.maxTimestamp(), triggerContext_->getShiftTimeZone());
+          triggerContext_->registerEventTimeTimer(key, w, fireTime);
+          registerCleanupTimer(key, w);
+        });
+  }
 }
 
 void GroupWindowAggregator::close() {
@@ -612,6 +636,11 @@ void GroupWindowAggregator::WindowTriggerContext::registerEventTimeTimer(
     const RowContainerStateKey& key,
     TimeWindow window,
     int64_t time) {
+  // Re-entrant registration during the onEventTime callback would deadlock
+  // the queue lock the callback runs under (see the member comment).
+  VELOX_CHECK(
+      !owner_->inTimerCallback_,
+      "registering a timer inside onEventTime would deadlock the timer queue");
   owner_->windowTimerService_->registerTimer(key, window, time);
 }
 
@@ -628,10 +657,23 @@ void GroupWindowAggregator::WindowTriggerContext::deleteEventTimeTimer(
     TimeWindow window,
     int64_t time) {
   if (owner_->inTimerCallback_) {
-    // Re-entrant delete from the fired window's own cleanup chain: the
-    // pop already removed this registration from the deduplicated queue,
-    // and the service holds its queue lock across the onEventTime
-    // callback - a queue call here would deadlock the plain mutex.
+    // The callback runs under the timer service's queue lock, so a queue
+    // call here would deadlock the plain mutex. The fired window's own
+    // cleanup chain (clearTrigger -> deleteEventTimeTimer) targets exactly
+    // the registration the pop already removed from the deduplicated
+    // queue - the match is that no-op skip; any other re-entrant delete
+    // is a bug and fails loud instead of silently dropping a live timer.
+    VELOX_CHECK_NOT_NULL(
+        owner_->firedTimer_,
+        "the fired timer is not tracked inside onEventTime");
+    const auto& fired = *owner_->firedTimer_;
+    VELOX_CHECK(
+        fired.key().equals(key) && fired.ns() == window &&
+            fired.timestamp() == time,
+        "deleting a timer other than the fired one inside onEventTime would "
+        "deadlock the timer queue: ({}, {})",
+        window.toString(),
+        time);
     return;
   }
   owner_->windowTimerService_->deleteTimer(key, window, time);
@@ -661,8 +703,7 @@ void GroupWindowAggregator::WindowTriggerContext::mergePartitionedState(
 
 // --- WindowContext ---
 
-const RowContainerStateKey&
-GroupWindowAggregator::WindowContext::currentKey() {
+const RowContainerStateKey& GroupWindowAggregator::WindowContext::currentKey() {
   VELOX_CHECK(
       owner_->currentKey_.has_value(),
       "the window context is used before a key is set");
@@ -723,9 +764,11 @@ void GroupWindowAggregator::WindowContext::deleteCleanupTimer(
     return;
   }
   if (owner_->windowAssigner_->isEventTime()) {
-    owner_->triggerContext_->deleteEventTimeTimer(currentKey(), window, cleanupTime);
+    owner_->triggerContext_->deleteEventTimeTimer(
+        currentKey(), window, cleanupTime);
   } else {
-    owner_->triggerContext_->deleteProcessingTimeTimer(currentKey(), window, cleanupTime);
+    owner_->triggerContext_->deleteProcessingTimeTimer(
+        currentKey(), window, cleanupTime);
   }
 }
 

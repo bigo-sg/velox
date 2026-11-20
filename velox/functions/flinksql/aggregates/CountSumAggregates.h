@@ -130,8 +130,7 @@ class CountAggregate final : public exec::Aggregate {
     }
     rows.applyToSelected([&](vector_size_t i) {
       if (!decoded.isNullAt(i)) {
-        *exec::Aggregate::value<int64_t>(group) +=
-            decoded.valueAt<int64_t>(i);
+        *exec::Aggregate::value<int64_t>(group) += decoded.valueAt<int64_t>(i);
       }
     });
   }

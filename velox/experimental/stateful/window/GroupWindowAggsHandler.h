@@ -119,8 +119,5 @@ class GroupWindowAggsHandler : public exec::Operator {
   // exec::Operator keeps only the plan node id, and the aggregate details
   // (the plan-declared aggregate calls) hang off the node.
   std::shared_ptr<const GroupWindowAggsHandlerNode> handlerNode_;
-  // Resolved at initializeWindowAggregates.
-  RowTypePtr inputType_;
-  uint32_t numKeys_ = 0;
 };
 } // namespace facebook::velox::stateful

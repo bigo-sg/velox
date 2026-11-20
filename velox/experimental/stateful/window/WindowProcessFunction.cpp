@@ -153,7 +153,8 @@ std::vector<TimeWindow> GeneralWindowProcessFunction::assignStateNamespace(
   // here, exactly like the merging path — the caller only sees kept
   // windows, in the same order for both assignStateNamespace and
   // assignActualWindows.
-  std::vector<TimeWindow> windows = windowAssigner_->assignWindows(nullptr, timestamp);
+  std::vector<TimeWindow> windows =
+      windowAssigner_->assignWindows(nullptr, timestamp);
   reuseWindows_.clear();
   for (const auto& window : windows) {
     if (!isWindowLate(window)) {

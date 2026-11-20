@@ -39,8 +39,7 @@ void registerSum(
     bool withCompanionFunctions,
     bool overwrite) {
   std::vector<std::shared_ptr<exec::AggregateFunctionSignature>> signatures;
-  for (const auto* inputType :
-       {"tinyint", "smallint", "integer", "bigint"}) {
+  for (const auto* inputType : {"tinyint", "smallint", "integer", "bigint"}) {
     signatures.push_back(AggregateFunctionSignatureBuilder()
                              .returnType(inputType)
                              .intermediateType("bigint")

@@ -129,8 +129,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     valueRows_->clear();
   }
 
-  void visitKeys(
-      const std::function<void(const K&)>& visitor) override {
+  void visitKeys(const std::function<void(const K&)>& visitor) override {
     // One key row may host several windows (one entry per namespace):
     // visit each key once, in key-group order - the deterministic order
     // the checkpoint plane streams in. The snapshot-head walk is the same
@@ -146,6 +145,25 @@ class HeapAggregatingState : public AggregatingState<K, N> {
           if (seen.insert(entry->key_.row()).second) {
             visitor(entry->key_);
           }
+        }
+      }
+      map.releaseSnapshot(snapshot.version);
+    }
+  }
+
+  void visitEntries(
+      const std::function<void(const K&, const N&)>& visitor) override {
+    // Every (key, namespace) entry once, in key-group order - the same
+    // snapshot-head walk as visitKeys without the key dedup (each entry is
+    // a distinct namespace of some key).
+    for (uint32_t keyGroup = stateTable_->startKeyGroup();
+         keyGroup < stateTable_->startKeyGroup() + stateTable_->numKeyGroups();
+         ++keyGroup) {
+      auto& map = stateTable_->stateMapForKeyGroup(keyGroup);
+      auto snapshot = map.createSnapshot();
+      for (const auto& head : snapshot.heads) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          visitor(entry->key_, entry->namespace_);
         }
       }
       map.releaseSnapshot(snapshot.version);

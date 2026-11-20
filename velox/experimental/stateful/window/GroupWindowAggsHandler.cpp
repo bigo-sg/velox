@@ -19,10 +19,10 @@
 #include <utility>
 
 #include "velox/common/memory/ByteStream.h"
-#include "velox/experimental/stateful/GroupWindowAggregator.h"
-#include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/RowContainer.h"
+#include "velox/experimental/stateful/GroupWindowAggregator.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/type/Type.h"
 #include "velox/vector/BaseVector.h"
 #include "velox/vector/FlatVector.h"
@@ -127,9 +127,8 @@ GroupWindowAggsHandler::GroupWindowAggsHandler(
           operatorId,
           groupAggNode->id(),
           "GroupWindowAggsHandler"),
-      handlerNode_(
-          std::dynamic_pointer_cast<const GroupWindowAggsHandlerNode>(
-              groupAggNode)) {
+      handlerNode_(std::dynamic_pointer_cast<const GroupWindowAggsHandlerNode>(
+          groupAggNode)) {
   VELOX_CHECK_NOT_NULL(
       handlerNode_,
       "GroupWindowAggsHandler must be constructed from a GroupWindowAggsHandlerNode");
@@ -152,8 +151,6 @@ void GroupWindowAggsHandler::initializeWindowAggregates(
     const RowTypePtr& inputType,
     uint32_t numKeys,
     const core::QueryConfig& queryConfig) {
-  inputType_ = inputType;
-  numKeys_ = numKeys;
   VELOX_CHECK_NOT_NULL(
       handlerNode_,
       "GroupWindowAggsHandler has no plan node to resolve aggregates from");

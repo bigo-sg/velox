@@ -130,6 +130,16 @@ class AggregatingState : public State {
     VELOX_NYI("This state does not support key enumeration");
   }
 
+  /// Visits every (key, namespace) entry currently in the state, in
+  /// key-group order. Restore paths whose namespace IS the derived
+  /// structure (the window operator's timer restore-rebuild on the
+  /// non-merging path, where the window is the state namespace) walk these
+  /// entries. The default fails loud, as with visitKeys above.
+  virtual void visitEntries(
+      const std::function<void(const K&, const N&)>& visitor) {
+    VELOX_NYI("This state does not support entry enumeration");
+  }
+
   /// Drops the entry of (key, ns) and returns its accumulator row to the
   /// value container; a miss is a no-op.
   virtual void remove(const K& key, const N& ns) = 0;

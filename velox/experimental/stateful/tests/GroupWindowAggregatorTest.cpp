@@ -33,9 +33,9 @@
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StatefulPlanner.h"
 #include "velox/experimental/stateful/StatefulTask.h"
+#include "velox/experimental/stateful/state/HashMapStateBackend.h"
 #include "velox/experimental/stateful/window/MergingWindowSet.h"
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
-#include "velox/experimental/stateful/state/HashMapStateBackend.h"
 #include "velox/functions/flinksql/registration/RegistrationFunctions.h"
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
 #include "velox/vector/ConstantVector.h"
@@ -90,7 +90,10 @@ class CollectingTarget : public StatefulOperator {
       int32_t operatorId,
       const std::string& planNodeId)
       : StatefulOperator(
-            std::make_unique<NoOutputOperator>(driverCtx, operatorId, planNodeId),
+            std::make_unique<NoOutputOperator>(
+                driverCtx,
+                operatorId,
+                planNodeId),
             std::vector<StatefulOperatorPtr>()) {}
 
   void addInput(StreamElementPtr input) override {
@@ -260,8 +263,7 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
   }
 
   static std::vector<Agg> windowAggregates(bool withSum) {
-    std::vector<Agg> aggregates{
-        aggregateCall("count", BIGINT(), BIGINT(), "")};
+    std::vector<Agg> aggregates{aggregateCall("count", BIGINT(), BIGINT(), "")};
     if (withSum) {
       aggregates.push_back(aggregateCall("sum", INTEGER(), INTEGER()));
     }
@@ -424,7 +426,9 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
   }
 
   // Drains the collected emissions into parsed window rows.
-  std::vector<Emitted> takeEmitted(CollectingTarget* target, bool withSum = false) {
+  std::vector<Emitted> takeEmitted(
+      CollectingTarget* target,
+      bool withSum = false) {
     std::vector<Emitted> emitted;
     for (auto& element : target->collected_) {
       if (!element->isRecord()) {
@@ -434,10 +438,13 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
       const auto& output = *record->record();
       Emitted row;
       for (auto i = 0; i < output.size(); ++i) {
-        row.keys.push_back(output.childAt(0)->as<SimpleVector<int32_t>>()->valueAt(i));
-        row.count.push_back(output.childAt(1)->as<SimpleVector<int64_t>>()->valueAt(i));
+        row.keys.push_back(
+            output.childAt(0)->as<SimpleVector<int32_t>>()->valueAt(i));
+        row.count.push_back(
+            output.childAt(1)->as<SimpleVector<int64_t>>()->valueAt(i));
         if (withSum) {
-          row.sum.push_back(output.childAt(2)->as<SimpleVector<int32_t>>()->valueAt(i));
+          row.sum.push_back(
+              output.childAt(2)->as<SimpleVector<int32_t>>()->valueAt(i));
         }
         const int startIndex = withSum ? 3 : 2;
         row.windowStart = output.childAt(startIndex)
@@ -467,8 +474,9 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
 
   MappingHarness makeMappingHarness(
       int64_t watermark,
-      std::function<char*(TimeWindow)> windowAccumulators =
-          [](TimeWindow) { return (char*)nullptr; }) {
+      std::function<char*(TimeWindow)> windowAccumulators = [](TimeWindow) {
+        return (char*)nullptr;
+      }) {
     HashMapStateBackend taskBackend(
         std::make_shared<const KeyedStateBackendParameters>(
             StateBackendType::HEAP, "job", "group-window-agg"));
@@ -476,8 +484,8 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
         std::vector<column_index_t>{0}, std::vector<TypePtr>{INTEGER()});
     auto backend = createKeyedStateBackend<RowContainerStateKey>(
         taskBackend, *spec, pool());
-    auto keySelector = std::make_unique<KeySelector>(
-        backend->keyIndex(), spec->keyChannels());
+    auto keySelector =
+        std::make_unique<KeySelector>(backend->keyIndex(), spec->keyChannels());
     auto input = makeRowVector({makeFlatVector<int32_t>({1})});
     keySelector->probe(input);
     auto key = keySelector->keys()[0];
@@ -596,18 +604,8 @@ TEST_F(GroupWindowAggregatorTest, sessionAppendOnly) {
 TEST_F(GroupWindowAggregatorTest, sessionExplicitInsert) {
   auto node = makeNode();
   auto harness = makeHarness(node);
-  feed(
-      *harness.aggregator,
-      {1},
-      {100},
-      {},
-      {RowKind::INSERT, RowKind::INSERT});
-  feed(
-      *harness.aggregator,
-      {1},
-      {103},
-      {},
-      {RowKind::INSERT});
+  feed(*harness.aggregator, {1}, {100}, {}, {RowKind::INSERT, RowKind::INSERT});
+  feed(*harness.aggregator, {1}, {103}, {}, {RowKind::INSERT});
   harness.aggregator->processWatermark(200);
   auto emitted = takeEmitted(harness.target);
   ASSERT_EQ(emitted.size(), 1);
@@ -621,12 +619,7 @@ TEST_F(GroupWindowAggregatorTest, unsupportedKindFailsLoud) {
   auto node = makeNode();
   auto harness = makeHarness(node);
   VELOX_ASSERT_USER_THROW(
-      feed(
-          *harness.aggregator,
-          {1},
-          {100},
-          {},
-          {RowKind::UPDATE_BEFORE}),
+      feed(*harness.aggregator, {1}, {100}, {}, {RowKind::UPDATE_BEFORE}),
       "insert-only");
   VELOX_ASSERT_USER_THROW(
       feed(*harness.aggregator, {1}, {100}, {}, {RowKind::DELETE}),
@@ -670,10 +663,10 @@ TEST_F(GroupWindowAggregatorTest, sessionMergeGuard) {
       TimeWindow(100, 110),
       TimeWindow(100, 110));
   mergingWindows.initializeCache(mappingHarness.key);
-  auto consumer = std::make_shared<DefaultAccMergingConsumer>(
-      mappingHarness.ctx, nullptr);
-  auto mergingFunction = std::make_shared<MergingFunction>(
-      consumer, mappingHarness.ctx, 0, true);
+  auto consumer =
+      std::make_shared<DefaultAccMergingConsumer>(mappingHarness.ctx, nullptr);
+  auto mergingFunction =
+      std::make_shared<MergingFunction>(consumer, mappingHarness.ctx, 0, true);
   VELOX_ASSERT_RUNTIME_THROW(
       (void)mergingWindows.addWindow(
           mappingHarness.key, TimeWindow(105, 115), mergingFunction),
@@ -836,8 +829,7 @@ TEST_F(GroupWindowAggregatorTest, rescaleRestoreKeepsOnlyOverlappingKeyGroups) {
   // it: probe a lab table with the same key schema and maxParallelism.
   KeyTable labTable({INTEGER()}, 128, pool());
   KeySelector labSelector(labTable, {0});
-  auto labInput = makeRowVector(
-      {makeFlatVector<int32_t>(keys)});
+  auto labInput = makeRowVector({makeFlatVector<int32_t>(keys)});
   labSelector.probe(labInput);
   std::vector<int32_t> firstHalfKeys;
   std::vector<int32_t> secondHalfKeys;
@@ -944,6 +936,92 @@ TEST_F(GroupWindowAggregatorTest, timerRestoreSemantics) {
   EXPECT_EQ(restored.aggregator->numLateRecordsDropped(), 1);
 }
 
+// TUMBLE restore-rebuild (A2 on the non-merging path): the window IS the
+// state namespace and no mapping state exists, so the timers are rebuilt
+// from the aggregating state's (key, window) entries alone; the watermark
+// alone fires the restored window.
+TEST_F(GroupWindowAggregatorTest, tumbleRestoreRebuildsTimersFromState) {
+  auto node = makeNode(
+      /*withSum=*/false,
+      /*gap=*/0,
+      {},
+      /*countStarIndex=*/0,
+      static_cast<int>(WindowType::TUMBLE),
+      /*size=*/10);
+  auto live = makeHarness(node);
+  // Window [100, 110): fire / cleanup timer at 109, watermark at 105
+  // leaves it pending.
+  feed(*live.aggregator, {1}, {100});
+  live.aggregator->processWatermark(105);
+  ASSERT_EQ(live.aggregator->timersSize(), 1);
+  auto records = live.aggregator->snapshotKeyedState();
+  ASSERT_EQ(records.size(), 1);
+
+  auto restoredNode = makeNode(
+      /*withSum=*/false,
+      /*gap=*/0,
+      {},
+      /*countStarIndex=*/0,
+      static_cast<int>(WindowType::TUMBLE),
+      /*size=*/10);
+  auto restored = makeHarness(restoredNode);
+  // No session mapping is registered on this path; the rebuild must not
+  // touch one (the pre-fix null dereference).
+  restored.aggregator->restoreKeyedState(records);
+  EXPECT_EQ(restored.aggregator->timersSize(), 1);
+  restored.aggregator->processWatermark(108);
+  EXPECT_TRUE(takeEmitted(restored.target).empty());
+  restored.aggregator->processWatermark(109);
+  auto emitted = takeEmitted(restored.target);
+  ASSERT_EQ(emitted.size(), 1);
+  EXPECT_EQ(emitted[0].count[0], 1);
+  EXPECT_EQ(emitted[0].windowStart, 100);
+  EXPECT_EQ(emitted[0].windowEnd, 110);
+}
+
+// HOP restore-rebuild: every overlapping window of the event is a live
+// (key, window) entry, each rebuilt with its own fire / cleanup pair, in
+// watermark order.
+TEST_F(GroupWindowAggregatorTest, hopRestoreRebuildsTimersFromState) {
+  auto liveNode = makeNode(
+      /*withSum=*/false,
+      /*gap=*/0,
+      {},
+      /*countStarIndex=*/0,
+      static_cast<int>(WindowType::HOP),
+      /*size=*/10,
+      /*slide=*/5);
+  auto live = makeHarness(liveNode);
+  // Windows [95, 105) and [100, 110): timers at 104 and 109.
+  feed(*live.aggregator, {1}, {100});
+  live.aggregator->processWatermark(103);
+  ASSERT_EQ(live.aggregator->timersSize(), 2);
+  auto records = live.aggregator->snapshotKeyedState();
+  ASSERT_EQ(records.size(), 1);
+
+  auto restoredNode = makeNode(
+      /*withSum=*/false,
+      /*gap=*/0,
+      {},
+      /*countStarIndex=*/0,
+      static_cast<int>(WindowType::HOP),
+      /*size=*/10,
+      /*slide=*/5);
+  auto restored = makeHarness(restoredNode);
+  restored.aggregator->restoreKeyedState(records);
+  EXPECT_EQ(restored.aggregator->timersSize(), 2);
+  restored.aggregator->processWatermark(104);
+  auto first = takeEmitted(restored.target);
+  ASSERT_EQ(first.size(), 1);
+  EXPECT_EQ(first[0].windowStart, 95);
+  EXPECT_EQ(first[0].windowEnd, 105);
+  restored.aggregator->processWatermark(109);
+  auto second = takeEmitted(restored.target);
+  ASSERT_EQ(second.size(), 1);
+  EXPECT_EQ(second[0].windowStart, 100);
+  EXPECT_EQ(second[0].windowEnd, 110);
+}
+
 // The per-key in-flight window cache is an LRU of 10000 keys: after an
 // eviction the evicted key's window set reloads from the mapping state, and
 // the merge math still sees the in-flight windows.
@@ -1020,8 +1098,7 @@ TEST_F(GroupWindowAggregatorTest, realPlannerPathBuildsGroupWindowAggregator) {
   // with no downstream targets.
   auto* aggregator = dynamic_cast<GroupWindowAggregator*>(chain.get());
   ASSERT_NE(aggregator, nullptr);
-  auto* handler =
-      dynamic_cast<GroupWindowAggsHandler*>(aggregator->op().get());
+  auto* handler = dynamic_cast<GroupWindowAggsHandler*>(aggregator->op().get());
   ASSERT_NE(handler, nullptr);
   EXPECT_TRUE(aggregator->targets().empty());
 

@@ -595,7 +595,9 @@ class GroupWindowAggsHandlerNode : public core::PlanNode {
         aggregates_(aggregates),
         countStarIndex_(countStarIndex) {
     VELOX_CHECK_GE(
-        countStarIndex_, -1, "countStarIndex is -1 (absent) or an aggregate index");
+        countStarIndex_,
+        -1,
+        "countStarIndex is -1 (absent) or an aggregate index");
     VELOX_CHECK(
         countStarIndex_ == -1 ||
             static_cast<size_t>(countStarIndex_) < aggregates_.size(),
@@ -674,15 +676,19 @@ class GroupWindowAggregationNode : public core::PlanNode {
         windowEndIndex_(windowEndIndex),
         outputType_(std::move(outputType)) {
     VELOX_CHECK_NOT_NULL(
-        keyedStateSpec_, "GroupWindowAggregationNode requires a KeyedStateSpec");
+        keyedStateSpec_,
+        "GroupWindowAggregationNode requires a KeyedStateSpec");
     VELOX_CHECK_NOT_NULL(
-        asRowType(inputType_), "GroupWindowAggregationNode input type must be ROW");
+        asRowType(inputType_),
+        "GroupWindowAggregationNode input type must be ROW");
     VELOX_CHECK(
-        isEventTime_, "GroupWindowAggregationNode requires an event-time attribute");
+        isEventTime_,
+        "GroupWindowAggregationNode requires an event-time attribute");
     // TODO(L2): produceUpdates / non-zero allowedLateness arrive with the
     // EMIT strategies (P1).
     VELOX_CHECK(
-        !produceUpdates_, "GroupWindowAggregationNode does not support produceUpdates");
+        !produceUpdates_,
+        "GroupWindowAggregationNode does not support produceUpdates");
     VELOX_CHECK_EQ(
         allowedLateness_,
         0,
@@ -691,15 +697,21 @@ class GroupWindowAggregationNode : public core::PlanNode {
     switch (static_cast<WindowType>(windowType_)) {
       case WindowType::SESSION:
         VELOX_CHECK_GT(
-            gap_, 0, "GroupWindowAggregationNode requires a positive session gap");
+            gap_,
+            0,
+            "GroupWindowAggregationNode requires a positive session gap");
         break;
       case WindowType::TUMBLE:
         VELOX_CHECK_GT(
-            size_, 0, "GroupWindowAggregationNode requires a positive tumble size");
+            size_,
+            0,
+            "GroupWindowAggregationNode requires a positive tumble size");
         break;
       case WindowType::HOP:
         VELOX_CHECK_GT(
-            slide_, 0, "GroupWindowAggregationNode requires a positive hop slide");
+            slide_,
+            0,
+            "GroupWindowAggregationNode requires a positive hop slide");
         VELOX_CHECK_GE(
             size_,
             slide_,
