@@ -103,6 +103,26 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return newRow;
   }
 
+  char* get(const K& key, const N& ns) override {
+    return stateTable_->get(key, ns);
+  }
+
+  void forEachEntry(
+      const std::function<void(const K&, const N&)>& fn) override {
+    const auto numKeyGroups = stateTable_->numKeyGroups();
+    for (uint32_t i = 0; i < numKeyGroups; ++i) {
+      auto& map =
+          stateTable_->stateMapForKeyGroup(stateTable_->startKeyGroup() + i);
+      auto snapshot = map.createSnapshot();
+      for (const auto& head : snapshot.heads) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          fn(entry->key_, entry->namespace_);
+        }
+      }
+      map.releaseSnapshot(snapshot.version);
+    }
+  }
+
   exec::RowContainer* valueRows() override {
     return valueRows_.get();
   }

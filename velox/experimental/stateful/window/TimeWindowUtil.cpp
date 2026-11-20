@@ -15,39 +15,94 @@
  */
 #include "velox/experimental/stateful/window/TimeWindowUtil.h"
 #include <cstdint>
+#include <chrono>
+
+#include "velox/common/base/Exceptions.h"
+#include "velox/external/tzdb/zoned_time.h"
 
 namespace facebook::velox::stateful {
 
+namespace {
+
+using Millis = std::chrono::milliseconds;
+
+// The instant of a local wall clock per java.time ZonedDateTime semantics
+// (Flink's LocalDateTime.atZone): an ambiguous wall clock resolves to the
+// FIRST (earlier) occurrence - the pre-transition offset; a nonexistent
+// one (DST gap) is shifted forward by the gap, which nets to the same
+// pre-transition offset: (lt + gap) - offsetAfter == lt - offsetBefore.
+int64_t localToInstantMillis(
+    const date::local_time<std::chrono::milliseconds>& lt,
+    const tzdb::time_zone* zone) {
+  const tzdb::local_info info = zone->get_info(lt);
+  return (lt.time_since_epoch() - info.first.offset).count();
+}
+
+} // namespace
+
 // static
-int64_t TimeWindowUtil::getNextTriggerWatermark(
-    int64_t currentWatermark,
-    int64_t interval,
-    int shiftTimezone,
-    bool useDayLightSaving) {
-  if (currentWatermark == INT64_MAX) {
-    return currentWatermark;
+const tzdb::time_zone* TimeWindowUtil::locateTimeZone(
+    const std::string& name) {
+  if (name.empty() || name == "UTC") {
+    return nullptr; // Identity: window math runs in plain UTC millis.
   }
+  try {
+    return tzdb::locate_zone(name);
+  } catch (const std::exception& e) {
+    VELOX_FAIL("Unknown shift time zone '{}': {}", name, e.what());
+  }
+}
 
-  int64_t triggerWatermark;
-  // consider the DST timezone
-  if (useDayLightSaving) {
-    // TODO: support time zone
-    // int64_t utcWindowStart =
-    //          getWindowStartWithOffset(
-    //                  toUtcTimestampMills(currentWatermark, shiftTimezone),
-    //                  0L, interval);
-    // triggerWatermark = toEpochMillsForTimer(utcWindowStart + interval - 1,
-    // shiftTimezone);
-  } else {
-    int64_t start = getWindowStartWithOffset(currentWatermark, 0L, interval);
-    triggerWatermark = start + interval - 1;
+// static
+int64_t TimeWindowUtil::toUtcTimestampMills(
+    int64_t epochMillis,
+    const tzdb::time_zone* zone) {
+  if (zone == nullptr || epochMillis == INT64_MAX) {
+    return epochMillis;
   }
+  const auto sys =
+      date::sys_time<std::chrono::milliseconds>(Millis(epochMillis));
+  const auto local = zone->to_local(sys);
+  return local.time_since_epoch().count();
+}
 
-  if (triggerWatermark > currentWatermark) {
-    return triggerWatermark;
-  } else {
-    return triggerWatermark + interval;
+// static
+int64_t TimeWindowUtil::toEpochMillsForTimer(
+    int64_t utcTimestampMillis,
+    const tzdb::time_zone* zone) {
+  if (zone == nullptr || utcTimestampMillis == INT64_MAX) {
+    return utcTimestampMillis;
   }
+  constexpr int64_t kMillisPerHour = 3600LL * 1000;
+  const auto lt =
+      date::local_time<std::chrono::milliseconds>(Millis(utcTimestampMillis));
+  const tzdb::local_info info = zone->get_info(lt);
+  const int64_t t1 = localToInstantMillis(lt, zone);
+  if (info.result == tzdb::local_info::nonexistent) {
+    // Flink: the wall-clock hour covers zero real time (DST gap) -> use
+    // the first skipped epoch millis, i.e. floor the gap-shifted instant
+    // to the hour boundary (Flink uses truncated %, matched here).
+    return t1 - t1 % kMillisPerHour;
+  }
+  if (info.result == tzdb::local_info::ambiguous) {
+    // Flink: one wall-clock hour spans two real hours (DST overlap) ->
+    // the later epoch, so both hours of data fire properly.
+    return t1 + kMillisPerHour;
+  }
+  return t1;
+}
+
+// static
+bool TimeWindowUtil::isWindowFired(
+    int64_t windowEnd,
+    int64_t currentProgress,
+    const tzdb::time_zone* zone) {
+  if (windowEnd == INT64_MAX) {
+    return false;
+  }
+  const int64_t windowTriggerTime =
+      toEpochMillsForTimer(windowEnd - 1, zone);
+  return currentProgress >= windowTriggerTime;
 }
 
 // static
