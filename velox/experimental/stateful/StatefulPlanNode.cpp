@@ -93,6 +93,7 @@ void StatefulPlanNode::registerSerDe() {
   registry.Register("StreamRankNode", StreamRankNode::create);
   registry.Register("DeduplicateNode", DeduplicateNode::create);
   registry.Register("StreamTopNNode", StreamTopNNode::create);
+  registry.Register("RankNode", RankNode::create);
   registry.Register("GroupAggsHandlerNode", GroupAggsHandlerNode::create);
   registry.Register("GroupAggregationNode", GroupAggregationNode::create);
   registry.Register("KeyedStateSpec", KeyedStateSpec::create);
@@ -563,6 +564,87 @@ core::PlanNodePtr StreamTopNNode::create(
 
 const std::vector<core::PlanNodePtr>& GroupAggsHandlerNode::sources() const {
   return kEmptySources;
+}
+
+const std::vector<core::PlanNodePtr>& RankNode::sources() const {
+  return kEmptySources;
+}
+
+folly::dynamic RankNode::serialize() const {
+  auto obj = core::PlanNode::serialize();
+  obj["rankStart"] = rankStart_;
+  obj["rankEnd"] = rankEnd_;
+  obj["sortKeyChannels"] = ISerializable::serialize(sortKeyChannels_);
+  obj["sortAscending"] = ISerializable::serialize(sortAscending_);
+  obj["sortNullsFirst"] = ISerializable::serialize(sortNullsFirst_);
+  auto specObj = keyedStateSpec_->serialize();
+  // The nested spec has no "name" of its own (KeyedStateSpec::serialize
+  // writes only its fields); the deserialization registry dispatches on
+  // "name", so stamp it here to keep C++ and Java round-trips working.
+  specObj["name"] = "KeyedStateSpec";
+  obj["keyedStateSpec"] = std::move(specObj);
+  obj["outputRankNumber"] = outputRankNumber_;
+  obj["generateUpdateBefore"] = generateUpdateBefore_;
+  obj["firstN"] = firstN_;
+  obj["cacheSize"] = cacheSize_;
+  obj["inputType"] = inputType_->serialize();
+  obj["outputType"] = outputType_->serialize();
+  return obj;
+}
+
+void RankNode::addDetails(std::stringstream& stream) const {
+  stream << "rankRange: [" << rankStart_ << ", " << rankEnd_ << "]";
+  stream << ", sortKeyChannels: [";
+  for (size_t i = 0; i < sortKeyChannels_.size(); ++i) {
+    if (i > 0) {
+      stream << ", ";
+    }
+    stream << sortKeyChannels_[i];
+  }
+  stream << "]";
+  stream << ", outputRankNumber: " << outputRankNumber_;
+  stream << ", generateUpdateBefore: " << generateUpdateBefore_;
+  stream << ", firstN: " << firstN_;
+  stream << ", cacheSize: " << cacheSize_;
+  stream << ", input: " << inputType_->toString();
+  stream << ", output: " << outputType_->toString();
+}
+
+// static
+core::PlanNodePtr RankNode::create(const folly::dynamic& obj, void* context) {
+  auto planNodeId = obj["id"].asString();
+  auto sortKeyChannels =
+      ISerializable::deserialize<std::vector<column_index_t>>(
+          obj["sortKeyChannels"]);
+  auto sortAscending =
+      ISerializable::deserialize<std::vector<bool>>(obj["sortAscending"]);
+  auto sortNullsFirst =
+      ISerializable::deserialize<std::vector<bool>>(obj["sortNullsFirst"]);
+  auto keyedStateSpec = ISerializable::deserialize<KeyedStateSpec>(
+      obj["keyedStateSpec"], context);
+  auto inputType = ISerializable::deserialize<RowType>(obj["inputType"]);
+  auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
+  return std::make_shared<const RankNode>(
+      planNodeId,
+      obj["rankStart"].asInt(),
+      obj["rankEnd"].asInt(),
+      std::move(sortKeyChannels),
+      std::move(sortAscending),
+      std::move(sortNullsFirst),
+      std::move(keyedStateSpec),
+      obj["outputRankNumber"].asBool(),
+      obj["generateUpdateBefore"].asBool(),
+      // Tolerant default: plans serialized before the field existed carry
+      // no "firstN" key and deserialize as the non-FirstN shapes (the plan
+      // JSON crosses JNI once per task, there is no persisted format).
+      obj.count("firstN") ? obj["firstN"].asBool() : false,
+      // Same tolerant-default shape for the TopN cache bound: the native
+      // default of table.exec.rank.topn-cache-size is 10000
+      // (ExecutionConfigOptions.java:501-505, design alignment #68) - a
+      // legacy plan JSON without the key deserializes as that default.
+      obj.count("cacheSize") ? obj["cacheSize"].asInt() : 10000,
+      inputType,
+      outputType);
 }
 
 folly::dynamic GroupAggsHandlerNode::serialize() const {

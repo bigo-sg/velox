@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "velox/core/PlanNode.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 
 namespace facebook::velox::stateful {
 
@@ -858,6 +859,125 @@ class StreamTopNNode : public core::PlanNode {
   bool generateUpdateBefore_;
   bool outputRankNumber_;
   int64_t cacheSize_;
+};
+
+/// Plan node of the typed rank operator (Flink StreamExecRank with
+/// ROW_NUMBER over a ConstantRankRange). Carries the rank range, the sort
+/// specification and the keyed-state spec; the operator builds its value/list
+/// state handles from the spec in initializeStateBackend. The old
+/// StreamRankNode/StreamTopNNode pair is a dead path kept untouched.
+class RankNode : public core::PlanNode {
+ public:
+  RankNode(
+      const core::PlanNodeId& id,
+      int64_t rankStart,
+      int64_t rankEnd,
+      std::vector<column_index_t> sortKeyChannels,
+      std::vector<bool> sortAscending,
+      std::vector<bool> sortNullsFirst,
+      std::shared_ptr<const KeyedStateSpec> keyedStateSpec,
+      bool outputRankNumber,
+      bool generateUpdateBefore,
+      bool firstN,
+      int64_t cacheSize,
+      RowTypePtr inputType,
+      RowTypePtr outputType)
+      : PlanNode(id),
+        rankStart_(rankStart),
+        rankEnd_(rankEnd),
+        sortKeyChannels_(std::move(sortKeyChannels)),
+        sortAscending_(std::move(sortAscending)),
+        sortNullsFirst_(std::move(sortNullsFirst)),
+        keyedStateSpec_(std::move(keyedStateSpec)),
+        outputRankNumber_(outputRankNumber),
+        generateUpdateBefore_(generateUpdateBefore),
+        firstN_(firstN),
+        cacheSize_(cacheSize),
+        inputType_(std::move(inputType)),
+        outputType_(std::move(outputType)) {}
+
+  const RowTypePtr& outputType() const override {
+    return outputType_;
+  }
+
+  const std::vector<core::PlanNodePtr>& sources() const override;
+
+  std::string_view name() const override {
+    return "Rank";
+  }
+
+  int64_t rankStart() const {
+    return rankStart_;
+  }
+
+  int64_t rankEnd() const {
+    return rankEnd_;
+  }
+
+  const std::vector<column_index_t>& sortKeyChannels() const {
+    return sortKeyChannels_;
+  }
+
+  const std::vector<bool>& sortAscending() const {
+    return sortAscending_;
+  }
+
+  const std::vector<bool>& sortNullsFirst() const {
+    return sortNullsFirst_;
+  }
+
+  const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec() const {
+    return keyedStateSpec_;
+  }
+
+  bool outputRankNumber() const {
+    return outputRankNumber_;
+  }
+
+  bool generateUpdateBefore() const {
+    return generateUpdateBefore_;
+  }
+
+  /// The FirstN fast path (Flink AppendOnlyFirstNFunction): a single
+  /// proctime ascending sort key routes to a per-key counter instead of an
+  /// ordered buffer. Derived from the plan (gluten StreamExecRank), not from
+  /// the range, so a (1,1) window overlapping the FirstN shape still takes
+  /// the counter branch - the native dispatch order (firstN before isTop1).
+  bool firstN() const {
+    return firstN_;
+  }
+
+  /// The TopN cache bound of the plan: the table.exec.rank.topn-cache-size
+  /// row equivalent the planner reads (Flink StreamExecRank #231) - the
+  /// operator folds it into the LRU key capacity max(1, cacheSize/rankEnd)
+  /// (design alignment #61, AppendOnlyTopNFunction#open).
+  int64_t cacheSize() const {
+    return cacheSize_;
+  }
+
+  const RowTypePtr& inputType() const {
+    return inputType_;
+  }
+
+  folly::dynamic serialize() const override;
+
+  static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
+
+ private:
+  void addDetails(std::stringstream& stream) const override;
+
+  const int64_t rankStart_;
+  const int64_t rankEnd_;
+  const std::vector<column_index_t> sortKeyChannels_;
+  const std::vector<bool> sortAscending_;
+  const std::vector<bool> sortNullsFirst_;
+  const std::shared_ptr<const KeyedStateSpec> keyedStateSpec_;
+  const bool outputRankNumber_;
+  const bool generateUpdateBefore_;
+  const bool firstN_;
+  const int64_t cacheSize_;
+  const RowTypePtr inputType_;
+  const RowTypePtr outputType_;
 };
 
 class GroupAggsHandlerNode : public core::PlanNode {
