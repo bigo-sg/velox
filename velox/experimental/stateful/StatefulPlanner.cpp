@@ -62,6 +62,7 @@
 #include "velox/experimental/stateful/agg/AggsHandleFunction.h"
 #include "velox/experimental/stateful/agg/GroupAggregator.h"
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
+#include "velox/experimental/stateful/rank/RankOperator.h"
 #include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
 
@@ -165,6 +166,10 @@ StatefulOperatorPtr StatefulPlanner::transformStatefulOperators(
       std::dynamic_pointer_cast<const StreamRankNode>(statefulNode->node()) !=
       nullptr) {
     result = transformStreamRankOperator(*statefulNode);
+  } else if (
+      std::dynamic_pointer_cast<const RankNode>(statefulNode->node()) !=
+      nullptr) {
+    result = transformRankOperator(*statefulNode);
   } else if (
       std::dynamic_pointer_cast<const GroupAggregationNode>(
           statefulNode->node()) != nullptr) {
@@ -427,6 +432,25 @@ StatefulOperatorPtr StatefulPlanner::transformStreamRankOperator(
 
   return std::make_unique<StreamKeyedOperator>(
       std::move(op), std::move(keySelector), std::move(targets));
+}
+
+// The typed rank path (RankNode): the wrapped operator is the checkpoint
+// placeholder - not an EmptyOperator - so the StatefulOperator checkpoint
+// walk reaches the rank keyed backend (design S6 option 2 and risk table:
+// an EmptyOperator placeholder would silently snapshot nothing).
+StatefulOperatorPtr StatefulPlanner::transformRankOperator(
+    const StatefulPlanNode& planNode) {
+  std::vector<StatefulOperatorPtr> targets =
+      transformStatefulOperators(planNode.targets());
+
+  auto rankNode = std::dynamic_pointer_cast<const RankNode>(planNode.node());
+  VELOX_CHECK(rankNode, "Failed to cast to RankNode");
+
+  auto checkpointOperator = std::make_unique<RankCheckpointOperator>(
+      nextOperatorId(), ctx_, rankNode);
+
+  return std::make_unique<RankOperator>(
+      std::move(checkpointOperator), std::move(targets), rankNode);
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGroupAggregationOperator(
