@@ -64,6 +64,7 @@ class StatefulPlanner {
       const StatefulPlanNode& planNode);
   StatefulOperatorPtr transformStreamRankOperator(
       const StatefulPlanNode& planNode);
+  StatefulOperatorPtr transformRankOperator(const StatefulPlanNode& planNode);
   StatefulOperatorPtr transformGroupAggregationOperator(
       const StatefulPlanNode& planNode);
   StatefulOperatorPtr transformGenericOperator(
