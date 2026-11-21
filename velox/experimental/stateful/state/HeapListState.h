@@ -39,13 +39,13 @@ template <typename K, typename N, typename T>
 class HeapListState : public ListState<K, N, T> {
  public:
   HeapListState(
-      std::shared_ptr<StateTable<K, N, std::shared_ptr<std::vector<T>>>>
-          stateTable,
+      std::shared_ptr<StateTable<K, std::shared_ptr<std::vector<T>>>> stateTable,
       const ListStateDescriptor<T>& descriptor,
-      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer)
       : stateTable_(std::move(stateTable)),
         keySerializer_(std::move(keySerializer)),
-        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        nsSerializer_(std::move(nsSerializer)),
         elementSerializer_(std::dynamic_pointer_cast<TypeSerializer<T>>(
             descriptor.serializer())) {
     // The StringView serializer's deserialize() returns a view borrowing the
@@ -89,7 +89,7 @@ class HeapListState : public ListState<K, N, T> {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
         writeEntryFrames(
             writer,
-            nsSerializer_->serialize(entry->namespace_),
+            nsSerializer_->serialize(*entry->namespace_),
             keySerializer_->serialize(entry->key_),
             serializeList(entry->state_));
         ++entryCount;
@@ -115,7 +115,7 @@ class HeapListState : public ListState<K, N, T> {
     VELOX_CHECK(
         listReader.atEnd(),
         "Corrupt checkpoint: trailing bytes in a list payload");
-    stateTable_->put(key, ns, list);
+    stateTable_->put(key, *ns, list);
   }
 
   std::string namespaceSchemaId() const override {
@@ -147,10 +147,9 @@ class HeapListState : public ListState<K, N, T> {
     return freshList;
   }
 
-  std::shared_ptr<StateTable<K, N, std::shared_ptr<std::vector<T>>>>
-      stateTable_;
+  std::shared_ptr<StateTable<K, std::shared_ptr<std::vector<T>>>> stateTable_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
-  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
   std::shared_ptr<TypeSerializer<T>> elementSerializer_;
 };
 } // namespace facebook::velox::stateful

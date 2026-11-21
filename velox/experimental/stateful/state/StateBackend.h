@@ -30,6 +30,10 @@ class StateBackend : public ISerializable {
       : parameters_(parameters) {}
   virtual std::string getName() const = 0;
 
+  /// The pre-generic creation entry; the typed entry is the free function
+  /// template createKeyedStateBackend<K> in KeyedStateBackendFactory.h. This
+  /// zero-argument overload has no callers and stays until the RocksDB
+  /// backend has a typed creation path.
   virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() = 0;
 
   /// The parameters this state backend was built from. The keyed

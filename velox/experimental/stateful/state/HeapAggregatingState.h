@@ -45,16 +45,18 @@ namespace facebook::velox::stateful {
 /// call per rows() batch of misses (the operator wraps
 /// Aggregate::initializeNewGroups over its own aggregates). The state never
 /// calls any Aggregate method itself. Relevant to Flink
-/// HeapAggregatingState.
+/// HeapAggregatingState. The namespace dimension rides the runtime
+/// Namespace contract: methods take the namespace base type, and the
+/// backend hands the state its namespace serializer at creation.
 /// @param <K> type of key, a StateKey subclass
-/// @param <N> type of namespace, a Namespace subclass
-template <typename K, typename N>
-class HeapAggregatingState : public AggregatingState<K, N> {
+template <typename K>
+class HeapAggregatingState : public AggregatingState<K> {
  public:
   HeapAggregatingState(
-      std::shared_ptr<StateTable<K, N, char*>> stateTable,
+      std::shared_ptr<StateTable<K, char*>> stateTable,
       const AggregatingStateDescriptor& descriptor,
-      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer)
       : stateTable_(std::move(stateTable)),
         valueRows_(std::make_unique<exec::RowContainer>(
             // No key or dependent columns: keys live in the backend's key
@@ -72,11 +74,12 @@ class HeapAggregatingState : public AggregatingState<K, N> {
         mergeRow_(descriptor.mergeRow()),
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
-        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        nsSerializer_(std::move(nsSerializer)),
         valueSchemaId_(
             "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {}
 
-  void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
+  void rows(folly::Range<const K*> keys, const Namespace& ns, char** outRows)
+      override {
     std::vector<char*> newRows;
     for (size_t i = 0; i < keys.size(); ++i) {
       if (char* value = stateTable_->get(keys[i], ns)) {
@@ -93,7 +96,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     }
   }
 
-  char* row(const K& key, const N& ns) override {
+  char* row(const K& key, const Namespace& ns) override {
     if (char* value = stateTable_->get(key, ns)) {
       return value;
     }
@@ -107,7 +110,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return valueRows_.get();
   }
 
-  void remove(const K& key, const N& ns) override {
+  void remove(const K& key, const Namespace& ns) override {
     // The accumulator row lives in the value container, not in the state
     // table: return it before dropping the entry (a miss removes nothing).
     if (char* valueRow = stateTable_->get(key, ns)) {
@@ -139,7 +142,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
         writeEntryFrames(
             writer,
-            nsSerializer_->serialize(entry->namespace_),
+            nsSerializer_->serialize(*entry->namespace_),
             keySerializer_->serialize(entry->key_),
             serializeRow(entry->state_));
         ++entryCount;
@@ -190,10 +193,10 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     mergeRow_(row, columns);
     // Last write wins on a duplicate restore, as in Flink; the row the put
     // replaces goes back to the value container instead of leaking.
-    if (char* valueRow = stateTable_->get(key, ns)) {
+    if (char* valueRow = stateTable_->get(key, *ns)) {
       valueRows_->eraseRows(folly::Range<char**>(&valueRow, 1));
     }
-    stateTable_->put(key, ns, row);
+    stateTable_->put(key, *ns, row);
   }
 
   std::string namespaceSchemaId() const override {
@@ -239,14 +242,14 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return "(" + schema + ")";
   }
 
-  std::shared_ptr<StateTable<K, N, char*>> stateTable_;
+  std::shared_ptr<StateTable<K, char*>> stateTable_;
   std::unique_ptr<exec::RowContainer> valueRows_;
   AggregatingStateDescriptor::InitRowsCallback initializeRows_;
   AggregatingStateDescriptor::MergeRowCallback mergeRow_;
   serializer::presto::PrestoVectorSerde serde_;
   memory::MemoryPool* pool_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
-  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
   const std::string valueSchemaId_;
 };
 } // namespace facebook::velox::stateful

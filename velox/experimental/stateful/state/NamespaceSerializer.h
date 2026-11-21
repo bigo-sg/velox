@@ -15,6 +15,7 @@
  */
 #pragma once
 
+#include <memory>
 #include <string>
 #include "velox/experimental/stateful/TypeSerializer.h"
 #include "velox/experimental/stateful/state/Namespace.h"
@@ -38,6 +39,48 @@ class VoidNamespaceSerializer : public TypeSerializer<VoidNamespace> {
   }
 };
 
+/// The namespace's runtime carrier across the engine boundary: what a
+/// state creation entry receives in place of the static namespace type,
+/// in the shape of Flink's createInternalState, which receives the
+/// namespace serializer as an argument. Erases the namespace dimension to
+/// the Namespace contract; the schema id identifies the namespace type in
+/// the registry's name-reuse checks and the checkpoint schema table.
+class NamespaceSerializer : public TypeBaseSerializer {
+ public:
+  /// Serializes 'ns'; all namespaces stored in one state share the type
+  /// this serializer was created for.
+  virtual std::string serialize(const Namespace& ns) = 0;
+
+  /// Returns an owning namespace; implementations must not keep the view
+  /// (or pointers into it) beyond the returned value's own construction.
+  virtual std::shared_ptr<const Namespace> deserialize(
+      std::string_view bytes) = 0;
+};
+
+/// The N-typed binding of NamespaceSerializer: wraps a TypeSerializer<N>,
+/// upcasting namespaces on serialize and boxing the deserialized value.
+template <typename N>
+class TypedNamespaceSerializer : public NamespaceSerializer {
+ public:
+  explicit TypedNamespaceSerializer(std::shared_ptr<TypeSerializer<N>> serializer)
+      : serializer_(std::move(serializer)) {}
+
+  std::string schemaId() const override {
+    return serializer_->schemaId();
+  }
+
+  std::string serialize(const Namespace& ns) override {
+    return serializer_->serialize(static_cast<const N&>(ns));
+  }
+
+  std::shared_ptr<const Namespace> deserialize(std::string_view bytes) override {
+    return std::make_shared<N>(serializer_->deserialize(bytes));
+  }
+
+ private:
+  std::shared_ptr<TypeSerializer<N>> serializer_;
+};
+
 /// Compile-time binding of a namespace type to its serializer, in the
 /// shape of TypeTraits: the primary template is undefined, so a namespace
 /// type without a specialization fails to compile where a handle
@@ -47,8 +90,9 @@ struct NamespaceSerializerTraits;
 
 template <>
 struct NamespaceSerializerTraits<VoidNamespace> {
-  static std::shared_ptr<TypeSerializer<VoidNamespace>> create() {
-    return std::make_shared<VoidNamespaceSerializer>();
+  static std::shared_ptr<NamespaceSerializer> create() {
+    return std::make_shared<TypedNamespaceSerializer<VoidNamespace>>(
+        std::make_shared<VoidNamespaceSerializer>());
   }
 };
 

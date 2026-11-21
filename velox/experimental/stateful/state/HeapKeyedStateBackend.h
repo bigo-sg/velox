@@ -40,11 +40,13 @@
 namespace facebook::velox::stateful {
 
 /// Heap-backed keyed state storage, generic on the key type K (a StateKey
-/// subclass); the namespace type N is a template parameter of the getOrCreate
-/// methods, as in Flink AbstractKeyedStateBackend<K>. Header-only because
-/// every member of the generic API is a template (a virtual function cannot
-/// be a template, so the generic API is non-virtual; it is called through
-/// the concrete backend type held by the operator).
+/// subclass), as in Flink AbstractKeyedStateBackend<K>. The namespace is a
+/// runtime object on the aggregating plane: getOrCreateAggregatingState is
+/// a virtual of TypedKeyedStateBackend<K> taking the namespace serializer,
+/// so an operator never downcasts to this class for it. The value / list /
+/// map families are still class templates over N (a virtual function
+/// cannot be a template) and sit below the typed interface until their
+/// operators migrate.
 ///
 /// The backend owns its key table (KeyTable, built at construction from the
 /// plan-declared key types) and is instantiated over RowContainerStateKey,
@@ -66,7 +68,7 @@ namespace facebook::velox::stateful {
 /// typed state API: its state factory methods do not fit (K, N) and are
 /// overridden as not-implemented until the stateful operators migrate.
 template <typename K>
-class HeapKeyedStateBackend : public KeyedStateBackend {
+class HeapKeyedStateBackend : public TypedKeyedStateBackend<K> {
  public:
   /// 'keyTypes' are the key column types as declared by the plan; the key
   /// table (the key RowContainer, the hash table behind probe, the stable
@@ -102,27 +104,27 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
 
   /// The backend-owned key table; KeySelectors bind to it and probe
   /// through their own scratch, restore goes through its private door.
-  KeyIndex& keyIndex() {
+  KeyIndex& keyIndex() override {
     return *keyTable_;
   }
 
-  uint32_t maxParallelism() const {
+  uint32_t maxParallelism() const override {
     return maxParallelism_;
   }
 
-  uint32_t startKeyGroup() const {
+  uint32_t startKeyGroup() const override {
     return startKeyGroup_;
   }
 
-  uint32_t numKeyGroups() const {
+  uint32_t numKeyGroups() const override {
     return numKeyGroups_;
   }
 
   /// Batch-boundary key reclamation: erases key rows no state entry
   /// references any more (see KeyTable::advance). Operators call this at
-  /// the end of each input batch; snapshot() runs it first, so dead key
-  /// rows never sit across a checkpoint barrier.
-  void advance() {
+  /// the end of each input batch; snapshotBytes() runs it first, so dead
+  /// key rows never sit across a checkpoint barrier.
+  void advance() override {
     keyTable_->advance();
   }
 
@@ -172,7 +174,8 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   }
 
   // The pre-generic snapshot plane stays a no-op until the stateful
-  // operators migrate; the typed plane is snapshot() / restore() below.
+  // operators migrate; the real plane is snapshotBytes() / restoreBytes()
+  // below.
   void snapshot(
       int64_t /*checkpointId*/,
       int64_t /*timestamp*/,
@@ -184,20 +187,28 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
 
   // --- Typed state API ---
 
-  /// Returns the AggregatingState handle for the descriptor, creating the state
-  /// table and the handle on the first call; a second call with the same
-  /// name returns the same handle.
-  template <typename N>
-  std::shared_ptr<AggregatingState<K, N>> getOrCreateAggregatingState(
-      const AggregatingStateDescriptor& descriptor) {
-    if (auto state = findState<AggregatingState<K, N>>(descriptor.name())) {
+  /// Returns the aggregating state of 'descriptor' under the namespace
+  /// type carried by 'nsSerializer', creating the state table and the
+  /// handle on the first call; a second call with the same name returns
+  /// the same state, and its namespace schema id must match the serializer
+  /// the state was created under.
+  std::shared_ptr<AggregatingState<K>> getOrCreateAggregatingState(
+      const AggregatingStateDescriptor& descriptor,
+      std::shared_ptr<NamespaceSerializer> nsSerializer) override {
+    if (auto state = findState<AggregatingState<K>>(descriptor.name())) {
+      VELOX_CHECK_EQ(
+          state->namespaceSchemaId(),
+          nsSerializer->schemaId(),
+          "State '{}' is already registered under a different namespace type",
+          descriptor.name());
       return state;
     }
-    auto state = std::make_shared<HeapAggregatingState<K, N>>(
-        std::make_shared<StateTable<K, N, char*>>(
+    auto state = std::make_shared<HeapAggregatingState<K>>(
+        std::make_shared<StateTable<K, char*>>(
             startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
-        keySerializer_);
+        keySerializer_,
+        std::move(nsSerializer));
     createdStates_.emplace(descriptor.name(), state);
     return state;
   }
@@ -209,10 +220,11 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       return state;
     }
     auto state = std::make_shared<HeapValueState<K, N, V>>(
-        std::make_shared<StateTable<K, N, V>>(
+        std::make_shared<StateTable<K, V>>(
             startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
-        keySerializer_);
+        keySerializer_,
+        NamespaceSerializerTraits<N>::create());
     createdStates_.emplace(descriptor.name(), state);
     return state;
   }
@@ -224,10 +236,11 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       return state;
     }
     auto state = std::make_shared<HeapListState<K, N, T>>(
-        std::make_shared<StateTable<K, N, std::shared_ptr<std::vector<T>>>>(
+        std::make_shared<StateTable<K, std::shared_ptr<std::vector<T>>>>(
             startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
-        keySerializer_);
+        keySerializer_,
+        NamespaceSerializerTraits<N>::create());
     createdStates_.emplace(descriptor.name(), state);
     return state;
   }
@@ -239,10 +252,11 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       return state;
     }
     auto state = std::make_shared<HeapMapState<K, N, UK, UV>>(
-        std::make_shared<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>(
+        std::make_shared<StateTable<K, std::shared_ptr<std::map<UK, UV>>>>(
             startKeyGroup_, numKeyGroups_, keyTable_->keyLifecycle()),
         descriptor,
-        keySerializer_);
+        keySerializer_,
+        NamespaceSerializerTraits<N>::create());
     createdStates_.emplace(descriptor.name(), state);
     return state;
   }
@@ -260,7 +274,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   /// plays the role of Flink's per-state metadata snapshots: restore
   /// cross-checks it against the backend and its registered states instead
   /// of relying on registration order.
-  std::string snapshot() {
+  std::string snapshotBytes() override {
     // Dead key rows do not cross the checkpoint barrier: reclaim first.
     advance();
     std::vector<std::pair<std::string, StatePtr>> states(
@@ -294,11 +308,11 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     return bytes;
   }
 
-  /// Restores the stream written by snapshot() into the states this backend
-  /// has registered. The header must carry this backend's maxParallelism —
-  /// it defines the key-group space and is stable across rescale, so
-  /// equality is required — and the schema table must match the registered
-  /// states one-for-one, same ids and same schema ids. The stream's
+  /// Restores the stream written by snapshotBytes() into the states this
+  /// backend has registered. The header must carry this backend's
+  /// maxParallelism — it defines the key-group space and is stable across
+  /// rescale, so equality is required — and the schema table must match the
+  /// registered states one-for-one, same ids and same schema ids. The stream's
   /// key-group range must overlap this backend's; key groups of the stream
   /// outside the range are skipped, so a checkpoint written under a
   /// different parallelism restores into this backend — one covering
@@ -308,7 +322,7 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   /// is what makes handle-owned state tables possible; the byte layout of
   /// the entries is the same. When the flags announce a CRC-32 trailer it
   /// is verified over the whole stream before any state is touched.
-  void restore(const std::string& bytes) {
+  void restoreBytes(const std::string& bytes) override {
     CheckpointReader headerReader(bytes.data(), bytes.size());
     const auto header = readCheckpointHeader(headerReader);
     size_t bodySize = bytes.size();
@@ -447,36 +461,5 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   // Handle registry, by state name; each handle owns its state table.
   std::unordered_map<std::string, StatePtr> createdStates_;
 };
-
-/// Creates one keyed operator's backend, dispatched on the task backend's
-/// declared type. The plan contributes the key schema (the KeyedStateSpec),
-/// the task backend's parameters the key-group configuration - the one
-/// place those numbers exist at runtime. K is the operator's key type (a
-/// StateKey subclass) - only the operator can name it, so this entry is a
-/// free template and never a virtual member of StateBackend: a virtual
-/// function cannot be a template, so no factory on the base can hand out
-/// the typed backend. A declared type with no engine behind it fails
-/// here, at operator initialization, instead of silently producing a
-/// heap backend. The pre-generic factory on StateBackend stays for the
-/// not-yet-migrated operators; this entry is the door for the typed ones.
-template <typename K>
-std::unique_ptr<HeapKeyedStateBackend<K>> createKeyedStateBackend(
-    const StateBackend& stateBackend,
-    const KeyedStateSpec& spec,
-    memory::MemoryPool* pool) {
-  const auto& parameters = stateBackend.parameters();
-  switch (parameters->getBackendType()) {
-    case StateBackendType::HEAP:
-      return std::make_unique<HeapKeyedStateBackend<K>>(
-          spec.keyTypes(),
-          parameters->getMaxParallelism(),
-          parameters->getStartKeyGroup(),
-          parameters->getNumKeyGroups(),
-          pool);
-    case StateBackendType::ROCKSDB:
-      VELOX_UNSUPPORTED("The RocksDB keyed state backend is not implemented");
-  }
-  VELOX_UNREACHABLE();
-}
 
 } // namespace facebook::velox::stateful

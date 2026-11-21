@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 namespace facebook::velox::stateful {
 
@@ -24,6 +25,12 @@ namespace facebook::velox::stateful {
 /// namespace type N. Orthogonal to StateKey: the namespace must be stripped
 /// out of the key RowContainer because it is dynamically generated (window
 /// ids are not known up front) and cannot be probed jointly with the key.
+///
+/// The namespace crosses engine boundaries as this runtime contract, not as
+/// a static type: state storages erase their namespace dimension to
+/// Namespace and hold entries' namespaces as immutable clones, so a state
+/// handle created through one namespace type never depends on that type at
+/// storage level.
 class Namespace {
  public:
   virtual ~Namespace() = default;
@@ -32,6 +39,10 @@ class Namespace {
 
   /// Participates in the (K, N) composite hash of StateMap.
   virtual uint64_t hash() const = 0;
+
+  /// An owning immutable copy safe to store in a state entry; stateless
+  /// namespaces return a shared singleton.
+  virtual std::shared_ptr<const Namespace> clone() const = 0;
 };
 
 /// Namespace for non-window operators (GroupAggregator etc.). All instances
@@ -53,6 +64,12 @@ class VoidNamespace : public Namespace {
 
   uint64_t hash() const override {
     return 0;
+  }
+
+  std::shared_ptr<const Namespace> clone() const override {
+    static const std::shared_ptr<const VoidNamespace> kShared =
+        std::make_shared<VoidNamespace>();
+    return kShared;
   }
 };
 
