@@ -200,7 +200,7 @@ TEST_F(CheckpointFormatTest, roundTripTimestampNanosAndSharedNull) {
   tsValue->update(keysA[0], ns, std::make_shared<Timestamp>(1700000000, 42));
   tsValue->update(keysA[2], ns, nullptr);
 
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
@@ -215,7 +215,7 @@ TEST_F(CheckpointFormatTest, roundTripTimestampNanosAndSharedNull) {
           std::make_shared<SharedPtrSerializer<Timestamp>>(
               std::make_shared<ValueSerializer<Timestamp>>()),
           pool()));
-  backendB.restore(bytes);
+  backendB.restoreBytes(bytes);
 
   const auto restoredList = tsListB->get(keysB[0], ns);
   ASSERT_EQ(2, restoredList.size());
@@ -274,7 +274,7 @@ TEST_F(CheckpointFormatTest, crossProducerStreamRestores) {
   appendBytes(payload, littleEndianBytes<int64_t>(9));
   appendBytes(bytes, payload);
 
-  backend.restore(bytes);
+  backend.restoreBytes(bytes);
   EXPECT_EQ((std::vector<int64_t>{7, 9}), list->get(key, VoidNamespace()));
 }
 
@@ -288,7 +288,7 @@ TEST_F(CheckpointFormatTest, restoreRejectsCrcMismatch) {
   auto listA = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listA->add(keysA[0], VoidNamespace(), 7);
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
   ASSERT_GT(bytes.size(), kCheckpointHeaderSize + 4);
 
   auto makeBackendB = [&] {
@@ -301,11 +301,11 @@ TEST_F(CheckpointFormatTest, restoreRejectsCrcMismatch) {
 
   std::string flippedBody = bytes;
   flippedBody[flippedBody.size() / 2] ^= '\x40';
-  EXPECT_THROW(makeBackendB().restore(flippedBody), VeloxException);
+  EXPECT_THROW(makeBackendB().restoreBytes(flippedBody), VeloxException);
 
   std::string flippedTrailer = bytes;
   flippedTrailer.back() ^= '\x01';
-  EXPECT_THROW(makeBackendB().restore(flippedTrailer), VeloxException);
+  EXPECT_THROW(makeBackendB().restoreBytes(flippedTrailer), VeloxException);
 }
 
 // A stream whose flags announce no trailer restores without one: a storage
@@ -319,7 +319,7 @@ TEST_F(CheckpointFormatTest, restoreWorksWithoutCrcTrailer) {
   auto listA = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listA->add(keysA[0], VoidNamespace(), 7);
-  const auto withTrailer = backendA.snapshot();
+  const auto withTrailer = backendA.snapshotBytes();
   ASSERT_EQ(
       kCheckpointFlagLittleEndian | kCheckpointFlagCrcTrailer,
       static_cast<uint8_t>(withTrailer[5]));
@@ -333,7 +333,7 @@ TEST_F(CheckpointFormatTest, restoreWorksWithoutCrcTrailer) {
   auto keysB = probeKeys(selectorB, {42});
   auto listB = backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  backendB.restore(stripped);
+  backendB.restoreBytes(stripped);
   EXPECT_EQ((std::vector<int64_t>{7}), listB->get(keysB[0], VoidNamespace()));
 }
 
@@ -344,7 +344,7 @@ TEST_F(CheckpointFormatTest, restoreRejectsSchemaChange) {
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
@@ -354,7 +354,7 @@ TEST_F(CheckpointFormatTest, restoreRejectsSchemaChange) {
           std::make_shared<SharedPtrSerializer<int64_t>>(
               std::make_shared<ValueSerializer<int64_t>>()),
           pool()));
-  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+  EXPECT_THROW(backendB.restoreBytes(bytes), VeloxException);
 }
 
 // maxParallelism defines the key-group space and is stable across rescale:
@@ -365,13 +365,13 @@ TEST_F(CheckpointFormatTest, restoreRejectsMaxParallelismChange) {
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, 64, 0, 64, pool());
   backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+  EXPECT_THROW(backendB.restoreBytes(bytes), VeloxException);
 }
 
 // The body's group ids must ascend from the header's startKeyGroup; a
@@ -398,7 +398,7 @@ TEST_F(CheckpointFormatTest, restoreRejectsNonAscendingGroups) {
   appendU32(bytes, 0);
   appendBytes(bytes, "list");
   appendI32(bytes, 0);
-  EXPECT_THROW(backend.restore(bytes), VeloxException);
+  EXPECT_THROW(backend.restoreBytes(bytes), VeloxException);
 }
 
 // A backend with no registered states checkpoints to a bare stream —
@@ -407,7 +407,7 @@ TEST_F(CheckpointFormatTest, restoreRejectsNonAscendingGroups) {
 TEST_F(CheckpointFormatTest, emptyBackendRoundTrip) {
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
   // Header, the "(BIGINT)" key schema id, a zero state count, one group id
   // per key group, the trailer.
   ASSERT_EQ(
@@ -420,8 +420,8 @@ TEST_F(CheckpointFormatTest, emptyBackendRoundTrip) {
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
-  backendB.restore(bytes);
-  EXPECT_EQ(bytes, backendB.snapshot());
+  backendB.restoreBytes(bytes);
+  EXPECT_EQ(bytes, backendB.snapshotBytes());
 }
 
 // Streams that are not keyed-state checkpoints — wrong magic, wrong
@@ -431,15 +431,15 @@ TEST_F(CheckpointFormatTest, restoreRejectsForeignMagicAndVersion) {
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backend.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  const auto bytes = backend.snapshot();
+  const auto bytes = backend.snapshotBytes();
 
   std::string badMagic = bytes;
   badMagic[0] = 'X';
-  EXPECT_THROW(backend.restore(badMagic), VeloxException);
+  EXPECT_THROW(backend.restoreBytes(badMagic), VeloxException);
 
   std::string badVersion = bytes;
   badVersion[4] = static_cast<char>(kCheckpointFormatVersion + 1);
-  EXPECT_THROW(backend.restore(badVersion), VeloxException);
+  EXPECT_THROW(backend.restoreBytes(badVersion), VeloxException);
 }
 
 // A TIMESTAMP key column round-trips with its nanoseconds intact, through
@@ -457,7 +457,7 @@ TEST_F(CheckpointFormatTest, timestampKeyColumnRoundTrip) {
   auto listA = backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listA->add(keysA[0], VoidNamespace(), 7);
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {TIMESTAMP()}, kMaxParallelism, 0, kMaxParallelism, pool());
@@ -468,11 +468,23 @@ TEST_F(CheckpointFormatTest, timestampKeyColumnRoundTrip) {
       selectorB.keys().begin(), selectorB.keys().end());
   auto listB = backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  backendB.restore(bytes);
+  backendB.restoreBytes(bytes);
 
   // The restored key resolves to the row of the freshly probed equal key:
   // the nanosecond-precise identity survived the checkpoint.
   EXPECT_EQ((std::vector<int64_t>{7}), listB->get(keysB[0], VoidNamespace()));
+}
+
+// next(0) is rejected rather than read as the end of the stream: on an
+// empty return the two are indistinguishable, so a zero maxSize would end
+// a restore early while bytes remain.
+TEST(CheckpointSourceTest, nextRejectsZeroMaxSize) {
+  BufferCheckpointSource source("abc");
+  EXPECT_THROW(source.next(0), VeloxException);
+  // A positive size reads the stream to its end as before.
+  EXPECT_EQ("a", source.next(1));
+  EXPECT_EQ("bc", source.next(8));
+  EXPECT_TRUE(source.next(8).empty());
 }
 
 } // namespace
