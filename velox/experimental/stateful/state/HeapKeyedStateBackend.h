@@ -118,11 +118,15 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     return numKeyGroups_;
   }
 
-  /// Batch-boundary key reclamation: erases key rows no state entry
-  /// references any more (see KeyTable::advance). Operators call this at
-  /// the end of each input batch; snapshot() runs it first, so dead key
-  /// rows never sit across a checkpoint barrier.
-  void advance() {
+  /// Heap state entries are written in place as the accessors mutate them;
+  /// nothing is staged outside storage.
+  void commit() override {}
+
+  /// Erases key rows no state entry references any more (see
+  /// KeyTable::advance). Operators call this at the end of each input
+  /// batch; snapshot(CheckpointSink&) runs it first, so dead key rows never
+  /// sit across a checkpoint barrier.
+  void reclaim() override {
     keyTable_->advance();
   }
 
@@ -260,12 +264,17 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   /// plays the role of Flink's per-state metadata snapshots: restore
   /// cross-checks it against the backend and its registered states instead
   /// of relying on registration order.
-  std::string snapshot() {
-    // Dead key rows do not cross the checkpoint barrier: reclaim first.
-    advance();
+  void snapshot(CheckpointSink& sink) override {
+    // Commit and reclaim first: the stream must reflect every state entry,
+    // and dead key rows do not cross the checkpoint barrier.
+    commit();
+    reclaim();
     std::vector<std::pair<std::string, StatePtr>> states(
         createdStates_.begin(), createdStates_.end());
     std::sort(states.begin(), states.end());
+    // The heap state is fully resident, so the stream is materialized into
+    // memory before it reaches the sink; the streaming interface exists for
+    // backends whose state need not be.
     std::string bytes;
     CheckpointWriter writer(bytes);
     CheckpointHeader header;
@@ -291,11 +300,12 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       }
     }
     writer.writeUInt32(checkpointCrc32(bytes));
-    return bytes;
+    sink.append(bytes);
   }
 
-  /// Restores the stream written by snapshot() into the states this backend
-  /// has registered. The header must carry this backend's maxParallelism —
+  /// Restores the stream written by snapshot(CheckpointSink&) into the
+  /// states this backend has registered. The header must carry this
+  /// backend's maxParallelism —
   /// it defines the key-group space and is stable across rescale, so
   /// equality is required — and the schema table must match the registered
   /// states one-for-one, same ids and same schema ids. The stream's
@@ -308,7 +318,29 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   /// is what makes handle-owned state tables possible; the byte layout of
   /// the entries is the same. When the flags announce a CRC-32 trailer it
   /// is verified over the whole stream before any state is touched.
-  void restore(const std::string& bytes) {
+  void restore(CheckpointSource& source) override {
+    // The heap state is fully resident, so the stream is drained into
+    // memory before it is parsed; the streaming interface exists for
+    // backends whose state need not be.
+    std::string bytes;
+    for (;;) {
+      auto chunk = source.next(kRestoreChunkBytes);
+      if (chunk.empty()) {
+        break;
+      }
+      bytes.append(chunk.data(), chunk.size());
+    }
+    restoreStream(bytes);
+  }
+
+ private:
+  /// Chunk size restore() drains the source with.
+  static constexpr size_t kRestoreChunkBytes = 4096;
+
+  /// Parses the checkpoint stream drained by restore(CheckpointSource&);
+  /// the heap materializes the stream first, so parsing works on one
+  /// buffer.
+  void restoreStream(const std::string& bytes) {
     CheckpointReader headerReader(bytes.data(), bytes.size());
     const auto header = readCheckpointHeader(headerReader);
     size_t bodySize = bytes.size();
@@ -421,7 +453,6 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
     VELOX_CHECK(reader.atEnd(), "Corrupt checkpoint: trailing bytes");
   }
 
- private:
   /// Returns the cached handle registered under 'name' when it is of the
   /// requested type, nullptr when the name is unknown; a type mismatch
   /// fails: one name is one state.

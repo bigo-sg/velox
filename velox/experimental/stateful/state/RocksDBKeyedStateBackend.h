@@ -71,6 +71,14 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
       int64_t timestamp,
       CheckpointOptions checkpointOptions) override;
 
+  void snapshot(CheckpointSink& sink) override;
+
+  void restore(CheckpointSource& source) override;
+
+  void commit() override;
+
+  void reclaim() override;
+
   // Deprecated, this maybe removed later
   void notifyCheckpointComplete(int64_t checkpointId) override;
 
