@@ -17,8 +17,8 @@
 #include <cstdint>
 
 #include "velox/experimental/stateful/state/State.h"
-#include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
+#include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/window/Window.h"
 #include "velox/vector/ComplexVector.h"
 
