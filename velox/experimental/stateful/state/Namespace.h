@@ -28,11 +28,26 @@ class Namespace {
  public:
   virtual ~Namespace() = default;
 
+  /// Equality is equality of kind plus equality of the kind's own payload;
+  /// two namespaces of different kinds are never equal.
   virtual bool equals(const Namespace& other) const = 0;
 
   /// Participates in the (K, N) composite hash of StateMap.
   virtual uint64_t hash() const = 0;
+
+  /// Identifies the namespace kind - the domain concept the namespace
+  /// belongs to (the void namespace, a time window, ...). Every namespace
+  /// type declares its kind next to its class, as a constant numbered from
+  /// 1; 0 is reserved. The kind is a process-stable number (it may be
+  /// recorded in checkpoint metadata next to the serializer's schema id),
+  /// and a backend that mixes namespace kinds across its states checks it
+  /// at the state's entry points: a namespace of another kind handed to a
+  /// state fails there instead of probing with it.
+  virtual uint32_t kind() const = 0;
 };
+
+/// Kind of VoidNamespace.
+constexpr uint32_t kVoidNamespaceKind = 1;
 
 /// Namespace for non-window operators (GroupAggregator etc.). All instances
 /// are equal and the hash is constant, so a shared singleton suffices.
@@ -47,12 +62,18 @@ class VoidNamespace : public Namespace {
     return kInstance;
   }
 
+  // The kind is the whole identity: nothing of another kind equals the
+  // void namespace, and every void namespace equals every other.
   bool equals(const Namespace& other) const override {
-    return dynamic_cast<const VoidNamespace*>(&other) != nullptr;
+    return other.kind() == kind();
   }
 
   uint64_t hash() const override {
     return 0;
+  }
+
+  uint32_t kind() const override {
+    return kVoidNamespaceKind;
   }
 };
 
