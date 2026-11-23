@@ -62,7 +62,8 @@
 #include "velox/experimental/stateful/agg/AggsHandleFunction.h"
 #include "velox/experimental/stateful/agg/GroupAggregator.h"
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
-#include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
+#include "velox/experimental/stateful/rank/DeduplicateRanker.h"
+#include "velox/experimental/stateful/rank/StreamDeduplicateOperator.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
 
 namespace facebook::velox::stateful {
@@ -420,6 +421,39 @@ StatefulOperatorPtr StatefulPlanner::transformStreamRankOperator(
       std::dynamic_pointer_cast<const StreamRankNode>(planNode.node());
   VELOX_CHECK(rankNode, "Failed to cast to StreamRankNode");
 
+  auto keySpec =
+      std::dynamic_pointer_cast<const exec::HashPartitionFunctionSpec>(
+          rankNode->keySelectorSpec());
+  VELOX_CHECK(keySpec, "StreamRankNode requires a HashPartitionFunctionSpec");
+
+  if (auto dedupNode = std::dynamic_pointer_cast<const DeduplicateNode>(
+          rankNode->ranker())) {
+    // Deduplicate: operator-owned keyed state with a typed backend.
+    auto keyChannels = keySpec->keyChannels();
+    std::vector<TypePtr> keyTypes;
+    keyTypes.reserve(keyChannels.size());
+    for (auto channel : keyChannels) {
+      keyTypes.push_back(keySpec->inputType()->childAt(channel));
+    }
+    auto ranker = std::make_unique<DeduplicateRanker>(
+        nextOperatorId(),
+        ctx_,
+        dedupNode,
+        keySpec->inputType(),
+        dedupNode->minRetentionTime(),
+        dedupNode->rowtimeIndex(),
+        dedupNode->generateUpdateBefore(),
+        dedupNode->generateInsert(),
+        dedupNode->keepLastRow());
+    return std::make_unique<StreamDeduplicateOperator>(
+        std::move(ranker),
+        std::move(keyChannels),
+        std::move(keyTypes),
+        std::move(targets));
+  }
+
+  // TopN: legacy StreamKeyedOperator path (not yet migrated to operator-owned
+  // keyed state).
   auto op = transformOperator(rankNode->ranker());
 
   std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
@@ -668,18 +702,6 @@ std::unique_ptr<exec::Operator> StatefulPlanner::transformOperator(
         std::make_unique<AggsHandleFunction>(), // TODO: not complete yet
         0,
         aggsHandlerNode->generateUpdateBefore());
-  } else if (
-      auto deduplicateNode =
-          std::dynamic_pointer_cast<const DeduplicateNode>(planNode)) {
-    return std::make_unique<RowTimeDeduplicateRanker>(
-        nextOperatorId(),
-        ctx_,
-        deduplicateNode,
-        deduplicateNode->minRetentionTime(),
-        deduplicateNode->rowtimeIndex(),
-        deduplicateNode->generateUpdateBefore(),
-        deduplicateNode->generateInsert(),
-        deduplicateNode->keepLastRow());
   } else if (
       auto topNNode =
           std::dynamic_pointer_cast<const StreamTopNNode>(planNode)) {

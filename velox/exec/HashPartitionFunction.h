@@ -95,6 +95,14 @@ class HashPartitionFunctionSpec : public core::PartitionFunctionSpec {
       const folly::dynamic& obj,
       void* context);
 
+  const RowTypePtr& inputType() const {
+    return inputType_;
+  }
+
+  const std::vector<column_index_t>& keyChannels() const {
+    return keyChannels_;
+  }
+
  private:
   const RowTypePtr inputType_;
   const std::vector<column_index_t> keyChannels_;
