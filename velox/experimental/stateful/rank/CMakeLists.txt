@@ -13,4 +13,4 @@
 # limitations under the License.
 
 velox_add_library(velox_stateful_rank OBJECT AppendOnlyTopNRanker.cpp
-                  RowTimeDeduplicateRanker.cpp)
+                  DeduplicateRanker.cpp StreamDeduplicateOperator.cpp)
