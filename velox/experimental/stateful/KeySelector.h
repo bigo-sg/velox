@@ -98,11 +98,22 @@ class KeySelector {
   /// bound table's private door and never reaches this list.
   folly::Range<const vector_size_t*> newGroups() const;
 
-  /// The key RowContainer of the bound table, holding one row per distinct
-  /// key seen so far, with the user key columns only.
-  exec::RowContainer* keyRowContainer() const;
+  /// Copies one key column of 'keys' (keys() or distinctKeys() of the last
+  /// probe) into 'result', in the shape of RowContainer::extractColumn: for
+  /// every i, result[i + resultOffset] receives key column 'keyColumn' of
+  /// keys[rowNumbers[i]]. This is how an operator reads key values back;
+  /// the key rows of the bound table stay behind the index.
+  void extractKeyColumn(
+      folly::Range<const RowContainerStateKey*> keys,
+      folly::Range<const vector_size_t*> rowNumbers,
+      column_index_t keyColumn,
+      vector_size_t resultOffset,
+      const VectorPtr& result) const {
+    keyIndex_->extractKeyColumn(
+        keys, rowNumbers, keyColumn, resultOffset, result);
+  }
 
-  /// The key schema of keyRowContainer(), available from construction.
+  /// The key schema of the bound table, available from construction.
   const RowContainerKeySchema* schema() const;
 
   /// The key serializer over the bound table: serializes keys column-wise

@@ -180,7 +180,33 @@ class KeyTable : public KeyIndex,
         schema_.get(), probeKeyLookup_->hits[0], hashes[0], maxParallelism_);
   }
 
-  exec::RowContainer* keyRows() override {
+  void extractKeyColumn(
+      folly::Range<const RowContainerStateKey*> keys,
+      folly::Range<const vector_size_t*> rowNumbers,
+      column_index_t keyColumn,
+      vector_size_t resultOffset,
+      const VectorPtr& result) override {
+    // The container extracts over an array of row pointers; the key views
+    // hand out this table's own rows, so the array is the keys, in order.
+    std::vector<const char*> rows;
+    rows.reserve(keys.size());
+    for (const auto& key : keys) {
+      rows.push_back(key.row());
+    }
+    hashTable_->rows()->extractColumn(
+        rows.data(),
+        rowNumbers,
+        static_cast<int32_t>(keyColumn),
+        resultOffset,
+        result);
+  }
+
+  /// The key RowContainer holding one row per distinct key seen so far,
+  /// with the user key columns only (plus the trailing refcount column of
+  /// the class comment). Not part of KeyIndex: operators read key values
+  /// through extractKeyColumn(); the container is reachable for the heap
+  /// storage's own bookkeeping (tests read its row count).
+  exec::RowContainer* keyRows() {
     return hashTable_->rows();
   }
 

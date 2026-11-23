@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "velox/common/memory/ByteStream.h"
+#include "velox/exec/Aggregate.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
@@ -39,13 +40,15 @@ namespace facebook::velox::stateful {
 /// AggregatingState on the heap storage: the value is a char* row of a value
 /// RowContainer in accumulator layout, built from the descriptor's
 /// accumulator array so that aggregate functions read and write their slots
-/// in place (the same layout HashAggregation rows use). On a miss the state
-/// materializes a fresh row, inserts it into the state table, and constructs
-/// the accumulators through the descriptor's init callback — one batched
-/// call per rows() batch of misses (the operator wraps
-/// Aggregate::initializeNewGroups over its own aggregates). The state never
-/// calls any Aggregate method itself. Relevant to Flink
-/// HeapAggregatingState.
+/// in place (the same layout HashAggregation rows use). At construction the
+/// state wires the descriptor's aggregate functions to that layout -
+/// allocator and row offsets - so the functions are ready for the first
+/// rows() call; this is the only thing the state does with the functions. On
+/// a miss the state materializes a fresh row, inserts it into the state
+/// table, and constructs the accumulators through the descriptor's init
+/// callback — one batched call per rows() batch of misses (the operator
+/// wraps Aggregate::initializeNewGroups over its own aggregates). The state
+/// never orchestrates accumulation. Relevant to Flink HeapAggregatingState.
 /// @param <K> type of key, a StateKey subclass
 /// @param <N> type of namespace, a Namespace subclass
 template <typename K, typename N>
@@ -74,7 +77,23 @@ class HeapAggregatingState : public AggregatingState<K, N> {
         keySerializer_(std::move(keySerializer)),
         nsSerializer_(NamespaceSerializerTraits<N>::create()),
         valueSchemaId_(
-            "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {}
+            "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {
+    // Wire each aggregate function to its accumulator column: the string
+    // allocator and the row offsets are this container's, so addRawInput on
+    // a row handle works from the first rows() call.
+    const auto& aggregates = descriptor.aggregates();
+    for (size_t i = 0; i < aggregates.size(); ++i) {
+      aggregates[i]->setAllocator(&valueRows_->stringAllocator());
+      const auto column = valueRows_->columnAt(static_cast<int32_t>(i));
+      aggregates[i]->setOffsets(
+          column.offset(),
+          column.nullByte(),
+          column.nullMask(),
+          column.initializedByte(),
+          column.initializedMask(),
+          valueRows_->rowSizeOffset());
+    }
+  }
 
   void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
     std::vector<char*> newRows;
@@ -103,7 +122,11 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return newRow;
   }
 
-  exec::RowContainer* valueRows() override {
+  /// The value RowContainer holding the accumulator rows. Not part of the
+  /// state interface: operators treat the rows() handles as opaque, and the
+  /// container is reachable for the heap storage's own bookkeeping (tests
+  /// read its row count, the checkpoint plane serializes its rows).
+  exec::RowContainer* valueRows() {
     return valueRows_.get();
   }
 
