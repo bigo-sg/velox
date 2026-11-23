@@ -100,10 +100,6 @@ folly::Range<const vector_size_t*> KeySelector::newGroups() const {
       lookup_->newGroups.data(), lookup_->newGroups.size());
 }
 
-exec::RowContainer* KeySelector::keyRowContainer() const {
-  return keyIndex_->keyRows();
-}
-
 const RowContainerKeySchema* KeySelector::schema() const {
   return keyIndex_->keySchema();
 }
