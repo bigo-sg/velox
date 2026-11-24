@@ -1613,7 +1613,7 @@ TEST_F(StateBackendTest, keyWithEntriesInTwoStatesReclaimsWhenAllRemoved) {
   EXPECT_EQ(1, selector.newGroups().size());
 }
 
-// snapshot() runs the reclamation first: dead key rows never sit across a
+// snapshotBytes() runs the reclamation first: dead key rows never sit across a
 // checkpoint barrier. The key whose entry survives the snapshot keeps its
 // row; the key whose entry was removed before the snapshot is gone.
 TEST_F(StateBackendTest, snapshotReclaimsDeadKeyRowsFirst) {

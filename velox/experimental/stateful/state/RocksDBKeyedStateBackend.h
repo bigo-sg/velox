@@ -71,10 +71,15 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
       int64_t timestamp,
       CheckpointOptions checkpointOptions) override;
 
+  // The checkpoint plane is not implemented for the RocksDB backend yet;
+  // the operators' checkpoint walk fails loud here instead of silently
+  // producing an empty snapshot.
   void snapshot(CheckpointSink& sink) override;
 
   void restore(CheckpointSource& source) override;
 
+  // Same for the commit / reclaim pair: the RocksDB backend has no key
+  // table and no staging yet, so there is nothing either would do.
   void commit() override;
 
   void reclaim() override;

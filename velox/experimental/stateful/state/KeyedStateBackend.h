@@ -42,12 +42,14 @@ class KeyedStateBackend : public Snapshotable, public CheckpointListener {
   // callers going through this base class.
   using Snapshotable::snapshot;
 
-  /// Writes the whole keyed state as a checkpoint stream to 'sink'. The
-  /// backend commits its in-memory changes (commit()) and releases dead
-  /// resources (reclaim()) first, so the stream reflects every state entry
-  /// and no dead key row sits across the barrier. Implementations must
-  /// write through the sink and must not require the stream to be buffered
-  /// in full.
+  /// Writes the whole keyed state as a checkpoint stream to 'sink'. This is
+  /// what the stateful operators' checkpoint walk collects through
+  /// StatefulOperator::snapshotState: byte-level checkpointing owned by the
+  /// backend, not the operator. The backend commits its in-memory changes
+  /// (commit()) and releases dead resources (reclaim()) first, so the
+  /// stream reflects every state entry and no dead key row sits across the
+  /// barrier. Implementations must write through the sink and must not
+  /// require the stream to be buffered in full.
   virtual void snapshot(CheckpointSink& sink) = 0;
 
   /// Reads a checkpoint stream produced by snapshot(CheckpointSink&) back
