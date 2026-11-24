@@ -25,3 +25,7 @@ velox_add_library(
 
 velox_link_libraries(velox_from_elements_connector velox_common_io
                      velox_connector velox_connector_util)
+
+if(${VELOX_BUILD_TESTING})
+  add_subdirectory(tests)
+endif()

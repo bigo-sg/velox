@@ -22,6 +22,7 @@
 
 #include "velox/core/QueryConfig.h"
 #include "velox/functions/Macros.h"
+#include "velox/functions/flinksql/DateTimeFunctions.h"
 #include "velox/functions/flinksql/RecordClock.h"
 #include "velox/functions/lib/TimeUtils.h"
 #include "velox/type/Timestamp.h"
@@ -152,7 +153,10 @@ struct CurrentDateFunction {
   FOLLY_ALWAYS_INLINE void initialize(
       const std::vector<TypePtr>& /*inputTypes*/,
       const core::QueryConfig& config) {
-    timeZone_ = getTimeZoneFromConfig(config);
+    // The session timezone is intrinsic to the Flink semantics of these
+    // functions, not a presto-adjust-gated property (gluten-flink disables
+    // adjust_timestamp_to_session_timezone under the wall-as-UTC convention).
+    timeZone_ = detail::getSessionTimeZone(config);
   }
 
   FOLLY_ALWAYS_INLINE void call(out_type<Date>& result) {
@@ -183,7 +187,10 @@ struct CurrentTimeFunction {
   FOLLY_ALWAYS_INLINE void initialize(
       const std::vector<TypePtr>& /*inputTypes*/,
       const core::QueryConfig& config) {
-    timeZone_ = getTimeZoneFromConfig(config);
+    // The session timezone is intrinsic to the Flink semantics of these
+    // functions, not a presto-adjust-gated property (gluten-flink disables
+    // adjust_timestamp_to_session_timezone under the wall-as-UTC convention).
+    timeZone_ = detail::getSessionTimeZone(config);
   }
 
   FOLLY_ALWAYS_INLINE void call(out_type<int32_t>& result) {
