@@ -28,7 +28,6 @@ KeySelector::KeySelector(
     KeyIndex& keyIndex,
     std::vector<column_index_t> keyChannels)
     : keyIndex_(&keyIndex), keyChannels_(std::move(keyChannels)) {
-  VELOX_CHECK(!keyChannels_.empty(), "KeySelector requires a key channel");
   VELOX_CHECK_EQ(
       keyChannels_.size(),
       keyIndex.keySchema()->keyTypes().size(),
@@ -60,7 +59,7 @@ void KeySelector::probe(const RowVectorPtr& input) {
     keyChildren.push_back(
         BaseVector::loadedVectorShared(input->childAt(channel)));
   }
-  keyIndex_->probe(std::move(keyChildren), *lookup_, stableHashes_);
+  keyIndex_->probe(numInput, std::move(keyChildren), *lookup_, stableHashes_);
 
   keys_.clear();
   keys_.reserve(numInput);

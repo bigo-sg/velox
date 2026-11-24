@@ -1740,5 +1740,57 @@ TEST_F(StateBackendTest, sharedValueCorruptNullFlagFailsLoud) {
   EXPECT_THROW(serializer.deserialize(std::string(1, '\x02')), VeloxException);
 }
 
+// Global state: a backend over an empty key set holds one key row that
+// every probe maps to. An aggregating state under it accumulates across the
+// whole input, survives a checkpoint round trip, and reclaim() never
+// retires the key row - Flink's keyless aggregation shape.
+TEST_F(StateBackendTest, globalAggregatingStateWithoutKeys) {
+  SumAggregate sumA;
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      {}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {});
+  auto stateA = backendA.getOrCreateAggregatingState(
+      sumA.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+
+  const auto keysA = probeKeys(selectorA, {10, 20, std::nullopt});
+  ASSERT_EQ(3, keysA.size());
+  // New on the first probe; the entries then count toward the key row.
+  ASSERT_EQ(3, selectorA.newGroups().size());
+  std::vector<char*> rows(keysA.size(), nullptr);
+  stateA->rows(
+      folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
+      VoidNamespace::instance(),
+      rows.data());
+  ASSERT_EQ(1, sumA.initCount);
+  EXPECT_EQ(rows[0], rows[1]);
+  sumA.add(rows[0], makeNullableFlatVector<int64_t>({10}));
+  sumA.add(rows[1], makeNullableFlatVector<int64_t>({20}));
+  EXPECT_EQ(30, sumA.valueOf(rows[0], pool()));
+
+  // The key row outlives the batch boundary: every probe maps to it.
+  backendA.reclaim();
+  EXPECT_EQ(1, keyRows(backendA)->numRows());
+  const auto bytes = backendA.snapshotBytes();
+
+  SumAggregate sumB;
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      {}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {});
+  auto stateB = backendB.getOrCreateAggregatingState(
+      sumB.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+  backendB.restoreBytes(bytes);
+
+  const auto keysB = probeKeys(selectorB, {1});
+  ASSERT_EQ(1, keysB.size());
+  // Restored entries make the global key an existing one: not new.
+  EXPECT_TRUE(selectorB.newGroups().empty());
+  EXPECT_EQ(
+      30,
+      sumB.valueOf(stateB->row(keysB[0], VoidNamespace::instance()), pool()));
+  EXPECT_EQ(1, keyRows(backendB)->numRows());
+}
+
 } // namespace
 } // namespace facebook::velox::stateful
