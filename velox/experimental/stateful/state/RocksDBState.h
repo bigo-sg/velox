@@ -15,20 +15,32 @@
  */
 #pragma once
 
-#include <exception>
+#include <map>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+#include <vector>
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 #include "rocksdb/slice.h"
+#include "rocksdb/write_batch.h"
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
-#include "velox/experimental/stateful/state/SerializedCompositeKeyBuilder.h"
+#include "velox/experimental/stateful/state/ByteStream.h"
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
+#include "velox/experimental/stateful/state/StateDescriptor.h"
+#include "velox/type/StringView.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 
+/// RocksDB identity is (state name, key group, namespace, serialized key).
+/// The hash chooses a key group; the complete serialized key distinguishes
+/// entries even when two keys have the same hash-derived bucket.
 template <typename K, typename N, typename V>
 class RocksDBState {
  public:
@@ -37,106 +49,183 @@ class RocksDBState {
       const rocksdb::ReadOptions& readOptions,
       const rocksdb::WriteOptions& writeOptions,
       rocksdb::ColumnFamilyHandle& columnFamily,
-      const std::shared_ptr<stateful::TypeSerializer<K>> keySerializer,
-      const std::shared_ptr<stateful::TypeSerializer<N>> namespaceSerializer,
-      const std::shared_ptr<stateful::TypeSerializer<V>> valueSerializer,
-      const V defaultValue,
-      memory::MemoryPool* pool)
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::shared_ptr<TypeSerializer<V>> valueSerializer,
+      std::string stateName,
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups)
       : db_(db),
-        columnFamily_(columnFamily),
+        cf_(columnFamily),
         readOptions_(readOptions),
         writeOptions_(writeOptions),
-        defaultValue_(defaultValue),
-        keySerializer_(keySerializer),
-        namespaceSerializer_(namespaceSerializer),
-        valueSerializer_(valueSerializer),
-        sharedKeyAndNamespaceSerializer_(
-            std::make_shared<stateful::SerializedCompositeKeyBuilder<K, N>>(
-                keySerializer,
-                namespaceSerializer,
-                keyGroupPrefixBytes_,
-                0)),
-        pool_(pool) {}
-
-  std::string serializeKeyWithGroupAndNamespace(const K& key, const N& ns) {
-    /// TODO: calculate keyGroup
-    // int32_t keyGroupId = 0;
-    // sharedKeyAndNamespaceSerializer_->setKeyAndKeyGroup(key, keyGroupId);
-    return sharedKeyAndNamespaceSerializer_->buildCompositeKeyNamespace(
-        key, ns);
+        stateName_(std::move(stateName)),
+        keySerializer_(std::move(keySerializer)),
+        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        valueSerializer_(std::move(valueSerializer)),
+        startKeyGroup_(startKeyGroup),
+        numKeyGroups_(numKeyGroups) {
+    VELOX_CHECK_NOT_NULL(keySerializer_);
   }
 
-  void remove(const K& key) {
-    try {
-      db_.Delete(
-          writeOptions_,
-          &columnFamily_,
-          serializeKeyWithGroupAndNamespace(key, currentNamespace_));
-    } catch (const std::exception& e) {
-      VELOX_FAIL("Failed to clear rocksdb, {}", e.what());
+  std::string serializeKeyWithGroupAndNamespace(
+      const K& userKey,
+      const N& ns) const {
+    const auto group = userKey.keyGroup();
+    VELOX_CHECK(
+        group >= startKeyGroup_ &&
+            static_cast<uint64_t>(group) <
+                static_cast<uint64_t>(startKeyGroup_) + numKeyGroups_,
+        "Key group {} is outside this RocksDB backend's range [{}, {})",
+        group,
+        startKeyGroup_,
+        static_cast<uint64_t>(startKeyGroup_) + numKeyGroups_);
+    auto bytes = prefix(group);
+    ByteWriter writer(bytes);
+    writer.writeBytes(nsSerializer_->serialize(ns));
+    writer.writeBytes(keySerializer_->serialize(userKey));
+    return bytes;
+  }
+
+  std::optional<V> getOptional(const K& userKey, const N& ns) const {
+    std::string value;
+    const auto status = db_.Get(
+        readOptions_,
+        &cf_,
+        serializeKeyWithGroupAndNamespace(userKey, ns),
+        &value);
+    if (status.IsNotFound()) {
+      return std::nullopt;
     }
+    VELOX_CHECK(status.ok(), "RocksDB get failed: {}", status.ToString());
+    return deserializeValue(value);
   }
 
-  V get(const K& key, const N& ns) {
-    const std::string keyStr = serializeKeyWithGroupAndNamespace(key, ns);
-    try {
-      std::string value;
-      auto status = db_.Get(readOptions_, &columnFamily_, keyStr, &value);
-      if (!status.ok()) {
-        return defaultValue_;
-      } else {
-        return valueSerializer_->deserialize(value);
+  V get(const K& userKey, const N& ns) const {
+    auto value = getOptional(userKey, ns);
+    return value ? std::move(*value) : V{};
+  }
+
+  void put(const K& userKey, const N& ns, const V& value) const {
+    const auto status = db_.Put(
+        writeOptions_,
+        &cf_,
+        serializeKeyWithGroupAndNamespace(userKey, ns),
+        serializeValue(value));
+    VELOX_CHECK(status.ok(), "RocksDB put failed: {}", status.ToString());
+  }
+
+  void remove(const K& userKey, const N& ns) const {
+    const auto status = db_.Delete(
+        writeOptions_, &cf_, serializeKeyWithGroupAndNamespace(userKey, ns));
+    VELOX_CHECK(status.ok(), "RocksDB delete failed: {}", status.ToString());
+  }
+
+  void clear() const {
+    for (uint32_t group = startKeyGroup_;
+         group < startKeyGroup_ + numKeyGroups_;
+         ++group) {
+      const auto groupPrefix = prefix(group);
+      rocksdb::WriteBatch batch;
+      auto iterator = std::unique_ptr<rocksdb::Iterator>(
+          db_.NewIterator(readOptions_, &cf_));
+      for (iterator->Seek(groupPrefix); iterator->Valid(); iterator->Next()) {
+        const auto dbKey = iterator->key().ToStringView();
+        if (dbKey.substr(0, groupPrefix.size()) != groupPrefix) {
+          break;
+        }
+        batch.Delete(&cf_, iterator->key());
       }
-    } catch (const std::exception& e) {
-      VELOX_FAIL("Failed to get from rocksdb:{}", e.what());
+      VELOX_CHECK(
+          iterator->status().ok(),
+          "RocksDB iterator failed: {}",
+          iterator->status().ToString());
+      const auto status = db_.Write(writeOptions_, &batch);
+      VELOX_CHECK(status.ok(), "RocksDB clear failed: {}", status.ToString());
     }
   }
 
-  void put(const K& key, const N& ns, const V& value) {
-    const std::string keyStr = serializeKeyWithGroupAndNamespace(key, ns);
-    const std::string valueStr = valueSerializer_->serialize(value);
-    try {
-      auto status = db_.Put(writeOptions_, &columnFamily_, keyStr, valueStr);
-      if (!status.ok()) {
-        VELOX_FAIL(
-            "Failed to put value into rocksdb, with key {}, namespace {}",
-            key,
-            ns);
+  void snapshotKeyGroup(int32_t group, CheckpointWriter& writer) const {
+    VELOX_CHECK(
+        group >= 0 && static_cast<uint32_t>(group) >= startKeyGroup_ &&
+            static_cast<uint64_t>(group) <
+                static_cast<uint64_t>(startKeyGroup_) + numKeyGroups_,
+        "Key group {} is outside this RocksDB backend",
+        group);
+    const auto groupPrefix = prefix(static_cast<uint32_t>(group));
+    const auto countPosition = writer.writeInt32Placeholder();
+    int32_t count = 0;
+    auto iterator =
+        std::unique_ptr<rocksdb::Iterator>(db_.NewIterator(readOptions_, &cf_));
+    for (iterator->Seek(groupPrefix); iterator->Valid(); iterator->Next()) {
+      const auto dbKey = iterator->key().ToStringView();
+      if (dbKey.substr(0, groupPrefix.size()) != groupPrefix) {
+        break;
       }
-    } catch (const std::exception& e) {
-      VELOX_FAIL("Failed to put into rocksdb:{}", e.what());
+      ByteReader reader(
+          dbKey.data() + groupPrefix.size(), dbKey.size() - groupPrefix.size());
+      const auto ns = reader.readBytes();
+      const auto keyBytes = reader.readBytes();
+      VELOX_CHECK(reader.atEnd(), "Corrupt RocksDB state key");
+      writeEntryFrames(writer, ns, keyBytes, iterator->value().ToStringView());
+      ++count;
     }
+    VELOX_CHECK(
+        iterator->status().ok(),
+        "RocksDB iterator failed: {}",
+        iterator->status().ToString());
+    writer.patchInt32(countPosition, count);
   }
 
-  void remove(const K& key, const N& ns) {
-    const std::string keyStr = serializeKeyWithGroupAndNamespace(key, ns);
-    try {
-      auto status = db_.Delete(writeOptions_, &columnFamily_, keyStr);
-      if (!status.ok()) {
-        VELOX_FAIL(
-            "Failed to remove from rocksdb, with key {}, namespace:{}",
-            key,
-            ns);
-      }
-    } catch (const std::exception& e) {
-      VELOX_FAIL("Failed to remove from rocksdb:{}", e.what());
-    }
+  void restoreEntry(int32_t group, CheckpointReader& reader) const {
+    const auto frames = readEntryFrames(reader);
+    const auto userKey = keySerializer_->deserialize(frames.key);
+    checkEntryKeyGroup(userKey, group);
+    const auto ns = nsSerializer_->deserialize(frames.ns);
+    put(userKey, ns, deserializeValue(frames.payload));
+  }
+
+  std::string namespaceSchemaId() const {
+    return nsSerializer_->schemaId();
   }
 
  protected:
+  std::string serializeValue(const V& value) const {
+    if constexpr (std::is_same_v<V, std::string>) {
+      return valueSerializer_ ? valueSerializer_->serialize(value) : value;
+    } else {
+      VELOX_CHECK_NOT_NULL(valueSerializer_);
+      return valueSerializer_->serialize(value);
+    }
+  }
+
+  V deserializeValue(std::string_view bytes) const {
+    if constexpr (std::is_same_v<V, std::string>) {
+      return valueSerializer_ ? valueSerializer_->deserialize(bytes)
+                              : std::string(bytes);
+    } else {
+      VELOX_CHECK_NOT_NULL(valueSerializer_);
+      return valueSerializer_->deserialize(bytes);
+    }
+  }
+
+  std::string prefix(uint32_t group) const {
+    std::string bytes;
+    ByteWriter writer(bytes);
+    writer.writeBytes(stateName_);
+    writer.writeUInt32(group);
+    return bytes;
+  }
+
   rocksdb::DB& db_;
-  rocksdb::ColumnFamilyHandle& columnFamily_;
+  rocksdb::ColumnFamilyHandle& cf_;
   const rocksdb::ReadOptions& readOptions_;
   const rocksdb::WriteOptions& writeOptions_;
-  N currentNamespace_;
-  V defaultValue_;
-  int32_t keyGroupPrefixBytes_;
-  const std::shared_ptr<stateful::TypeSerializer<K>> keySerializer_;
-  const std::shared_ptr<stateful::TypeSerializer<N>> namespaceSerializer_;
-  const std::shared_ptr<stateful::TypeSerializer<V>> valueSerializer_;
-  const std::shared_ptr<stateful::SerializedCompositeKeyBuilder<K, N>>
-      sharedKeyAndNamespaceSerializer_;
-  memory::MemoryPool* pool_;
+  const std::string stateName_;
+  std::shared_ptr<TypeSerializer<K>> keySerializer_;
+  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<TypeSerializer<V>> valueSerializer_;
+  const uint32_t startKeyGroup_;
+  const uint32_t numKeyGroups_;
 };
 
 template <typename K, typename N, typename V>
@@ -145,258 +234,247 @@ class RocksDBValueState : public RocksDBState<K, N, V>,
  public:
   RocksDBValueState(
       rocksdb::DB& db,
+      rocksdb::ColumnFamilyHandle& cf,
       const rocksdb::ReadOptions& readOptions,
       const rocksdb::WriteOptions& writeOptions,
-      rocksdb::ColumnFamilyHandle& columnFamily,
-      const std::shared_ptr<stateful::TypeSerializer<K>> keySerializer,
-      const std::shared_ptr<stateful::TypeSerializer<N>> namespaceSerializer,
-      const std::shared_ptr<stateful::TypeSerializer<V>> valueSerializer,
-      const V defaultValue,
-      memory::MemoryPool* pool)
+      const ValueStateDescriptor<V>& descriptor,
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups)
       : RocksDBState<K, N, V>(
             db,
             readOptions,
             writeOptions,
-            columnFamily,
-            keySerializer,
-            namespaceSerializer,
-            valueSerializer,
-            defaultValue,
-            pool) {}
+            cf,
+            std::move(keySerializer),
+            std::dynamic_pointer_cast<TypeSerializer<V>>(
+                descriptor.serializer()),
+            descriptor.name(),
+            startKeyGroup,
+            numKeyGroups) {
+    VELOX_CHECK_NOT_NULL(this->valueSerializer_);
+    VELOX_CHECK(
+        (!std::is_same_v<V, StringView>),
+        "StringView values cannot borrow a RocksDB read buffer");
+  }
 
   V value(const K& key, const N& ns) override {
     return RocksDBState<K, N, V>::get(key, ns);
   }
-
   void update(const K& key, const N& ns, const V& value) override {
-    return RocksDBState<K, N, V>::put(key, ns, value);
+    RocksDBState<K, N, V>::put(key, ns, value);
   }
-
   void remove(const K& key, const N& ns) override {
-    return RocksDBState<K, N, V>::remove(key, ns);
+    RocksDBState<K, N, V>::remove(key, ns);
   }
-
-  void clear() override {}
+  void clear() override {
+    RocksDBState<K, N, V>::clear();
+  }
+  void snapshotKeyGroup(int32_t group, CheckpointWriter& writer) override {
+    RocksDBState<K, N, V>::snapshotKeyGroup(group, writer);
+  }
+  void restoreEntry(int32_t group, CheckpointReader& reader) override {
+    RocksDBState<K, N, V>::restoreEntry(group, reader);
+  }
+  std::string namespaceSchemaId() const override {
+    return RocksDBState<K, N, V>::namespaceSchemaId();
+  }
+  std::string valueSchemaId() const override {
+    return this->valueSerializer_->schemaId();
+  }
 };
 
-template <typename K, typename N, typename V>
-class RocksDBListState : public RocksDBState<K, N, ArrayVectorPtr>,
-                         public stateful::ListState<K, N, V> {
+template <typename K, typename N, typename T>
+class RocksDBListState : public RocksDBState<K, N, std::string>,
+                         public ListState<K, N, T> {
  public:
   RocksDBListState(
       rocksdb::DB& db,
-      rocksdb::ReadOptions& readOptions,
-      rocksdb::WriteOptions& writeOptions,
-      rocksdb::ColumnFamilyHandle& columnFamily,
-      std::shared_ptr<stateful::TypeSerializer<K>> keySerializer,
-      std::shared_ptr<stateful::TypeSerializer<N>> namespaceSerializer,
-      std::shared_ptr<stateful::TypeSerializer<ArrayVectorPtr>> valueSerializer,
-      const ArrayVectorPtr defaultValue,
-      memory::MemoryPool* pool)
-      : RocksDBState<K, N, ArrayVectorPtr>(
+      rocksdb::ColumnFamilyHandle& cf,
+      const rocksdb::ReadOptions& readOptions,
+      const rocksdb::WriteOptions& writeOptions,
+      const ListStateDescriptor<T>& descriptor,
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups)
+      : RocksDBState<K, N, std::string>(
             db,
             readOptions,
             writeOptions,
-            columnFamily,
-            keySerializer,
-            namespaceSerializer,
-            valueSerializer,
-            defaultValue,
-            pool) {}
-
-  ArrayVectorPtr vectorGet(const K& key, const N& ns) override {
-    return RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
+            cf,
+            std::move(keySerializer),
+            nullptr,
+            descriptor.name(),
+            startKeyGroup,
+            numKeyGroups),
+        serializer_(
+            std::dynamic_pointer_cast<TypeSerializer<T>>(
+                descriptor.serializer())) {
+    VELOX_CHECK_NOT_NULL(serializer_);
+    VELOX_CHECK(
+        (!std::is_same_v<T, StringView>),
+        "StringView list elements cannot borrow a RocksDB read buffer");
   }
 
-  void vectorUpdate(const K& key, const N& ns, const ArrayVectorPtr& vec)
-      override {
-    RocksDBState<K, N, ArrayVectorPtr>::put(key, ns, vec);
-  }
-
-  void vectorAdd(const K& key, const N& ns, const ArrayVectorPtr& vec)
-      override {
-    ArrayVectorPtr stateVector =
-        RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
-    if (stateVector) {
-      stateVector->append(vec.get());
-      RocksDBState<K, N, ArrayVectorPtr>::put(key, ns, stateVector);
-    } else {
-      RocksDBState<K, N, ArrayVectorPtr>::put(key, ns, vec);
+  std::vector<T> get(const K& key, const N& ns) override {
+    auto bytes = RocksDBState<K, N, std::string>::getOptional(key, ns);
+    if (!bytes) {
+      return {};
     }
-  }
-
-  std::vector<V> get(const K& key, const N& ns) override {
-    std::vector<V> result;
-    ArrayVectorPtr arrayVector =
-        RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
-    const VectorPtr& elements = arrayVector->elements();
-    if (arrayVector && elements) {
-      auto size = arrayVector->size();
-      for (vector_size_t i = 0; i < size; ++i) {
-        if (!arrayVector->isNullAt(i)) {
-          auto offset = arrayVector->offsetAt(i);
-          auto length = arrayVector->sizeAt(i);
-          for (vector_size_t j = 0; j < length; ++j) {
-            vector_size_t index = offset + j;
-            if (!elements->isNullAt(index)) {
-              result.emplace_back(elements->asFlatVector<V>()->valueAt(index));
-            }
-          }
-        }
-      }
+    ByteReader reader(bytes->data(), bytes->size());
+    const auto size = reader.readInt32();
+    VELOX_CHECK_GE(size, 0, "Corrupt RocksDB list size");
+    std::vector<T> result;
+    result.reserve(size);
+    for (int32_t i = 0; i < size; ++i) {
+      result.push_back(serializer_->deserialize(reader.readBytes()));
     }
+    VELOX_CHECK(reader.atEnd(), "Corrupt RocksDB list payload");
     return result;
   }
-
-  void add(const K& key, const N& ns, const V& value) override {
-    ArrayVectorPtr stateVector =
-        RocksDBState<K, N, ArrayVectorPtr>::get(key, ns);
-    if (stateVector) {
-      FlatVector<V>* flatVector = stateVector->elements()->asFlatVector<V>();
-      VELOX_CHECK(flatVector != nullptr, "FlatVector is null.");
-      flatVector->resize(flatVector->size() + 1);
-      flatVector->set(flatVector->size() - 1, value);
-      RocksDBState<K, N, ArrayVectorPtr>::put(key, ns, stateVector);
-    } else {
-      const auto valueSerializer =
-          std::dynamic_pointer_cast<ComplexVectorSerializer<ArrayVectorPtr>>(
-              RocksDBState<K, N, ArrayVectorPtr>::valueSerializer_);
-      auto type = valueSerializer->getDataType();
-      VELOX_CHECK(type->kind() == TypeKind::ARRAY, "Type is not an array.");
-      stateVector = std::make_shared<ArrayVector>(
-          this->pool_, type, nullptr, 1, BufferPtr(), BufferPtr(), 0);
-      stateVector->setNull(0, false);
-      stateVector->elements()->asFlatVector<V>()->set(0, value);
-      RocksDBState<K, N, ArrayVectorPtr>::put(key, ns, stateVector);
+  void add(const K& key, const N& ns, const T& value) override {
+    auto values = get(key, ns);
+    values.push_back(value);
+    std::string bytes;
+    ByteWriter writer(bytes);
+    writer.writeInt32(static_cast<int32_t>(values.size()));
+    for (const auto& element : values) {
+      writer.writeBytes(serializer_->serialize(element));
     }
+    RocksDBState<K, N, std::string>::put(key, ns, bytes);
   }
-
   void remove(const K& key, const N& ns) override {
-    RocksDBState<K, N, ArrayVectorPtr>::remove(key, ns);
+    RocksDBState<K, N, std::string>::remove(key, ns);
+  }
+  void clear() override {
+    RocksDBState<K, N, std::string>::clear();
+  }
+  void snapshotKeyGroup(int32_t group, CheckpointWriter& writer) override {
+    RocksDBState<K, N, std::string>::snapshotKeyGroup(group, writer);
+  }
+  void restoreEntry(int32_t group, CheckpointReader& reader) override {
+    RocksDBState<K, N, std::string>::restoreEntry(group, reader);
+  }
+  std::string namespaceSchemaId() const override {
+    return RocksDBState<K, N, std::string>::namespaceSchemaId();
+  }
+  std::string valueSchemaId() const override {
+    return "list<" + serializer_->schemaId() + ">";
   }
 
-  void clear() override {}
+ private:
+  std::shared_ptr<TypeSerializer<T>> serializer_;
 };
 
 template <typename K, typename N, typename UK, typename UV>
-class RocksDBMapState : public RocksDBState<K, N, MapVectorPtr>,
-                        public stateful::MapState<K, N, UK, UV> {
+class RocksDBMapState : public RocksDBState<K, N, std::string>,
+                        public MapState<K, N, UK, UV> {
  public:
   RocksDBMapState(
       rocksdb::DB& db,
-      rocksdb::ReadOptions& readOptions,
-      rocksdb::WriteOptions& writeOptions,
-      rocksdb::ColumnFamilyHandle& columnFamily,
-      std::shared_ptr<stateful::TypeSerializer<K>> keySerializer,
-      std::shared_ptr<stateful::TypeSerializer<N>> namespaceSerializer,
-      std::shared_ptr<stateful::TypeSerializer<MapVectorPtr>> valueSerializer,
-      const MapVectorPtr defaultValue,
-      memory::MemoryPool* pool)
-      : RocksDBState<K, N, MapVectorPtr>(
+      rocksdb::ColumnFamilyHandle& cf,
+      const rocksdb::ReadOptions& readOptions,
+      const rocksdb::WriteOptions& writeOptions,
+      const MapStateDescriptor<UK, UV>& descriptor,
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups)
+      : RocksDBState<K, N, std::string>(
             db,
             readOptions,
             writeOptions,
-            columnFamily,
-            keySerializer,
-            namespaceSerializer,
-            valueSerializer,
-            defaultValue,
-            pool) {}
-
-  std::optional<UV> get(K key, N ns, UK userKey) override {
-    MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
-    VELOX_CHECK(mapVector != nullptr, "MapVector is null.");
-    FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();
-    FlatVector<UV>* valueVector = mapVector->mapValues()->asFlatVector<UV>();
-    auto size = mapVector->size();
-    for (vector_size_t i = 0; i < size; ++i) {
-      if (!mapVector->isNullAt(i)) {
-        if (keyVector->valueAt(i) == userKey) {
-          return valueVector->valueAt(i);
-        }
-      }
-    }
-    return std::nullopt;
+            cf,
+            std::move(keySerializer),
+            nullptr,
+            descriptor.name(),
+            startKeyGroup,
+            numKeyGroups),
+        keySerializer_(
+            std::dynamic_pointer_cast<TypeSerializer<UK>>(
+                descriptor.keySerializer())),
+        valueSerializer_(
+            std::dynamic_pointer_cast<TypeSerializer<UV>>(
+                descriptor.valueSerializer())) {
+    VELOX_CHECK_NOT_NULL(keySerializer_);
+    VELOX_CHECK_NOT_NULL(valueSerializer_);
+    VELOX_CHECK(
+        (!std::is_same_v<UK, StringView> && !std::is_same_v<UV, StringView>),
+        "StringView map entries cannot borrow a RocksDB read buffer");
   }
 
-  MapVectorPtr vectorGet(const K& key, const N& ns) override {
-    return RocksDBState<K, N, MapVectorPtr>::get(key, ns);
+  std::optional<UV> get(const K& key, const N& ns, const UK& userKey) override {
+    auto values = entries(key, ns);
+    auto it = values.find(userKey);
+    return it == values.end() ? std::nullopt : std::optional<UV>(it->second);
   }
-
-  void vectorPut(const K& key, const N& ns, const MapVectorPtr& vec) override {
-    RocksDBState<K, N, MapVectorPtr>::put(key, ns, vec);
-  }
-
   void put(const K& key, const N& ns, const UK& userKey, const UV& value)
       override {
-    MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
-    if (!mapVector) {
-      const auto valueSerializer =
-          std::dynamic_pointer_cast<ComplexVectorSerializer<MapVectorPtr>>(
-              RocksDBState<K, N, MapVectorPtr>::valueSerializer_);
-      auto type = valueSerializer->getDataType();
-      VELOX_CHECK(type->kind() == TypeKind::MAP, "Type is not a map.");
-      mapVector = std::make_shared<MapVector>(
-          this->pool_, type, nullptr, 1, BufferPtr(), BufferPtr(), 0);
-      mapVector->setNull(0, false);
-      mapVector->mapKeys()->asFlatVector<UK>()->set(0, userKey);
-      mapVector->mapValues()->asFlatVector<UV>()->set(0, value);
-      RocksDBState<K, N, MapVectorPtr>::put(key, ns, mapVector);
+    auto values = entries(key, ns);
+    values[userKey] = value;
+    write(key, ns, values);
+  }
+  std::map<UK, UV> entries(const K& key, const N& ns) override {
+    auto bytes = RocksDBState<K, N, std::string>::getOptional(key, ns);
+    if (!bytes) {
+      return {};
+    }
+    ByteReader reader(bytes->data(), bytes->size());
+    const auto size = reader.readInt32();
+    VELOX_CHECK_GE(size, 0, "Corrupt RocksDB map size");
+    std::map<UK, UV> result;
+    for (int32_t i = 0; i < size; ++i) {
+      auto userKey = keySerializer_->deserialize(reader.readBytes());
+      auto userValue = valueSerializer_->deserialize(reader.readBytes());
+      result.emplace(std::move(userKey), std::move(userValue));
+    }
+    VELOX_CHECK(reader.atEnd(), "Corrupt RocksDB map payload");
+    return result;
+  }
+  void remove(const K& key, const N& ns, const UK& userKey) override {
+    auto values = entries(key, ns);
+    if (values.erase(userKey) == 0) {
       return;
     }
-    FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();
-    FlatVector<UV>* valueVector = mapVector->mapValues()->asFlatVector<UV>();
-    auto size = mapVector->size();
-    for (vector_size_t i = 0; i < size; ++i) {
-      if (!mapVector->isNullAt(i)) {
-        if (keyVector->valueAt(i) == userKey) {
-          valueVector->set(i, value);
-          RocksDBState<K, N, MapVectorPtr>::put(key, ns, mapVector);
-          return;
-        }
-      }
-    }
-    mapVector->setNull(size, false);
-    keyVector->set(size, userKey);
-    valueVector->set(size, value);
-    RocksDBState<K, N, MapVectorPtr>::put(key, ns, mapVector);
-  }
-
-  std::map<UK, UV> entries(const K& key, const N& ns) override {
-    MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
-    if (mapVector) {
-      FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();
-      FlatVector<UV>* valueVector = mapVector->mapValues()->asFlatVector<UV>();
-      std::map<UK, UV> result;
-      auto size = mapVector->size();
-      for (vector_size_t i = 0; i < size; ++i) {
-        if (!mapVector->isNullAt(i)) {
-          result[keyVector->valueAt(i)] = valueVector->valueAt(i);
-        }
-      }
-      return result;
-    }
-    return {{}};
-  }
-
-  void remove(const K& key, const N& ns, const UK& userKey) override {
-    MapVectorPtr mapVector = RocksDBState<K, N, MapVectorPtr>::get(key, ns);
-    if (mapVector) {
-      FlatVector<UK>* keyVector = mapVector->mapKeys()->asFlatVector<UK>();
-      auto size = mapVector->size();
-      for (vector_size_t i = 0; i < size; ++i) {
-        if (!mapVector->isNullAt(i)) {
-          if (keyVector->valueAt(i) == userKey) {
-            mapVector->setNull(i, true);
-            RocksDBState<K, N, MapVectorPtr>::put(mapVector);
-            return;
-          }
-        }
-      }
+    if (values.empty()) {
+      RocksDBState<K, N, std::string>::remove(key, ns);
+    } else {
+      write(key, ns, values);
     }
   }
+  void clear() override {
+    RocksDBState<K, N, std::string>::clear();
+  }
+  void snapshotKeyGroup(int32_t group, CheckpointWriter& writer) override {
+    RocksDBState<K, N, std::string>::snapshotKeyGroup(group, writer);
+  }
+  void restoreEntry(int32_t group, CheckpointReader& reader) override {
+    RocksDBState<K, N, std::string>::restoreEntry(group, reader);
+  }
+  std::string namespaceSchemaId() const override {
+    return RocksDBState<K, N, std::string>::namespaceSchemaId();
+  }
+  std::string valueSchemaId() const override {
+    return "map<" + keySerializer_->schemaId() + "," +
+        valueSerializer_->schemaId() + ">";
+  }
 
-  void clear() override {}
+ private:
+  void write(const K& key, const N& ns, const std::map<UK, UV>& values) {
+    std::string bytes;
+    ByteWriter writer(bytes);
+    writer.writeInt32(static_cast<int32_t>(values.size()));
+    for (const auto& [userKey, userValue] : values) {
+      writer.writeBytes(keySerializer_->serialize(userKey));
+      writer.writeBytes(valueSerializer_->serialize(userValue));
+    }
+    RocksDBState<K, N, std::string>::put(key, ns, bytes);
+  }
+
+  std::shared_ptr<TypeSerializer<UK>> keySerializer_;
+  std::shared_ptr<TypeSerializer<UV>> valueSerializer_;
 };
+
+// TODO: Implement RocksDB aggregating state after its accumulator row
+// lifecycle and persistence behavior are defined.
 
 } // namespace facebook::velox::stateful

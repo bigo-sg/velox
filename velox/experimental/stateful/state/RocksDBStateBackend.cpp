@@ -14,14 +14,19 @@
  * limitations under the License.
  */
 #include "velox/experimental/stateful/state/RocksDBStateBackend.h"
-#include <folly/json/dynamic.h>
-#include <rocksdb/db.h>
-#include <rocksdb/options.h>
+
 #include <cstdint>
 #include <memory>
 #include <unordered_map>
+
+#include <folly/json/dynamic.h>
+#include <rocksdb/db.h>
+#include <rocksdb/options.h>
+
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 #include "velox/experimental/stateful/state/RocksDBKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
+#include "velox/experimental/stateful/state/StateKey.h"
 
 namespace facebook::velox::stateful {
 
@@ -30,24 +35,17 @@ std::string RocksDBStateBackend::getName() const {
 }
 
 std::shared_ptr<KeyedStateBackend>
-RocksDBStateBackend::createKeyedStateBackend() {
-  const std::shared_ptr<const RocksDBKeyedStateBackendParameters>
-      rocksdbStateParams =
-          std::dynamic_pointer_cast<const RocksDBKeyedStateBackendParameters>(
-              parameters_);
-  VELOX_CHECK(
-      rocksdbStateParams != nullptr,
-      "The provided parameters are not for rocksdb state backend.");
-  return std::make_shared<RocksDBKeyedStateBackend>(
-      rocksdbStateParams->getDB(),
-      rocksdbStateParams->getReadOptions(),
-      rocksdbStateParams->getWriteOptions(),
-      rocksdbStateParams->getStates(),
-      rocksdbStateParams->getColumnFamilies(),
-      rocksdbStateParams->getStateOperators(),
-      rocksdbStateParams->getStateKeys(),
-      rocksdbStateParams->getStateNamespaces(),
-      rocksdbStateParams->getStateValues());
+RocksDBStateBackend::createKeyedStateBackend(
+    const KeyedStateSpec& spec,
+    memory::MemoryPool* pool) {
+  const auto rocksParameters =
+      std::dynamic_pointer_cast<const RocksDBKeyedStateBackendParameters>(
+          parameters_);
+  VELOX_CHECK_NOT_NULL(
+      rocksParameters, "RocksDB backend requires RocksDB parameters");
+  VELOX_CHECK_NOT_NULL(pool);
+  return std::make_shared<RocksDBKeyedStateBackend<RowContainerStateKey>>(
+      spec.keyTypes(), *rocksParameters, pool);
 }
 
 folly::dynamic RocksDBStateBackend::serialize() const {
@@ -67,8 +65,17 @@ RocksDBKeyedStateBackendParameters::RocksDBKeyedStateBackendParameters(
     const std::unordered_map<std::string, std::string>& stateOperators,
     const std::unordered_map<std::string, TypePtr>& stateKeys,
     const std::unordered_map<std::string, TypePtr>& stateNamespaces,
-    const std::unordered_map<std::string, TypePtr>& stateValues)
-    : KeyedStateBackendParameters(backendType, jobId, operatorId),
+    const std::unordered_map<std::string, TypePtr>& stateValues,
+    uint32_t maxParallelism,
+    uint32_t startKeyGroup,
+    uint32_t numKeyGroups)
+    : KeyedStateBackendParameters(
+          backendType,
+          jobId,
+          operatorId,
+          maxParallelism,
+          startKeyGroup,
+          numKeyGroups),
       dbHandle_(dbHandle),
       readOptionHandle_(readOptionHandle),
       writeOptionHandle_(writeOptionHandle),
@@ -145,24 +152,26 @@ RocksDBKeyedStateBackendParameters::getStateValues() const {
 }
 
 folly::dynamic RocksDBKeyedStateBackendParameters::serialize() const {
-  folly::dynamic obj;
+  folly::dynamic obj = folly::dynamic::object;
   obj["jobId"] = getJobId();
   obj["operatorId"] = getOperatorIdentifier();
   obj["stateBackendType"] = static_cast<int32_t>(getBackendType());
+  obj["maxParallelism"] = getMaxParallelism();
+  obj["startKeyGroup"] = getStartKeyGroup();
+  obj["numKeyGroups"] = getNumKeyGroups();
   obj["dbHandle"] = dbHandle_;
   obj["readOptionHandle"] = readOptionHandle_;
   obj["writeOptionHandle"] = writeOptionHandle_;
   folly::dynamic states = folly::dynamic::array();
-  size_t index = 0;
   for (const auto& state : states_) {
-    states[index] = state;
+    states.push_back(state);
   }
   obj["states"] = states;
-  folly::dynamic stateOperators;
-  folly::dynamic stateColumnFamilies;
-  folly::dynamic stateKeys;
-  folly::dynamic stateNamespaces;
-  folly::dynamic stateValues;
+  folly::dynamic stateOperators = folly::dynamic::object;
+  folly::dynamic stateColumnFamilies = folly::dynamic::object;
+  folly::dynamic stateKeys = folly::dynamic::object;
+  folly::dynamic stateNamespaces = folly::dynamic::object;
+  folly::dynamic stateValues = folly::dynamic::object;
   for (const auto& [state, op] : stateOperators_) {
     stateOperators[state] = op;
   }
@@ -234,7 +243,16 @@ RocksDBKeyedStateBackendParameters::create(
       stateOperators,
       stateKeys,
       stateNamespaces,
-      stateValues);
+      stateValues,
+      obj.count("maxParallelism")
+          ? static_cast<uint32_t>(obj["maxParallelism"].asInt())
+          : kDefaultMaxParallelism,
+      obj.count("startKeyGroup")
+          ? static_cast<uint32_t>(obj["startKeyGroup"].asInt())
+          : 0,
+      obj.count("numKeyGroups")
+          ? static_cast<uint32_t>(obj["numKeyGroups"].asInt())
+          : kDefaultMaxParallelism);
 }
 
 void RocksDBKeyedStateBackendParameters::registerSerDe() {

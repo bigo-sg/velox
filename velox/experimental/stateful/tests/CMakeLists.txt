@@ -113,6 +113,12 @@ target_link_libraries(
 target_link_libraries(
   velox_stateful_source_operator_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
@@ -123,6 +129,12 @@ target_link_libraries(
 target_link_libraries(
   velox_stateful_stream_partition_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
@@ -133,6 +145,12 @@ target_link_libraries(
 target_link_libraries(
   velox_stateful_stream_record_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
@@ -143,6 +161,12 @@ target_link_libraries(
 target_link_libraries(
   velox_stateful_calc_operator_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
@@ -155,6 +179,12 @@ target_link_libraries(
 target_link_libraries(
   velox_stateful_record_clock_refresh_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_functions_flink
   velox_vector_test_lib
   velox_exec_test_lib
@@ -170,6 +200,12 @@ add_test(velox_stateful_sink_operator_test velox_stateful_sink_operator_test)
 target_link_libraries(
   velox_stateful_sink_operator_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec
@@ -269,6 +305,12 @@ add_test(velox_stateful_operator_checkpoint_test
 target_link_libraries(
   velox_stateful_operator_checkpoint_test
   velox_stateful_exec
+  velox_stateful_agg
+  velox_stateful_join
+  velox_stateful_rank
+  velox_stateful_state
+  velox_stateful_window
+  velox_stateful_udf
   velox_vector_test_lib
   velox_exec_test_lib
   velox_exec

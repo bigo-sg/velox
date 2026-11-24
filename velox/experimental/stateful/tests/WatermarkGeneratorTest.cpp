@@ -30,6 +30,7 @@
 #include "velox/exec/Task.h"
 #include "velox/exec/Values.h"
 #include "velox/exec/tests/utils/OperatorTestBase.h"
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful::test {
 namespace {

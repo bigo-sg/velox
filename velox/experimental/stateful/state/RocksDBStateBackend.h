@@ -38,7 +38,9 @@ class RocksDBStateBackend : public StateBackend {
 
   folly::dynamic serialize() const override;
 
-  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() override;
+  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
+      const KeyedStateSpec& spec,
+      memory::MemoryPool* pool) override;
 };
 
 class RocksDBKeyedStateBackendParameters : public KeyedStateBackendParameters {
@@ -55,7 +57,10 @@ class RocksDBKeyedStateBackendParameters : public KeyedStateBackendParameters {
       const std::unordered_map<std::string, std::string>& stateOperators,
       const std::unordered_map<std::string, TypePtr>& stateKeys,
       const std::unordered_map<std::string, TypePtr>& stateNamespaces,
-      const std::unordered_map<std::string, TypePtr>& stateValues);
+      const std::unordered_map<std::string, TypePtr>& stateValues,
+      uint32_t maxParallelism = kDefaultMaxParallelism,
+      uint32_t startKeyGroup = 0,
+      uint32_t numKeyGroups = kDefaultMaxParallelism);
 
   rocksdb::DB* getDB() const;
 

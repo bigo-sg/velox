@@ -22,7 +22,7 @@
 #include <typeinfo>
 #include <vector>
 #include "velox/common/memory/MemoryPool.h"
-#include "velox/experimental/stateful/state/CheckpointStream.h"
+#include "velox/experimental/stateful/state/ByteStream.h"
 #include "velox/serializers/PrestoSerializer.h"
 #include "velox/type/HugeInt.h"
 #include "velox/type/StringView.h"

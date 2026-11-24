@@ -15,15 +15,18 @@
  */
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
-#include "velox/experimental/stateful/state/CheckpointStream.h"
+#include "velox/experimental/stateful/state/ByteStream.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/vector/BaseVector.h"
 #include "velox/vector/FlatVector.h"
@@ -34,9 +37,7 @@ namespace facebook::velox::stateful {
 /// component per key column, each a null flag byte followed by the per-type
 /// value serializer's payload (the framing of SharedPtrSerializer). The
 /// bytes carry the column values only; the key row itself is not part of
-/// them, so any backend that can reassemble the columns can consume them -
-/// the heap checkpoint today, the composite key of the RocksDB backend
-/// later.
+/// them, so both heap checkpoints and RocksDB composite keys can use them.
 ///
 /// deserialize() does not build the key row itself: it reassembles the
 /// columns into one-row vectors and hands them to 'probe', the restore
@@ -44,8 +45,7 @@ namespace facebook::velox::stateful {
 /// key table). The row comes back from the hash table, so a restored key
 /// and a runtime-probed key of the same value are the same row and the
 /// same bucket entry (no duplicate rows after restore), and the hash /
-/// key group are computed by the same stable hasher chain as at probe
-/// time. Snapshot / restore path only, not the hot path.
+/// key group are computed by the same stable hasher chain as at probe time.
 class RowContainerStateKeySerializer
     : public TypeSerializer<RowContainerStateKey> {
  public:
@@ -82,7 +82,7 @@ class RowContainerStateKeySerializer
 
   std::string serialize(const RowContainerStateKey& key) override {
     std::string bytes;
-    CheckpointWriter writer(bytes);
+    ByteWriter writer(bytes);
     for (size_t i = 0; i < columnSerializers_.size(); ++i) {
       writer.writeBytes(serializeColumn(i, key.row()));
     }
@@ -90,7 +90,7 @@ class RowContainerStateKeySerializer
   }
 
   RowContainerStateKey deserialize(std::string_view str) override {
-    CheckpointReader reader(str.data(), str.size());
+    ByteReader reader(str.data(), str.size());
     std::vector<VectorPtr> keyColumns;
     keyColumns.reserve(schema_->keyTypes().size());
     for (size_t i = 0; i < columnSerializers_.size(); ++i) {
@@ -142,8 +142,17 @@ class RowContainerStateKeySerializer
     }
     auto serializer =
         std::static_pointer_cast<TypeSerializer<D>>(columnSerializers_[column]);
-    return std::string(1, static_cast<char>(1)) +
-        serializer->serialize(flat->valueAt(0));
+    D value = flat->valueAt(0);
+    // Persisted key bytes must follow native grouping equality across key
+    // table reconstruction: signed zeros and NaN payloads are equivalent.
+    if constexpr (std::is_floating_point_v<D>) {
+      if (value == 0) {
+        value = 0;
+      } else if (std::isnan(value)) {
+        value = std::numeric_limits<D>::quiet_NaN();
+      }
+    }
+    return std::string(1, static_cast<char>(1)) + serializer->serialize(value);
   }
 
   void

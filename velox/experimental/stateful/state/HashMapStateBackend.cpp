@@ -21,12 +21,11 @@ HashMapStateBackend::HashMapStateBackend(
     const std::shared_ptr<const KeyedStateBackendParameters> parameters)
     : StateBackend(parameters) {}
 
-KeyedStateBackendPtr HashMapStateBackend::createKeyedStateBackend() {
-  // The heap backend is generic on the key type (a StateKey subclass),
-  // which this factory cannot know: operators name their key type when they
-  // construct their backend from the StateBackend handed down at
-  // initialization. Until the stateful operators are migrated, there is no
-  // factory-created heap backend; the handler tolerates a null one.
+KeyedStateBackendPtr HashMapStateBackend::createKeyedStateBackend(
+    const KeyedStateSpec& /*spec*/,
+    memory::MemoryPool* /*pool*/) {
+  // The typed heap backend is created through StateBackendFactory. The
+  // legacy stream operator state handler tolerates a null backend here.
   return nullptr;
 }
 
