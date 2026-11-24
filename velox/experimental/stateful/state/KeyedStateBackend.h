@@ -30,6 +30,8 @@ namespace facebook::velox::stateful {
 // org.apache.flink.runtime.state.KeyedStateBackend.
 class KeyedStateBackend : public Snapshotable, public CheckpointListener {
  public:
+  virtual ~KeyedStateBackend() = default;
+
   virtual std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
   getOrCreateMapState(StateDescriptor& stateDescriptor) = 0;
 

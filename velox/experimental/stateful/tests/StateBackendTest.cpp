@@ -23,9 +23,11 @@
 #include <optional>
 #include <set>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <folly/dynamic.h>
+#include <rocksdb/db.h>
 
 #include "velox/common/base/Exceptions.h"
 #include "velox/common/base/tests/GTestUtils.h"
@@ -34,6 +36,7 @@
 #include "velox/core/QueryConfig.h"
 #include "velox/exec/Aggregate.h"
 #include "velox/exec/RowContainer.h"
+#include "velox/exec/tests/utils/TempDirectoryPath.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/KeyedStateSpec.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
@@ -45,6 +48,7 @@
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/RocksDBStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
+#include "velox/experimental/stateful/state/StateBackendFactory.h"
 #include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/state/StateMap.h"
 #include "velox/experimental/stateful/state/StateTable.h"
@@ -1386,9 +1390,8 @@ TEST_F(StateBackendTest, keyedStateBuiltAtInitializeFromSpecAndParameters) {
   EXPECT_NE(keys[0].row(), keys[1].row());
 }
 
-// The unified entry the keyed operators' initializeStateBackend calls:
-// the plan's KeyedStateSpec and the task backend's parameters in, the
-// operator's typed backend out. The key-group numbers on the built
+// The factory takes the plan's KeyedStateSpec and the task backend's
+// parameters. The key-group numbers on the built
 // backend are exactly the parameters'; the key table is built from the
 // spec's key types, so probing through it keeps the collision pair apart.
 TEST_F(StateBackendTest, createKeyedStateBackendBuildsHeapBackend) {
@@ -1398,8 +1401,11 @@ TEST_F(StateBackendTest, createKeyedStateBackendBuildsHeapBackend) {
       std::make_shared<const KeyedStateBackendParameters>(
           StateBackendType::HEAP, "job", "op", 256, 10, 20));
 
-  auto backend =
-      createKeyedStateBackend<RowContainerStateKey>(taskBackend, spec, pool());
+  auto backend = std::dynamic_pointer_cast<
+      HeapKeyedStateBackend<RowContainerStateKey>>(
+      StateBackendFactory::createKeyedStateBackend<RowContainerStateKey>(
+          taskBackend, spec, pool()));
+  ASSERT_NE(nullptr, backend);
 
   EXPECT_EQ(256, backend->maxParallelism());
   EXPECT_EQ(10, backend->startKeyGroup());
@@ -1414,29 +1420,217 @@ TEST_F(StateBackendTest, createKeyedStateBackendBuildsHeapBackend) {
   EXPECT_NE(keys[0].row(), keys[1].row());
 }
 
-// A backendType with no engine behind it fails at the entry, at operator
-// initialization, instead of silently producing a heap backend.
-TEST_F(StateBackendTest, createKeyedStateBackendRejectsRocksdb) {
+// A collision in the old hash-derived identity must not merge RocksDB state.
+// The entries also survive a fresh key table and use heap-compatible frames.
+TEST_F(StateBackendTest, rocksDBTypedStatesKeepCollidingKeysSeparate) {
+  auto directory = exec::test::TempDirectoryPath::create();
+  rocksdb::Options options;
+  options.create_if_missing = true;
+  rocksdb::DB* rawDb = nullptr;
+  ASSERT_TRUE(rocksdb::DB::Open(options, directory->getPath(), &rawDb).ok());
+  std::unique_ptr<rocksdb::DB> db(rawDb);
+  rocksdb::ReadOptions readOptions;
+  rocksdb::WriteOptions writeOptions;
   const KeyedStateSpec spec(
       std::vector<column_index_t>{0}, std::vector<TypePtr>{BIGINT()});
+  const std::unordered_map<std::string, int64_t> columnFamilies{
+      {"value", reinterpret_cast<int64_t>(db->DefaultColumnFamily())},
+      {"list", reinterpret_cast<int64_t>(db->DefaultColumnFamily())},
+      {"map", reinterpret_cast<int64_t>(db->DefaultColumnFamily())}};
   RocksDBStateBackend taskBackend(
       std::make_shared<const RocksDBKeyedStateBackendParameters>(
           StateBackendType::ROCKSDB,
           "job",
           "op",
-          0 /* dbHandle */,
-          0 /* readOptionHandle */,
-          0 /* writeOptionHandle */,
-          std::set<std::string>{},
-          std::unordered_map<std::string, int64_t>{},
+          reinterpret_cast<int64_t>(db.get()),
+          reinterpret_cast<int64_t>(&readOptions),
+          reinterpret_cast<int64_t>(&writeOptions),
+          std::set<std::string>{"value", "list", "map"},
+          columnFamilies,
           std::unordered_map<std::string, std::string>{},
           std::unordered_map<std::string, TypePtr>{},
           std::unordered_map<std::string, TypePtr>{},
-          std::unordered_map<std::string, TypePtr>{}));
+          std::unordered_map<std::string, TypePtr>{},
+          kMaxParallelism,
+          0,
+          kMaxParallelism));
 
-  EXPECT_THROW(
-      createKeyedStateBackend<RowContainerStateKey>(taskBackend, spec, pool()),
-      VeloxUserError);
+  auto valueDescriptor = ValueStateDescriptor<std::shared_ptr<int64_t>>(
+      "value", sharedInt64Serializer(), pool());
+  auto listDescriptor =
+      ListStateDescriptor<int64_t>("list", int64Serializer(), pool());
+  auto mapDescriptor = MapStateDescriptor<int64_t, int64_t>(
+      "map", int64Serializer(), int64Serializer(), pool());
+
+  std::string checkpoint;
+  {
+    auto backend = std::dynamic_pointer_cast<
+        RocksDBKeyedStateBackend<RowContainerStateKey>>(
+        taskBackend.createKeyedStateBackend(spec, pool()));
+    ASSERT_NE(nullptr, backend);
+    KeySelector selector(backend->keyIndex(), spec.keyChannels());
+    auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+    ASSERT_FALSE(keys[0].equals(keys[1]));
+    auto value =
+        backend->getOrCreateValueState<VoidNamespace, std::shared_ptr<int64_t>>(
+            valueDescriptor);
+    auto list =
+        backend->getOrCreateListState<VoidNamespace, int64_t>(listDescriptor);
+    auto map = backend->getOrCreateMapState<VoidNamespace, int64_t, int64_t>(
+        mapDescriptor);
+    value->update(keys[0], VoidNamespace{}, std::make_shared<int64_t>(11));
+    value->update(keys[1], VoidNamespace{}, std::make_shared<int64_t>(22));
+    list->add(keys[0], VoidNamespace{}, 1);
+    list->add(keys[1], VoidNamespace{}, 2);
+    map->put(keys[0], VoidNamespace{}, 7, 10);
+    map->put(keys[1], VoidNamespace{}, 7, 20);
+    checkpoint = backend->snapshot();
+  }
+
+  auto restored = std::dynamic_pointer_cast<
+      RocksDBKeyedStateBackend<RowContainerStateKey>>(
+      taskBackend.createKeyedStateBackend(spec, pool()));
+  ASSERT_NE(nullptr, restored);
+  KeySelector selector(restored->keyIndex(), spec.keyChannels());
+  auto keys = probeKeys(selector, {kCollisionKeyB, kCollisionKeyA});
+  auto value =
+      restored->getOrCreateValueState<VoidNamespace, std::shared_ptr<int64_t>>(
+          valueDescriptor);
+  auto list =
+      restored->getOrCreateListState<VoidNamespace, int64_t>(listDescriptor);
+  auto map = restored->getOrCreateMapState<VoidNamespace, int64_t, int64_t>(
+      mapDescriptor);
+  EXPECT_EQ(22, *value->value(keys[0], VoidNamespace{}));
+  EXPECT_EQ(11, *value->value(keys[1], VoidNamespace{}));
+  EXPECT_EQ(std::vector<int64_t>{2}, list->get(keys[0], VoidNamespace{}));
+  EXPECT_EQ(std::vector<int64_t>{1}, list->get(keys[1], VoidNamespace{}));
+  EXPECT_EQ(20, map->get(keys[0], VoidNamespace{}, 7));
+  EXPECT_EQ(10, map->get(keys[1], VoidNamespace{}, 7));
+  value->clear();
+  list->clear();
+  map->clear();
+  EXPECT_EQ(nullptr, value->value(keys[0], VoidNamespace{}));
+  restored->restore(checkpoint);
+  EXPECT_EQ(22, *value->value(keys[0], VoidNamespace{}));
+
+  HeapKeyedStateBackend<RowContainerStateKey> heap(
+      {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
+  auto heapValue =
+      heap.getOrCreateValueState<VoidNamespace, std::shared_ptr<int64_t>>(
+          valueDescriptor);
+  auto heapList =
+      heap.getOrCreateListState<VoidNamespace, int64_t>(listDescriptor);
+  auto heapMap =
+      heap.getOrCreateMapState<VoidNamespace, int64_t, int64_t>(mapDescriptor);
+  heap.restore(checkpoint);
+  KeySelector heapSelector(heap.keyIndex(), spec.keyChannels());
+  auto heapKeys = probeKeys(heapSelector, {kCollisionKeyA, kCollisionKeyB});
+  EXPECT_EQ(11, *heapValue->value(heapKeys[0], VoidNamespace{}));
+  EXPECT_EQ(
+      std::vector<int64_t>{2}, heapList->get(heapKeys[1], VoidNamespace{}));
+  EXPECT_EQ(20, heapMap->get(heapKeys[1], VoidNamespace{}, 7));
+}
+
+TEST_F(StateBackendTest, rocksDBAggregatingStateFlushesAndReloadsRows) {
+  auto directory = exec::test::TempDirectoryPath::create();
+  rocksdb::Options options;
+  options.create_if_missing = true;
+  rocksdb::DB* rawDb = nullptr;
+  ASSERT_TRUE(rocksdb::DB::Open(options, directory->getPath(), &rawDb).ok());
+  std::unique_ptr<rocksdb::DB> db(rawDb);
+  rocksdb::ReadOptions readOptions;
+  rocksdb::WriteOptions writeOptions;
+  const std::unordered_map<std::string, int64_t> columnFamilies{
+      {"acc", reinterpret_cast<int64_t>(db->DefaultColumnFamily())}};
+  auto parameters = std::make_shared<const RocksDBKeyedStateBackendParameters>(
+      StateBackendType::ROCKSDB,
+      "job",
+      "op",
+      reinterpret_cast<int64_t>(db.get()),
+      reinterpret_cast<int64_t>(&readOptions),
+      reinterpret_cast<int64_t>(&writeOptions),
+      std::set<std::string>{"acc"},
+      columnFamilies,
+      std::unordered_map<std::string, std::string>{},
+      std::unordered_map<std::string, TypePtr>{},
+      std::unordered_map<std::string, TypePtr>{},
+      std::unordered_map<std::string, TypePtr>{},
+      kMaxParallelism,
+      0,
+      kMaxParallelism);
+  const KeyedStateSpec spec(
+      std::vector<column_index_t>{0}, std::vector<TypePtr>{BIGINT()});
+  RocksDBStateBackend taskBackend(parameters);
+
+  SumAggregate writerAggregate;
+  {
+    auto backend = std::dynamic_pointer_cast<
+        RocksDBKeyedStateBackend<RowContainerStateKey>>(
+        taskBackend.createKeyedStateBackend(spec, pool()));
+    ASSERT_NE(nullptr, backend);
+    auto state = backend->getOrCreateAggregatingState<VoidNamespace>(
+        writerAggregate.descriptor(pool()));
+    writerAggregate.wire(state->valueRows());
+    KeySelector selector(backend->keyIndex(), spec.keyChannels());
+    auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
+    writerAggregate.add(
+        state->row(keys[0], VoidNamespace{}),
+        makeNullableFlatVector<int64_t>({5}));
+    writerAggregate.add(
+        state->row(keys[1], VoidNamespace{}),
+        makeNullableFlatVector<int64_t>({9}));
+    backend->advance();
+    selector.probe(makeInput({kCollisionKeyA}));
+    writerAggregate.add(
+        state->row(selector.keys()[0], VoidNamespace{}),
+        makeNullableFlatVector<int64_t>({2}));
+    backend->advance();
+  }
+
+  SumAggregate readerAggregate;
+  {
+    auto backend = std::dynamic_pointer_cast<
+        RocksDBKeyedStateBackend<RowContainerStateKey>>(
+        taskBackend.createKeyedStateBackend(spec, pool()));
+    ASSERT_NE(nullptr, backend);
+    auto state = backend->getOrCreateAggregatingState<VoidNamespace>(
+        readerAggregate.descriptor(pool()));
+    readerAggregate.wire(state->valueRows());
+    KeySelector selector(backend->keyIndex(), spec.keyChannels());
+    auto keys = probeKeys(selector, {kCollisionKeyB, kCollisionKeyA});
+    EXPECT_EQ(
+        9,
+        readerAggregate.valueOf(state->row(keys[0], VoidNamespace{}), pool()));
+    EXPECT_EQ(
+        7,
+        readerAggregate.valueOf(state->row(keys[1], VoidNamespace{}), pool()));
+    EXPECT_EQ(2, readerAggregate.mergeCount);
+  }
+}
+
+TEST_F(StateBackendTest, rocksDBParametersPreserveKeyGroupRange) {
+  RocksDBKeyedStateBackendParameters parameters(
+      StateBackendType::ROCKSDB,
+      "job",
+      "op",
+      1,
+      2,
+      3,
+      {"left", "right"},
+      {},
+      {},
+      {},
+      {},
+      {},
+      256,
+      32,
+      64);
+  auto restored = RocksDBKeyedStateBackendParameters::create(
+      parameters.serialize(), nullptr);
+  EXPECT_EQ(256, restored->getMaxParallelism());
+  EXPECT_EQ(32, restored->getStartKeyGroup());
+  EXPECT_EQ(64, restored->getNumKeyGroups());
+  EXPECT_EQ(parameters.getStates(), restored->getStates());
 }
 
 // The keyed-state spec is plan data: it round-trips through the serde

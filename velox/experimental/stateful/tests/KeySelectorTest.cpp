@@ -336,6 +336,21 @@ TEST_F(KeySelectorTest, floatKeyGroupingSemantics) {
   EXPECT_TRUE(floatKeys[2].equals(floatKeys[3]));
 }
 
+TEST_F(KeySelectorTest, serializedSignedZeroIsStableAcrossKeyTables) {
+  KeyTable negativeTable({DOUBLE()}, 128, pool());
+  KeySelector negative(negativeTable, {0});
+  negative.probe(makeRowVector({makeNullableFlatVector<double>({-0.0})}));
+
+  KeyTable positiveTable({DOUBLE()}, 128, pool());
+  KeySelector positive(positiveTable, {0});
+  positive.probe(makeRowVector({makeNullableFlatVector<double>({0.0})}));
+
+  EXPECT_EQ(negative.keys()[0].hash(), positive.keys()[0].hash());
+  EXPECT_EQ(
+      negative.keySerializer()->serialize(negative.keys()[0]),
+      positive.keySerializer()->serialize(positive.keys()[0]));
+}
+
 // Unsupported key column types fail at construction of the key table
 // instead of midway through a probe, a comparison or a serialization.
 TEST_F(KeySelectorTest, unsupportedKeyTypeFailsAtConstruction) {

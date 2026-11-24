@@ -15,10 +15,13 @@
  */
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "velox/common/memory/MemoryPool.h"
@@ -142,8 +145,17 @@ class RowContainerStateKeySerializer
     }
     auto serializer =
         std::static_pointer_cast<TypeSerializer<D>>(columnSerializers_[column]);
-    return std::string(1, static_cast<char>(1)) +
-        serializer->serialize(flat->valueAt(0));
+    D value = flat->valueAt(0);
+    // Persisted key bytes must follow native grouping equality across key
+    // table reconstruction: signed zeros and NaN payloads are equivalent.
+    if constexpr (std::is_floating_point_v<D>) {
+      if (value == 0) {
+        value = 0;
+      } else if (std::isnan(value)) {
+        value = std::numeric_limits<D>::quiet_NaN();
+      }
+    }
+    return std::string(1, static_cast<char>(1)) + serializer->serialize(value);
   }
 
   void

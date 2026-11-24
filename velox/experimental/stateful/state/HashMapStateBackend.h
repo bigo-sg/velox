@@ -35,7 +35,9 @@ class HashMapStateBackend : public StateBackend {
     return nullptr;
   }
 
-  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() override;
+  std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
+      const KeyedStateSpec& spec,
+      memory::MemoryPool* pool) override;
 };
 
 } // namespace facebook::velox::stateful

@@ -21,6 +21,7 @@
 namespace facebook::velox::stateful {
 
 class KeyedStateBackendParameters;
+class KeyedStateSpec;
 
 // This class is relevant to Flink org.apache.flink.runtime.state.StateBackend.
 class StateBackend : public ISerializable {
@@ -30,7 +31,9 @@ class StateBackend : public ISerializable {
       : parameters_(parameters) {}
   virtual std::string getName() const = 0;
 
-  virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend() = 0;
+  virtual std::shared_ptr<KeyedStateBackend> createKeyedStateBackend(
+      const KeyedStateSpec& spec,
+      memory::MemoryPool* pool) = 0;
 
   /// The parameters this state backend was built from. The keyed
   /// operators' initializeStateBackend reads the key-group configuration

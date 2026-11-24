@@ -20,12 +20,11 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <folly/executors/FunctionScheduler.h>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <set>
 #include <string>
-
-#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
 
@@ -55,7 +54,10 @@ class ProcessingTimeScheduler {
   virtual ~ProcessingTimeScheduler() = default;
 
   int64_t getCurrentProcessingTime() {
-    return TimeWindowUtil::getCurrentProcessingTime();
+    const auto now = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               now.time_since_epoch())
+        .count();
   }
 
   virtual std::optional<std::string> registerTimer(
