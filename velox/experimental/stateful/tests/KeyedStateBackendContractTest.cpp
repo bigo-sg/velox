@@ -39,6 +39,7 @@
 #include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/KeyedStateBackend.h"
 #include "velox/experimental/stateful/state/Namespace.h"
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
 #include "velox/experimental/stateful/state/StateKey.h"
@@ -245,8 +246,7 @@ class KeyedStateBackendContractTest : public ::testing::TestWithParam<B>,
 
   // The handles of 'keys' from 'state', in key order.
   std::vector<char*> handles(
-      const std::shared_ptr<
-          AggregatingState<RowContainerStateKey, VoidNamespace>>& state,
+      const std::shared_ptr<AggregatingState<RowContainerStateKey>>& state,
       const std::vector<RowContainerStateKey>& keys) {
     std::vector<char*> rows(keys.size(), nullptr);
     state->rows(range(keys), VoidNamespace::instance(), rows.data());
@@ -268,8 +268,9 @@ TYPED_TEST(KeyedStateBackendContractTest, rowsHandsOutWiredHandles) {
   KeySelector selector(backend->keyIndex(), {0});
   const auto keys = this->probeKeys(
       selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
-  auto state = backend->template getOrCreateAggregatingState<VoidNamespace>(
-      sum.descriptor(this->pool()));
+  auto state = backend->getOrCreateAggregatingState(
+      sum.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   const auto rows = this->handles(state, keys);
 
   ASSERT_EQ(3, rows.size());
@@ -288,8 +289,9 @@ TYPED_TEST(KeyedStateBackendContractTest, rowsHandsOutWiredHandles) {
   // A second call with the same descriptor returns the same state.
   EXPECT_EQ(
       state,
-      backend->template getOrCreateAggregatingState<VoidNamespace>(
-          sum.descriptor(this->pool())));
+      backend->getOrCreateAggregatingState(
+          sum.descriptor(this->pool()),
+          NamespaceSerializerTraits<VoidNamespace>::create()));
 }
 
 // commit() hands the state to storage, and the operator re-fetches its
@@ -303,8 +305,9 @@ TYPED_TEST(
   auto backend = this->makeBackend();
   KeySelector selector(backend->keyIndex(), {0});
   const auto keys = this->probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
-  auto state = backend->template getOrCreateAggregatingState<VoidNamespace>(
-      sum.descriptor(this->pool()));
+  auto state = backend->getOrCreateAggregatingState(
+      sum.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   const auto rows = this->handles(state, keys);
   sum.add(rows[0], this->one(7));
   sum.add(rows[1], this->one(9));
@@ -370,8 +373,9 @@ TYPED_TEST(
   KeySelector selectorA(backendA->keyIndex(), {0});
   const auto keysA =
       this->probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB});
-  auto stateA = backendA->template getOrCreateAggregatingState<VoidNamespace>(
-      sumA.descriptor(this->pool()));
+  auto stateA = backendA->getOrCreateAggregatingState(
+      sumA.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   const auto rowsA = this->handles(stateA, keysA);
   sumA.add(rowsA[0], this->one(7));
   sumA.add(rowsA[1], this->one(9));
@@ -388,8 +392,9 @@ TYPED_TEST(
   SumAggregate sumB;
   auto backendB = this->makeBackend();
   KeySelector selectorB(backendB->keyIndex(), {0});
-  auto stateB = backendB->template getOrCreateAggregatingState<VoidNamespace>(
-      sumB.descriptor(this->pool()));
+  auto stateB = backendB->getOrCreateAggregatingState(
+      sumB.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
 
   ChunkingSource source(bytes, 7);
   backendB->restore(source);
@@ -409,8 +414,9 @@ TYPED_TEST(
   SumAggregate sumC;
   auto backendC = this->makeBackend();
   KeySelector selectorC(backendC->keyIndex(), {0});
-  auto stateC = backendC->template getOrCreateAggregatingState<VoidNamespace>(
-      sumC.descriptor(this->pool()));
+  auto stateC = backendC->getOrCreateAggregatingState(
+      sumC.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   backendC->restoreBytes(bytes);
   const auto keysC =
       this->probeKeys(selectorC, {kCollisionKeyA, kCollisionKeyB});
@@ -430,8 +436,9 @@ TYPED_TEST(KeyedStateBackendContractTest, restoreMergesIntoDirtyBackend) {
   KeySelector selectorA(backendA->keyIndex(), {0});
   const auto keysA =
       this->probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB});
-  auto stateA = backendA->template getOrCreateAggregatingState<VoidNamespace>(
-      sumA.descriptor(this->pool()));
+  auto stateA = backendA->getOrCreateAggregatingState(
+      sumA.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   const auto rowsA = this->handles(stateA, keysA);
   sumA.add(rowsA[0], this->one(7));
   sumA.add(rowsA[1], this->one(9));
@@ -444,8 +451,9 @@ TYPED_TEST(KeyedStateBackendContractTest, restoreMergesIntoDirtyBackend) {
   KeySelector selectorB(backendB->keyIndex(), {0});
   const auto keysDirty =
       this->probeKeys(selectorB, {kCollisionKeyA, kLiveOnlyKey});
-  auto stateB = backendB->template getOrCreateAggregatingState<VoidNamespace>(
-      sumB.descriptor(this->pool()));
+  auto stateB = backendB->getOrCreateAggregatingState(
+      sumB.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   const auto rowsDirty = this->handles(stateB, keysDirty);
   sumB.add(rowsDirty[0], this->one(100));
   sumB.add(rowsDirty[1], this->one(5));
@@ -476,8 +484,9 @@ TYPED_TEST(
   const auto keysA =
       this->probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB});
   ASSERT_NE(keysA[0].keyGroup(), keysA[1].keyGroup());
-  auto stateA = backendA->template getOrCreateAggregatingState<VoidNamespace>(
-      sumA.descriptor(this->pool()));
+  auto stateA = backendA->getOrCreateAggregatingState(
+      sumA.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   const auto rowsA = this->handles(stateA, keysA);
   sumA.add(rowsA[0], this->one(7));
   sumA.add(rowsA[1], this->one(9));
@@ -487,8 +496,9 @@ TYPED_TEST(
   SumAggregate sumB;
   auto backendB = this->makeBackend(keysA[0].keyGroup(), 1);
   KeySelector selectorB(backendB->keyIndex(), {0});
-  auto stateB = backendB->template getOrCreateAggregatingState<VoidNamespace>(
-      sumB.descriptor(this->pool()));
+  auto stateB = backendB->getOrCreateAggregatingState(
+      sumB.descriptor(this->pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   backendB->restoreBytes(bytes);
 
   // A came back with its value; B's row is a new group, its entry stayed

@@ -45,13 +45,14 @@ template <typename K, typename N, typename UK, typename UV>
 class HeapMapState : public MapState<K, N, UK, UV> {
  public:
   HeapMapState(
-      std::shared_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>
+      std::shared_ptr<StateTable<K, std::shared_ptr<std::map<UK, UV>>>>
           stateTable,
       const MapStateDescriptor<UK, UV>& descriptor,
-      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer)
       : stateTable_(std::move(stateTable)),
         keySerializer_(std::move(keySerializer)),
-        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        nsSerializer_(std::move(nsSerializer)),
         userKeySerializer_(std::dynamic_pointer_cast<TypeSerializer<UK>>(
             descriptor.keySerializer())),
         userValueSerializer_(std::dynamic_pointer_cast<TypeSerializer<UV>>(
@@ -120,7 +121,7 @@ class HeapMapState : public MapState<K, N, UK, UV> {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
         writeEntryFrames(
             writer,
-            nsSerializer_->serialize(entry->namespace_),
+            nsSerializer_->serialize(*entry->namespace_),
             keySerializer_->serialize(entry->key_),
             serializeMap(entry->state_));
         ++entryCount;
@@ -147,7 +148,7 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     VELOX_CHECK(
         mapReader.atEnd(),
         "Corrupt checkpoint: trailing bytes in a map payload");
-    stateTable_->put(key, ns, map);
+    stateTable_->put(key, *ns, map);
   }
 
   std::string namespaceSchemaId() const override {
@@ -181,10 +182,9 @@ class HeapMapState : public MapState<K, N, UK, UV> {
     return freshMap;
   }
 
-  std::shared_ptr<StateTable<K, N, std::shared_ptr<std::map<UK, UV>>>>
-      stateTable_;
+  std::shared_ptr<StateTable<K, std::shared_ptr<std::map<UK, UV>>>> stateTable_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
-  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
   std::shared_ptr<TypeSerializer<UK>> userKeySerializer_;
   std::shared_ptr<TypeSerializer<UV>> userValueSerializer_;
 };
