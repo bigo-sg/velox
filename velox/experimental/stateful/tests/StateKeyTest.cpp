@@ -298,6 +298,10 @@ struct WindowNamespaceForTest : Namespace {
     return kWindowNamespaceKindForTest;
   }
 
+  std::shared_ptr<const Namespace> clone() const override {
+    return std::make_shared<WindowNamespaceForTest>(window);
+  }
+
   static constexpr uint32_t kWindowNamespaceKindForTest = 2;
   int64_t window;
 };

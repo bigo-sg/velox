@@ -22,6 +22,7 @@
 #include <string>
 #include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
+#include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
@@ -101,7 +102,13 @@ void checkEntryKeyGroup(const K& key, int32_t keyGroupId) {
 /// input rows fed to addRawInput) or be deduplicated (distinct use for join
 /// build / rank / sorted aggregation). A single implementation covers both
 /// granularities; repeated keys return the same row pointer.
-template <typename K, typename N>
+///
+/// The namespace dimension rides the runtime Namespace contract: methods
+/// take the namespace base type, and creation receives the namespace
+/// serializer as a runtime object, in the shape of Flink's
+/// createInternalState. Neither an operator nor a backend then depends on a
+/// concrete namespace type at compile time.
+template <typename K>
 class AggregatingState : public State {
  public:
   /// Batch lookup of value row handles under namespace 'ns'. outRows[i]
@@ -111,15 +118,15 @@ class AggregatingState : public State {
   /// outRows is caller-owned (out
   /// parameter, reused across batches for zero allocation on the hot path).
   virtual void
-  rows(folly::Range<const K*> keys, const N& ns, char** outRows) = 0;
+  rows(folly::Range<const K*> keys, const Namespace& ns, char** outRows) = 0;
 
   /// Single-key lookup, e.g. for timer callbacks. Same miss semantics as
   /// rows().
-  virtual char* row(const K& key, const N& ns) = 0;
+  virtual char* row(const K& key, const Namespace& ns) = 0;
 
   /// Drops the entry of (key, ns); a miss is a no-op. Any handle to the
   /// dropped row is invalid afterwards.
-  virtual void remove(const K& key, const N& ns) = 0;
+  virtual void remove(const K& key, const Namespace& ns) = 0;
 };
 
 // This class is relevant to Flink org.apache.flink.api.common.MapState.

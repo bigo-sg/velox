@@ -20,7 +20,6 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -62,11 +61,12 @@ namespace facebook::velox::stateful {
 /// [length + presto-serde bytes] frame per accumulator); the test double
 /// shares the encode/decode code rather than the layout being a contract.
 class ByteBufferAggregatingState
-    : public AggregatingState<RowContainerStateKey, VoidNamespace> {
+    : public AggregatingState<RowContainerStateKey> {
  public:
   ByteBufferAggregatingState(
       const AggregatingStateDescriptor& descriptor,
       std::shared_ptr<TypeSerializer<RowContainerStateKey>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer,
       KeyRowLifecycleObserver<RowContainerStateKey>* keyLifecycle)
       : staging_(std::make_unique<exec::RowContainer>(
             std::vector<TypePtr>{},
@@ -83,8 +83,17 @@ class ByteBufferAggregatingState
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
         keyLifecycle_(keyLifecycle),
+        nsSerializer_(std::move(nsSerializer)),
+        nsKind_(nsSerializer_->kind()),
         valueSchemaId_(
             "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {
+    // The byte map addresses entries by key alone, which holds for the void
+    // namespace only: it is the single namespace of a state, so a key names
+    // one entry.
+    VELOX_CHECK_EQ(
+        nsKind_,
+        kVoidNamespaceKind,
+        "The byte-buffer backend stores aggregating state under the void namespace only");
     // The wiring the contract asks of a state: each aggregate function
     // points at its accumulator column of the row storage.
     const auto& aggregates = descriptor.aggregates();
@@ -103,20 +112,21 @@ class ByteBufferAggregatingState
 
   void rows(
       folly::Range<const RowContainerStateKey*> keys,
-      const VoidNamespace& /* ns */,
+      const Namespace& ns,
       char** outRows) override {
+    checkNamespace(ns);
     for (size_t i = 0; i < keys.size(); ++i) {
       outRows[i] = stagedRow(keys[i]);
     }
   }
 
-  char* row(const RowContainerStateKey& key, const VoidNamespace& /* ns */)
-      override {
+  char* row(const RowContainerStateKey& key, const Namespace& ns) override {
+    checkNamespace(ns);
     return stagedRow(key);
   }
 
-  void remove(const RowContainerStateKey& key, const VoidNamespace& /* ns */)
-      override {
+  void remove(const RowContainerStateKey& key, const Namespace& ns) override {
+    checkNamespace(ns);
     const auto keyBytes = keySerializer_->serialize(key);
     if (!hasEntry(keyBytes)) {
       return;
@@ -187,7 +197,7 @@ class ByteBufferAggregatingState
   }
 
   std::string namespaceSchemaId() const override {
-    return nsSerializer_.schemaId();
+    return nsSerializer_->schemaId();
   }
 
   std::string valueSchemaId() const override {
@@ -195,6 +205,16 @@ class ByteBufferAggregatingState
   }
 
  private:
+  /// The use-time guard of the runtime namespace, as on the heap state.
+  void checkNamespace(const Namespace& ns) const {
+    VELOX_CHECK_EQ(
+        ns.kind(),
+        nsKind_,
+        "This state holds namespaces of kind {} and cannot take one of kind {}",
+        nsKind_,
+        ns.kind());
+  }
+
   /// The staging row for 'key': an already staged row as is, a committed
   /// entry materialized back into a row (fresh accumulators, then the
   /// stored intermediates merged in), or a fresh row for a new entry.
@@ -312,7 +332,8 @@ class ByteBufferAggregatingState
   memory::MemoryPool* pool_;
   std::shared_ptr<TypeSerializer<RowContainerStateKey>> keySerializer_;
   KeyRowLifecycleObserver<RowContainerStateKey>* keyLifecycle_;
-  VoidNamespaceSerializer nsSerializer_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
+  const uint32_t nsKind_;
   const std::string valueSchemaId_;
 };
 
@@ -326,7 +347,8 @@ class ByteBufferAggregatingState
 /// one key-group range and the header names it. Aggregating state under
 /// the void namespace only; everything else on the interface is
 /// not-implemented, as on the heap backend.
-class ByteBufferKeyedStateBackend : public KeyedStateBackend {
+class ByteBufferKeyedStateBackend
+    : public TypedKeyedStateBackend<RowContainerStateKey> {
  public:
   ByteBufferKeyedStateBackend(
       std::vector<TypePtr> keyTypes,
@@ -351,12 +373,20 @@ class ByteBufferKeyedStateBackend : public KeyedStateBackend {
         maxParallelism);
   }
 
-  KeyIndex& keyIndex() {
+  KeyIndex& keyIndex() override {
     return *keyTable_;
   }
 
-  uint32_t maxParallelism() const {
+  uint32_t maxParallelism() const override {
     return maxParallelism_;
+  }
+
+  uint32_t startKeyGroup() const override {
+    return startKeyGroup_;
+  }
+
+  uint32_t numKeyGroups() const override {
+    return numKeyGroups_;
   }
 
   std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
@@ -427,20 +457,25 @@ class ByteBufferKeyedStateBackend : public KeyedStateBackend {
     keyTable_->advance();
   }
 
-  /// Same shape as the heap entry; the byte map is written for the void
-  /// namespace only.
-  template <typename N>
-  std::shared_ptr<AggregatingState<RowContainerStateKey, N>>
-  getOrCreateAggregatingState(const AggregatingStateDescriptor& descriptor) {
-    static_assert(
-        std::is_same_v<N, VoidNamespace>,
-        "The byte-buffer backend stores aggregating state under the void namespace only");
+  /// Same shape as the heap entry: the namespace arrives as its runtime
+  /// serializer; the byte map is written for the void namespace only.
+  std::shared_ptr<AggregatingState<RowContainerStateKey>>
+  getOrCreateAggregatingState(
+      const AggregatingStateDescriptor& descriptor,
+      std::shared_ptr<NamespaceSerializer> nsSerializer) override {
     if (auto it = states_.find(descriptor.name()); it != states_.end()) {
-      return std::static_pointer_cast<
-          AggregatingState<RowContainerStateKey, N>>(it->second);
+      VELOX_CHECK_EQ(
+          it->second->namespaceSchemaId(),
+          nsSerializer->schemaId(),
+          "State '{}' is already registered under a different namespace type",
+          descriptor.name());
+      return it->second;
     }
     auto state = std::make_shared<ByteBufferAggregatingState>(
-        descriptor, keySerializer_, keyTable_->keyLifecycle());
+        descriptor,
+        keySerializer_,
+        std::move(nsSerializer),
+        keyTable_->keyLifecycle());
     states_.emplace(descriptor.name(), state);
     return state;
   }
