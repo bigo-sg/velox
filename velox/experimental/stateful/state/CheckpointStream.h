@@ -15,17 +15,14 @@
  */
 #pragma once
 
-#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <string_view>
-#include <type_traits>
 
-#include <folly/Portability.h>
 #include <folly/hash/Checksum.h>
 
 #include "velox/common/base/Exceptions.h"
+#include "velox/experimental/stateful/state/ByteStream.h"
 
 namespace facebook::velox::stateful {
 
@@ -53,44 +50,6 @@ constexpr uint8_t kCheckpointFlagCrcTrailer = 0x02;
 constexpr size_t kCheckpointHeaderSize =
     kCheckpointMagic.size() + 2 + 3 * sizeof(uint32_t);
 
-/// Fixed-width primitives travel as their little-endian byte image; this
-/// pair is the single encode/decode point of that rule.
-template <typename T>
-inline std::string littleEndianBytes(const T& value) {
-  static_assert(
-      std::is_trivially_copyable_v<T>, "Expected a fixed-width primitive");
-  char bytes[sizeof(T)];
-  std::memcpy(bytes, &value, sizeof(T));
-  if constexpr (sizeof(T) > 1) {
-    if (!folly::kIsLittleEndian) {
-      std::reverse(bytes, bytes + sizeof(T));
-    }
-  }
-  return std::string(bytes, sizeof(T));
-}
-
-template <typename T>
-inline T littleEndianValue(std::string_view bytes) {
-  static_assert(
-      std::is_trivially_copyable_v<T>, "Expected a fixed-width primitive");
-  VELOX_CHECK_EQ(
-      bytes.size(),
-      sizeof(T),
-      "Corrupt checkpoint: expected a {}-byte component, got {}",
-      sizeof(T),
-      bytes.size());
-  char buffer[sizeof(T)];
-  std::memcpy(buffer, bytes.data(), sizeof(T));
-  if constexpr (sizeof(T) > 1) {
-    if (!folly::kIsLittleEndian) {
-      std::reverse(buffer, buffer + sizeof(T));
-    }
-  }
-  T value;
-  std::memcpy(&value, buffer, sizeof(T));
-  return value;
-}
-
 /// CRC-32 (the zlib polynomial) of the given bytes: the value the stream
 /// trailer carries. folly::crc32 is the raw chainable register value; the
 /// xor finalizes it to the standard checksum ("123456789" hashes to
@@ -112,35 +71,12 @@ struct CheckpointHeader {
   uint32_t numKeyGroups{};
 };
 
-/// Appends the keyed-state checkpoint stream to a std::string. All
-/// integers and length prefixes are little-endian; variable-length
-/// components are length-prefixed. The int32 placeholder / patch pair
-/// serves the count-before-entries framing of a state block: the count
-/// position is reserved before the entries are traversed and patched
-/// afterwards, as in Flink's snapshot writers.
-class CheckpointWriter {
+/// Appends the keyed-state checkpoint stream using the shared byte codec.
+class CheckpointWriter : public ByteWriter {
  public:
-  explicit CheckpointWriter(std::string& out) : out_(out) {}
+  using ByteWriter::ByteWriter;
 
-  void writeUInt8(uint8_t value) {
-    out_.push_back(static_cast<char>(value));
-  }
-
-  void writeUInt32(uint32_t value) {
-    out_.append(littleEndianBytes(value));
-  }
-
-  void writeInt32(int32_t value) {
-    writeUInt32(static_cast<uint32_t>(value));
-  }
-
-  /// Appends a length-prefixed byte component.
-  void writeBytes(std::string_view bytes) {
-    writeUInt32(static_cast<uint32_t>(bytes.size()));
-    out_.append(bytes.data(), bytes.size());
-  }
-
-  /// Appends an int32 placeholder and returns its position for patchInt32().
+  /// Reserve the count before traversing a state's entries, then patch it.
   size_t writeInt32Placeholder() {
     const size_t position = out_.size();
     writeInt32(0);
@@ -148,63 +84,17 @@ class CheckpointWriter {
   }
 
   void patchInt32(size_t position, int32_t value) {
+    VELOX_CHECK_LE(position, out_.size());
+    VELOX_CHECK_LE(sizeof(int32_t), out_.size() - position);
     const auto encoded = littleEndianBytes(static_cast<uint32_t>(value));
-    std::memcpy(out_.data() + position, encoded.data(), encoded.size());
+    out_.replace(position, encoded.size(), encoded);
   }
-
- private:
-  std::string& out_;
 };
 
-/// Reads back what CheckpointWriter wrote. Every read is bounds-checked.
-class CheckpointReader {
+/// Reads the keyed-state checkpoint stream using the shared byte codec.
+class CheckpointReader : public ByteReader {
  public:
-  CheckpointReader(const char* data, size_t size) : data_(data), size_(size) {}
-
-  uint8_t readUInt8() {
-    return static_cast<uint8_t>(view(1)[0]);
-  }
-
-  uint32_t readUInt32() {
-    return littleEndianValue<uint32_t>(view(sizeof(uint32_t)));
-  }
-
-  int32_t readInt32() {
-    return static_cast<int32_t>(readUInt32());
-  }
-
-  /// Reads a length-prefixed byte component as a zero-copy view into the
-  /// underlying buffer; the buffer must outlive the view (restore() holds
-  /// the checkpoint bytes for the whole call).
-  std::string_view readBytes() {
-    const auto length = readUInt32();
-    return view(length);
-  }
-
-  bool atEnd() const {
-    return offset_ == size_;
-  }
-
- private:
-  std::string_view view(size_t length) {
-    VELOX_CHECK_LE(
-        length,
-        remaining(),
-        "Corrupt checkpoint: component of {} bytes exceeds the remaining {} bytes",
-        length,
-        remaining());
-    std::string_view bytes(data_ + offset_, length);
-    offset_ += length;
-    return bytes;
-  }
-
-  size_t remaining() const {
-    return size_ - offset_;
-  }
-
-  const char* data_;
-  const size_t size_;
-  size_t offset_{0};
+  using ByteReader::ByteReader;
 };
 
 inline void writeCheckpointHeader(

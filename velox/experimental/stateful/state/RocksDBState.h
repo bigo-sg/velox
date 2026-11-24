@@ -29,6 +29,7 @@
 #include "rocksdb/write_batch.h"
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
+#include "velox/experimental/stateful/state/ByteStream.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
@@ -79,7 +80,7 @@ class RocksDBState {
         startKeyGroup_,
         static_cast<uint64_t>(startKeyGroup_) + numKeyGroups_);
     auto bytes = prefix(group);
-    CheckpointWriter writer(bytes);
+    ByteWriter writer(bytes);
     writer.writeBytes(nsSerializer_->serialize(ns));
     writer.writeBytes(keySerializer_->serialize(userKey));
     return bytes;
@@ -160,7 +161,7 @@ class RocksDBState {
       if (dbKey.substr(0, groupPrefix.size()) != groupPrefix) {
         break;
       }
-      CheckpointReader reader(
+      ByteReader reader(
           dbKey.data() + groupPrefix.size(), dbKey.size() - groupPrefix.size());
       const auto ns = reader.readBytes();
       const auto keyBytes = reader.readBytes();
@@ -209,7 +210,7 @@ class RocksDBState {
 
   std::string prefix(uint32_t group) const {
     std::string bytes;
-    CheckpointWriter writer(bytes);
+    ByteWriter writer(bytes);
     writer.writeBytes(stateName_);
     writer.writeUInt32(group);
     return bytes;
@@ -320,7 +321,7 @@ class RocksDBListState : public RocksDBState<K, N, std::string>,
     if (!bytes) {
       return {};
     }
-    CheckpointReader reader(bytes->data(), bytes->size());
+    ByteReader reader(bytes->data(), bytes->size());
     const auto size = reader.readInt32();
     VELOX_CHECK_GE(size, 0, "Corrupt RocksDB list size");
     std::vector<T> result;
@@ -335,7 +336,7 @@ class RocksDBListState : public RocksDBState<K, N, std::string>,
     auto values = get(key, ns);
     values.push_back(value);
     std::string bytes;
-    CheckpointWriter writer(bytes);
+    ByteWriter writer(bytes);
     writer.writeInt32(static_cast<int32_t>(values.size()));
     for (const auto& element : values) {
       writer.writeBytes(serializer_->serialize(element));
@@ -417,7 +418,7 @@ class RocksDBMapState : public RocksDBState<K, N, std::string>,
     if (!bytes) {
       return {};
     }
-    CheckpointReader reader(bytes->data(), bytes->size());
+    ByteReader reader(bytes->data(), bytes->size());
     const auto size = reader.readInt32();
     VELOX_CHECK_GE(size, 0, "Corrupt RocksDB map size");
     std::map<UK, UV> result;
@@ -460,7 +461,7 @@ class RocksDBMapState : public RocksDBState<K, N, std::string>,
  private:
   void write(const K& key, const N& ns, const std::map<UK, UV>& values) {
     std::string bytes;
-    CheckpointWriter writer(bytes);
+    ByteWriter writer(bytes);
     writer.writeInt32(static_cast<int32_t>(values.size()));
     for (const auto& [userKey, userValue] : values) {
       writer.writeBytes(keySerializer_->serialize(userKey));
