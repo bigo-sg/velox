@@ -21,7 +21,6 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "rocksdb/db.h"
@@ -30,7 +29,6 @@
 #include "rocksdb/write_batch.h"
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
-#include "velox/experimental/stateful/state/HeapAggregatingState.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
@@ -475,133 +473,7 @@ class RocksDBMapState : public RocksDBState<K, N, std::string>,
   std::shared_ptr<TypeSerializer<UV>> valueSerializer_;
 };
 
-/// The operator mutates accumulator rows through returned pointers. Cache
-/// rows for one batch, flush them using the heap spill codec, then release
-/// the cache so RocksDB remains the durable storage.
-template <typename K, typename N>
-class RocksDBAggregatingState : public RocksDBState<K, N, std::string>,
-                                public AggregatingState<K, N> {
- public:
-  RocksDBAggregatingState(
-      rocksdb::DB& db,
-      rocksdb::ColumnFamilyHandle& cf,
-      const rocksdb::ReadOptions& readOptions,
-      const rocksdb::WriteOptions& writeOptions,
-      const AggregatingStateDescriptor& descriptor,
-      std::shared_ptr<TypeSerializer<K>> keySerializer,
-      KeyRowLifecycleObserver<K>* lifecycle,
-      uint32_t startKeyGroup,
-      uint32_t numKeyGroups)
-      : RocksDBState<K, N, std::string>(
-            db,
-            readOptions,
-            writeOptions,
-            cf,
-            keySerializer,
-            nullptr,
-            descriptor.name(),
-            startKeyGroup,
-            numKeyGroups),
-        heap_(
-            std::make_shared<StateTable<K, N, char*>>(
-                startKeyGroup,
-                numKeyGroups,
-                lifecycle),
-            descriptor,
-            this->keySerializer_) {}
-
-  void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
-    for (const auto& key : keys) {
-      load(key, ns);
-    }
-    heap_.rows(keys, ns, outRows);
-  }
-  char* row(const K& key, const N& ns) override {
-    load(key, ns);
-    return heap_.row(key, ns);
-  }
-  exec::RowContainer* valueRows() override {
-    return heap_.valueRows();
-  }
-  void remove(const K& key, const N& ns) override {
-    if (loaded_.erase(
-            this->serializeKeyWithGroupAndNamespace(key, ns)) != 0) {
-      heap_.remove(key, ns);
-    }
-    RocksDBState<K, N, std::string>::remove(key, ns);
-  }
-  void clear() override {
-    loaded_.clear();
-    heap_.clear();
-    RocksDBState<K, N, std::string>::clear();
-  }
-
-  void flush() {
-    for (uint32_t group = this->startKeyGroup_;
-         group < this->startKeyGroup_ + this->numKeyGroups_;
-         ++group) {
-      std::string bytes;
-      CheckpointWriter writer(bytes);
-      heap_.snapshotKeyGroup(static_cast<int32_t>(group), writer);
-      CheckpointReader reader(bytes.data(), bytes.size());
-      const auto count = reader.readInt32();
-      for (int32_t i = 0; i < count; ++i) {
-        const auto frames = readEntryFrames(reader);
-        const auto key = this->keySerializer_->deserialize(frames.key);
-        const auto ns = this->nsSerializer_->deserialize(frames.ns);
-        RocksDBState<K, N, std::string>::put(
-            key, ns, std::string(frames.payload));
-      }
-      VELOX_CHECK(reader.atEnd(), "Corrupt in-memory accumulator snapshot");
-    }
-    heap_.clear();
-    loaded_.clear();
-  }
-
-  void snapshotKeyGroup(int32_t group, CheckpointWriter& writer) override {
-    RocksDBState<K, N, std::string>::snapshotKeyGroup(group, writer);
-  }
-  void restoreEntry(int32_t group, CheckpointReader& reader) override {
-    const auto frames = readEntryFrames(reader);
-    const auto key = this->keySerializer_->deserialize(frames.key);
-    checkEntryKeyGroup(key, group);
-    const auto ns = this->nsSerializer_->deserialize(frames.ns);
-    RocksDBState<K, N, std::string>::put(
-        key, ns, std::string(frames.payload));
-    if (loaded_.count(this->serializeKeyWithGroupAndNamespace(key, ns)) != 0) {
-      std::string bytes;
-      CheckpointWriter writer(bytes);
-      writeEntryFrames(writer, frames.ns, frames.key, frames.payload);
-      CheckpointReader reload(bytes.data(), bytes.size());
-      heap_.restoreEntry(group, reload);
-    }
-  }
-  std::string namespaceSchemaId() const override {
-    return RocksDBState<K, N, std::string>::namespaceSchemaId();
-  }
-  std::string valueSchemaId() const override {
-    return heap_.valueSchemaId();
-  }
-
- private:
-  void load(const K& key, const N& ns) {
-    if (!loaded_.insert(this->serializeKeyWithGroupAndNamespace(key, ns))
-             .second) {
-      return;
-    }
-    if (auto payload = RocksDBState<K, N, std::string>::getOptional(key, ns)) {
-      std::string bytes;
-      CheckpointWriter writer(bytes);
-      writer.writeBytes(this->nsSerializer_->serialize(ns));
-      writer.writeBytes(this->keySerializer_->serialize(key));
-      writer.writeBytes(*payload);
-      CheckpointReader reader(bytes.data(), bytes.size());
-      heap_.restoreEntry(static_cast<int32_t>(key.keyGroup()), reader);
-    }
-  }
-
-  HeapAggregatingState<K, N> heap_;
-  std::unordered_set<std::string> loaded_;
-};
+// TODO: Implement RocksDB aggregating state after its accumulator row
+// lifecycle and persistence behavior are defined.
 
 } // namespace facebook::velox::stateful

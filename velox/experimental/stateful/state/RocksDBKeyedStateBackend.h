@@ -16,7 +16,6 @@
 #pragma once
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -71,9 +70,6 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   }
 
   void advance() {
-    for (const auto& flush : flushers_) {
-      flush();
-    }
     keyTable_->advance();
   }
 
@@ -131,26 +127,8 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
 
   void notifyCheckpointAborted(int64_t /*checkpointId*/) override {}
 
-  template <typename N>
-  std::shared_ptr<AggregatingState<K, N>> getOrCreateAggregatingState(
-      const AggregatingStateDescriptor& descriptor) {
-    if (auto state = findState<AggregatingState<K, N>>(descriptor.name())) {
-      return state;
-    }
-    auto state = std::make_shared<RocksDBAggregatingState<K, N>>(
-        db_,
-        columnFamily(descriptor.name()),
-        readOptions_,
-        writeOptions_,
-        descriptor,
-        keySerializer_,
-        keyTable_->keyLifecycle(),
-        startKeyGroup_,
-        numKeyGroups_);
-    createdStates_.emplace(descriptor.name(), state);
-    flushers_.push_back([state]() { state->flush(); });
-    return state;
-  }
+  // TODO: Add a typed RocksDB aggregating-state factory when its state
+  // implementation is available.
 
   template <typename N, typename V>
   std::shared_ptr<ValueState<K, N, V>> getOrCreateValueState(
@@ -351,7 +329,6 @@ class RocksDBKeyedStateBackend : public KeyedStateBackend {
   const uint32_t startKeyGroup_;
   const uint32_t numKeyGroups_;
   std::unordered_map<std::string, StatePtr> createdStates_;
-  std::vector<std::function<void()>> flushers_;
 };
 
 } // namespace facebook::velox::stateful
