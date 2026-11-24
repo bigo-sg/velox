@@ -52,11 +52,14 @@ class KeyIndex {
   virtual ~KeyIndex() = default;
 
   /// Probes one batch of key columns (one VectorPtr per key column, all of
-  /// equal size) through the table into the caller-owned lookup, writing
-  /// the stable-hash chain output of every row into 'stableHashes'.
+  /// size 'numInput') through the table into the caller-owned lookup,
+  /// writing the stable-hash chain output of every row into 'stableHashes'.
   /// Per-client scratch: one selector, one lookup; restore has its own
-  /// door below and never runs through a client's lookup.
+  /// door below and never runs through a client's lookup. With an empty
+  /// key set (global state) the key columns are empty and every row is a
+  /// direct hit on the table's one key row.
   virtual void probe(
+      vector_size_t numInput,
       std::vector<VectorPtr> keyColumns,
       exec::HashLookup& lookup,
       raw_vector<uint64_t>& stableHashes) = 0;
@@ -70,7 +73,8 @@ class KeyIndex {
   /// receives key column 'keyColumn' of keys[rowNumbers[i]] (positions may
   /// repeat or arrive out of order; a negative position writes null). This
   /// is how operators read key values back - the key rows themselves stay
-  /// behind the index.
+  /// behind the index. An index with an empty key set has nothing to read
+  /// back and leaves 'result' alone.
   virtual void extractKeyColumn(
       folly::Range<const RowContainerStateKey*> keys,
       folly::Range<const vector_size_t*> rowNumbers,

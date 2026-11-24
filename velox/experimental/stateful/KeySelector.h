@@ -60,7 +60,9 @@ class KeySelector {
   /// channels of the probe input. The key RowContainer, the probe hash
   /// table, the schema, the key serializer and maxParallelism all live on
   /// the bound table; this selector's lookup is its own probe scratch,
-  /// created from the table and never shared.
+  /// created from the table and never shared. Empty 'keyChannels' binds to
+  /// a table with an empty key set (global state): every input row maps to
+  /// the table's one key row.
   KeySelector(KeyIndex& keyIndex, std::vector<column_index_t> keyChannels);
 
   /// Deprecated. Kept only until the stateful operators migrate to probe();
