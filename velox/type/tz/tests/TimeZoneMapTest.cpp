@@ -46,6 +46,23 @@ TEST(TimeZoneMapTest, locateZoneID) {
   EXPECT_EQ(2233, locateZoneID("America/Ciudad_Juarez"));
 }
 
+TEST(TimeZoneMapTest, locateZoneDeprecatedAlias) {
+  // Distro tzdata carries names beyond the IANA links (e.g. openEuler ships
+  // Asia/Beijing). They must resolve like their canonical zones, otherwise
+  // QueryConfig::validateConfig rejects the session timezone injected from
+  // the JVM default and the job fails to start. Names that already exist as
+  // independent database entries (Chongqing, PRC) keep their own zones.
+  auto zoneID = [](std::string_view name) {
+    const auto* tz = locateZone(name);
+    EXPECT_NE(tz, nullptr);
+    return tz == nullptr ? -1 : tz->id();
+  };
+  EXPECT_EQ(zoneID("Asia/Shanghai"), zoneID("Asia/Beijing"));
+  EXPECT_NE(-1, zoneID("Asia/Chongqing"));
+  EXPECT_NE(-1, zoneID("PRC"));
+  EXPECT_NE(-1, tz::getTimeZoneID("Asia/Beijing", false));
+}
+
 TEST(TimeZoneMapTest, locateZoneUTCAlias) {
   auto locateZoneID = [&](std::string_view name) {
     const auto* tz = locateZone(name);

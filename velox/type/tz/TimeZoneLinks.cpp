@@ -145,6 +145,7 @@ const std::unordered_map<std::string, std::string>& getTimeZoneLinks() {
         {"America/Thunder_Bay", "America/Toronto"},
         {"America/Yellowknife", "America/Edmonton"},
         {"Antarctica/South_Pole", "Antarctica/McMurdo"},
+        {"Asia/Beijing", "Asia/Shanghai"},
         {"Asia/Chongqing", "Asia/Shanghai"},
         {"Asia/Harbin", "Asia/Shanghai"},
         {"Asia/Kashgar", "Asia/Urumqi"},

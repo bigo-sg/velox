@@ -18,8 +18,10 @@
 
 #include <boost/algorithm/string.hpp>
 #include <fmt/core.h>
+
 #include <folly/container/F14Map.h>
 #include <folly/container/F14Set.h>
+#include <unordered_map>
 
 #include "velox/common/base/Exceptions.h"
 #include "velox/common/testutil/TestValue.h"
@@ -30,6 +32,10 @@
 using facebook::velox::common::testutil::TestValue;
 
 namespace facebook::velox::tz {
+
+// Defined in TimeZoneLinks.cpp; maps alias zone names to their canonical
+// names (e.g. "PRC" -> "Asia/Shanghai").
+extern const std::unordered_map<std::string, std::string>& getTimeZoneLinks();
 
 using TTimeZoneDatabase = std::vector<std::unique_ptr<TimeZone>>;
 using TTimeZoneIndex = folly::F14FastMap<std::string, const TimeZone*>;
@@ -113,6 +119,17 @@ TTimeZoneIndex buildTimeZoneIndex(const TTimeZoneDatabase& tzDatabase) {
       reversed.emplace(
           boost::algorithm::to_lower_copy(tzDatabase[i]->name()),
           tzDatabase[i].get());
+    }
+  }
+
+  // Register the alias links (e.g. "PRC", "Asia/Chongqing", "Asia/Beijing")
+  // against their canonical zones so locateZone — and with it
+  // QueryConfig::validateConfig — accepts them. Previously the link table
+  // was only consulted by the date formatter's zone-name parsing.
+  for (const auto& [alias, canonical] : getTimeZoneLinks()) {
+    auto it = reversed.find(boost::algorithm::to_lower_copy(canonical));
+    if (it != reversed.end()) {
+      reversed.emplace(boost::algorithm::to_lower_copy(alias), it->second);
     }
   }
 
