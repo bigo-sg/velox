@@ -303,7 +303,10 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
   /// outside the range are skipped, so a checkpoint written under a
   /// different parallelism restores into this backend — one covering
   /// stream at once, the disjoint-range pieces of a scale-down in
-  /// sequence — and only a stream with no overlap at all is rejected. This
+  /// sequence — and a stream with no overlap at all is skipped: under the
+  /// operator-state interim the records ride a Flink union-list state and
+  /// every subtask receives every writer's shard, so a disjoint shard is
+  /// an expected delivery. This
   /// is the reverse of Flink's order (restore before state creation) and
   /// is what makes handle-owned state tables possible; the byte layout of
   /// the entries is the same. When the flags announce a CRC-32 trailer it
@@ -377,22 +380,22 @@ class HeapKeyedStateBackend : public KeyedStateBackend {
       stateIds.push_back(stateId);
       statesById.push_back(it->second);
     }
-    // The stream must overlap this backend's range: this backend picks its
-    // own key groups out of the stream and skips the rest (rescale
-    // restore); no overlap at all is a mis-delivery.
+    // The stream should overlap this backend's range: this backend picks
+    // its own key groups out of the stream and skips the rest (rescale
+    // restore). A stream with no overlap at all is skipped the same way:
+    // the checkpoint records ride a Flink union-list state under the
+    // operator-state interim, so every subtask receives every writer's
+    // shard and a disjoint shard is an expected delivery, not a
+    // mis-delivery - its key groups simply belong to other subtasks.
     const uint64_t streamEndKeyGroup =
         static_cast<uint64_t>(header.startKeyGroup) + header.numKeyGroups;
     const uint64_t myStartKeyGroup = static_cast<uint64_t>(startKeyGroup_);
     const uint64_t myEndKeyGroup =
         static_cast<uint64_t>(startKeyGroup_) + numKeyGroups_;
-    VELOX_CHECK(
-        header.startKeyGroup < myEndKeyGroup &&
-            streamEndKeyGroup > myStartKeyGroup,
-        "Checkpoint key-group range [{},{}) does not overlap this backend's [{},{})",
-        header.startKeyGroup,
-        streamEndKeyGroup,
-        myStartKeyGroup,
-        myEndKeyGroup);
+    if (header.startKeyGroup >= myEndKeyGroup ||
+        streamEndKeyGroup <= myStartKeyGroup) {
+      return;
+    }
     for (uint64_t keyGroup = header.startKeyGroup; keyGroup < streamEndKeyGroup;
          ++keyGroup) {
       VELOX_CHECK_EQ(

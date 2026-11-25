@@ -1034,9 +1034,12 @@ TEST_F(StateBackendTest, restoreRejectsUnknownState) {
 }
 
 // A checkpoint whose key-group range does not overlap the target backend's
-// range is rejected by the header cross-check instead of silently
-// mis-bucketing.
-TEST_F(StateBackendTest, restoreRejectsKeyGroupRangeMismatch) {
+// range is skipped, not rejected: under the operator-state interim the
+// records ride a Flink union-list state and every subtask receives every
+// writer's shard, so a disjoint shard is an expected delivery - its key
+// groups simply belong to other subtasks. The skip is header-driven, so an
+// empty snapshot exercises the same path.
+TEST_F(StateBackendTest, restoreSkipsDisjointKeyGroupRange) {
   HeapKeyedStateBackend<RowContainerStateKey> backendA(
       {BIGINT()}, kMaxParallelism, 4, 2, pool());
   backendA.getOrCreateListState<VoidNamespace>(
@@ -1047,7 +1050,8 @@ TEST_F(StateBackendTest, restoreRejectsKeyGroupRangeMismatch) {
       {BIGINT()}, kMaxParallelism, 100, 28, pool());
   backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+  EXPECT_NO_THROW(backendB.restore(bytes));
+  EXPECT_NO_THROW(backendB.restore(bytes));
 }
 
 // A header with a zero key-group count is corruption, not an empty range:
