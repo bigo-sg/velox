@@ -32,6 +32,10 @@
 
 namespace facebook::velox::stateful {
 
+// Defined in GroupAggregator.cpp; the record-count channel of a retracting
+// plan (see GroupAggregator::initialize).
+class RecordCounter;
+
 /// Grouped streaming aggregation over the keyed state backend, the
 /// counterpart of Flink's GroupAggFunction. Each input batch is probed by
 /// user key; every key's accumulators live in one row of an AggregatingState
@@ -42,9 +46,14 @@ namespace facebook::velox::stateful {
 /// and for a changed existing key the -U row (carrying the previous values)
 /// immediately followed by the +U row (carrying the new values) when the
 /// plan asks for update-before rows, +U alone for a changed key otherwise,
-/// and nothing for keys whose values did not change. The prototype covers
-/// append-only inputs and accumulate-only aggregates: a plan with
-/// needRetraction, or an input row whose rowKind is not INSERT, fails loud.
+/// and nothing for keys whose values did not change. A plan with
+/// needRetraction requires every aggregate to implement RetractableAggregate
+/// and fails loud at initialization otherwise; its input rows split by
+/// rowKind (+I/+U accumulate, -U/-D retract), a reused-or-hidden count(*)
+/// column carries each key's record count, and the count reaching zero
+/// emits -D (carrying the previous values) and clears the key's state. A
+/// plan without needRetraction receives insert-only input by the planner's
+/// contract and takes the plain emission path.
 class GroupAggregator : public StatefulOperator {
  public:
   /// 'op' is the placeholder batch operator (EmptyOperator); all processing
@@ -53,6 +62,10 @@ class GroupAggregator : public StatefulOperator {
       std::unique_ptr<exec::Operator> op,
       std::vector<StatefulOperatorPtr> targets,
       std::shared_ptr<const GroupAggregationNode> node);
+
+  /// Defined in the .cpp, where RecordCounter is complete: the record-count
+  /// handle holds a pointer into aggregates_.
+  ~GroupAggregator() override;
 
   /// Creates the aggregate functions: operator functionality with no state
   /// dependency, so it belongs to the operator's own init phase rather than
@@ -89,13 +102,18 @@ class GroupAggregator : public StatefulOperator {
   // entry, so the columns always carry exactly one row.
   void mergeRow(char* row, const std::vector<VectorPtr>& columns);
 
-  // Fails loud on anything but INSERT rows: the prototype has no retraction
-  // support, so an updating input cannot be consumed.
-  void checkInputRowKinds(const StreamRecord& record) const;
+  // Splits the batch rows by rowKind into the accumulate selection (+I/+U)
+  // and the retract selection (-U/-D) - the vectorized form of Flink's
+  // isAccumulateMsg split. An append-only record accumulates every row.
+  void splitByRowKind(
+      const StreamRecord& record,
+      SelectivityVector& accRows,
+      SelectivityVector& retractRows) const;
 
   // Extracts the final values of 'numRows' state rows into freshly created
-  // vectors, one per aggregate - the same extraction HashAggregation's
-  // output path performs.
+  // vectors, one per plan-visible aggregate (the hidden record-count column
+  // of a retracting plan has no output) - the same extraction
+  // HashAggregation's output path performs.
   std::vector<VectorPtr> extractFinalValues(char** rows, vector_size_t numRows);
 
   // Probes the batch by key and resolves every distinct key's state row;
@@ -104,23 +122,52 @@ class GroupAggregator : public StatefulOperator {
   // and returns the number of distinct keys.
   vector_size_t resolveKeys(const RowVectorPtr& inputVector);
 
-  // Accumulates every input row into its key's state row: one vectorized
-  // addRawInput call per aggregate, the groups array aligned with the input
-  // rows.
-  void accumulateInput(const RowVectorPtr& inputVector, vector_size_t numRows);
+  // Accumulates / retracts the selected rows into their keys' state rows:
+  // one vectorized addRawInput / retractRawInput call per aggregate over the
+  // same groups/mask/argument plumbing (see applyInput).
+  void accumulateInput(
+      const RowVectorPtr& inputVector,
+      const SelectivityVector& rows);
+  void retractInput(
+      const RowVectorPtr& inputVector,
+      const SelectivityVector& rows);
 
-  // Plans the changelog emission from the before/after final values and
-  // fills emitRowKeys_/emitRowKinds_: new keys emit +I; a changed key emits
-  // its update pair, the -U row carrying the previous image immediately
-  // ahead of the +U row carrying the new one; unchanged keys emit nothing.
+  // Shared driver of the accumulate/retract input paths: resolves every
+  // input row's state row into the groups array, filters 'rows' through the
+  // aggregation masks, and hands each aggregate its selected rows -
+  // addRawInput, or retractRawInput through the RetractableAggregate mix-in
+  // (the initialize() probe guarantees the cast on a retracting plan).
+  void applyInput(
+      const RowVectorPtr& inputVector,
+      const SelectivityVector& rows,
+      bool retract);
+
+  // Whether any aggregate's final value differs between the before/after
+  // extraction of distinct key 'd'.
+  bool valuesChanged(
+      const std::vector<VectorPtr>& prevValues,
+      const std::vector<VectorPtr>& newValues,
+      vector_size_t d);
+
+  // Plans the changelog emission and fills emitRowKeys_/emitRowKinds_ (and
+  // keysToClear_ on a retracting plan). An insert-only plan emits +I for
+  // physically new keys and the update pair for changed existing keys. A
+  // retracting plan decides by the record count (RecordCounter): a fresh key
+  // (before == 0) emits +I when net-positive and is silently cleared
+  // otherwise (Flink drops a first message that retracts); a live key whose
+  // count reaches exactly zero emits -D carrying the previous values and is
+  // cleared; any other live key (negative counts included - zero is the
+  // only death) emits the plain update pair when its values changed.
   void planEmission(
       const std::vector<VectorPtr>& prevValues,
-      const std::vector<VectorPtr>& newValues);
+      const std::vector<VectorPtr>& newValues,
+      const VectorPtr& countBefore,
+      const VectorPtr& countAfter);
 
   // Materializes the emission plan into one output record: the key columns
   // extracted from the key rows of the emitting keys, and each aggregate
   // column copying its image from the matching side of the before/after
-  // extraction - previous values on -U rows, new values on +I/+U rows.
+  // extraction - previous values on -U/-D rows, new values on +I/+U rows.
   StreamRecordPtr buildEmitRecord(
       const std::vector<VectorPtr>& prevValues,
       const std::vector<VectorPtr>& newValues);
@@ -138,6 +185,12 @@ class GroupAggregator : public StatefulOperator {
   std::shared_ptr<const GroupAggregationNode> node_;
   const uint32_t numKeys_;
   const bool generateUpdateBefore_;
+  const bool needRetraction_;
+
+  // The record-count channel of a retracting plan, over a qualifying count(*)
+  // the plan already carries or the hidden count appended in initialize();
+  // null on insert-only plans, which take the plain emission path.
+  std::unique_ptr<RecordCounter> recordCounter_;
 
   std::unique_ptr<KeySelector> keySelector_;
   std::shared_ptr<AggregatingState<RowContainerStateKey>> state_;
@@ -151,6 +204,10 @@ class GroupAggregator : public StatefulOperator {
   // rows back to back; a new key contributes a single +I row.
   std::vector<vector_size_t> emitRowKeys_;
   std::vector<RowKind> emitRowKinds_;
+  // Distinct keys whose state the emission plan retires this batch (-D rows
+  // and silently-cleaned fresh keys); addInput drops them - hidden count
+  // column included - after pushing the output record.
+  std::vector<vector_size_t> keysToClear_;
   std::vector<bool> isNewKey_;
 };
 

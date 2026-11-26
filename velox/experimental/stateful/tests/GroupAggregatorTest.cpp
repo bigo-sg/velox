@@ -33,13 +33,194 @@
 #include "velox/experimental/stateful/StatefulPlanNode.h"
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
+#include "velox/experimental/stateful/agg/RetractableAggregate.h"
 #include "velox/experimental/stateful/state/HashMapStateBackend.h"
 #include "velox/experimental/stateful/state/StateBackend.h"
+#include "velox/expression/FunctionSignature.h"
+#include "velox/functions/lib/aggregates/SimpleNumericAggregate.h"
 #include "velox/functions/prestosql/aggregates/RegisterAggregateFunctions.h"
+#include "velox/vector/DecodedVector.h"
 #include "velox/vector/FlatVector.h"
+#include "velox/vector/SimpleVector.h"
 
 namespace facebook::velox::stateful::test {
 namespace {
+
+// A count with retraction support, registered under the SQL name "count"
+// (both the no-argument count(*) and the one-argument count(x) forms) with
+// overwrite, so this test binary resolves every count - the plan's own and
+// the operator's hidden record counter - to one function that implements
+// RetractableAggregate. The production count families land with the flinksql
+// aggregates module; the operator path only needs a retract-capable count,
+// which this fixture stands in for. Semantics follow Flink's
+// CountAggFunction/Count1AggFunction: count(*) counts every row, count(x)
+// counts non-null arguments, both filters apply to accumulation and
+// retraction alike, and retraction does not stop at zero.
+class RetractableCountForTest
+    : public functions::aggregate::
+          SimpleNumericAggregate<bool, int64_t, int64_t>,
+      public stateful::RetractableAggregate {
+  using BaseAggregate =
+      functions::aggregate::SimpleNumericAggregate<bool, int64_t, int64_t>;
+
+ public:
+  RetractableCountForTest() : BaseAggregate(BIGINT()) {}
+
+  int32_t accumulatorFixedWidthSize() const override {
+    return sizeof(int64_t);
+  }
+
+  void extractValues(char** groups, int32_t numGroups, VectorPtr* result)
+      override {
+    BaseAggregate::doExtractValues(groups, numGroups, result, [&](char* group) {
+      return *value<int64_t>(group);
+    });
+  }
+
+  void addRawInput(
+      char** groups,
+      const SelectivityVector& rows,
+      const std::vector<VectorPtr>& args,
+      bool /*mayPushdown*/) override {
+    countSelected(groups, rows, args, 1);
+  }
+
+  void retractRawInput(
+      char** groups,
+      const SelectivityVector& rows,
+      const std::vector<VectorPtr>& args,
+      bool /*mayPushdown*/) override {
+    countSelected(groups, rows, args, -1);
+  }
+
+  void addSingleGroupRawInput(
+      char* group,
+      const SelectivityVector& rows,
+      const std::vector<VectorPtr>& args,
+      bool /*mayPushdown*/) override {
+    if (args.empty()) {
+      addToGroup(group, rows.countSelected());
+      return;
+    }
+    DecodedVector decoded(*args[0], rows);
+    if (decoded.isConstantMapping()) {
+      if (!decoded.isNullAt(0)) {
+        addToGroup(group, rows.countSelected());
+      }
+    } else if (decoded.mayHaveNulls()) {
+      int64_t nonNullCount = 0;
+      rows.applyToSelected([&](vector_size_t i) {
+        if (!decoded.isNullAt(i)) {
+          ++nonNullCount;
+        }
+      });
+      addToGroup(group, nonNullCount);
+    } else {
+      addToGroup(group, rows.countSelected());
+    }
+  }
+
+  void addIntermediateResults(
+      char** groups,
+      const SelectivityVector& rows,
+      const std::vector<VectorPtr>& args,
+      bool /*mayPushdown*/) override {
+    decodedIntermediate_.decode(*args[0], rows);
+    rows.applyToSelected([&](vector_size_t i) {
+      addToGroup(groups[i], decodedIntermediate_.valueAt<int64_t>(i));
+    });
+  }
+
+  void addSingleGroupIntermediateResults(
+      char* group,
+      const SelectivityVector& rows,
+      const std::vector<VectorPtr>& args,
+      bool /*mayPushdown*/) override {
+    decodedIntermediate_.decode(*args[0], rows);
+    int64_t count = 0;
+    rows.applyToSelected([&](vector_size_t i) {
+      if (!decodedIntermediate_.isNullAt(i)) {
+        count += decodedIntermediate_.valueAt<int64_t>(i);
+      }
+    });
+    addToGroup(group, count);
+  }
+
+ protected:
+  void initializeNewGroupsInternal(
+      char** groups,
+      folly::Range<const vector_size_t*> indices) override {
+    for (auto i : indices) {
+      // The result of count is never null.
+      *value<int64_t>(groups[i]) = static_cast<int64_t>(0);
+    }
+  }
+
+ private:
+  // Adds 'delta' (+1 accumulation, -1 retraction) per selected row, with
+  // the argument's null filter applying to both directions.
+  void countSelected(
+      char** groups,
+      const SelectivityVector& rows,
+      const std::vector<VectorPtr>& args,
+      int64_t delta) {
+    if (args.empty()) {
+      rows.applyToSelected(
+          [&](vector_size_t i) { addToGroup(groups[i], delta); });
+      return;
+    }
+    DecodedVector decoded(*args[0], rows);
+    if (decoded.isConstantMapping()) {
+      if (!decoded.isNullAt(0)) {
+        rows.applyToSelected(
+            [&](vector_size_t i) { addToGroup(groups[i], delta); });
+      }
+    } else if (decoded.mayHaveNulls()) {
+      rows.applyToSelected([&](vector_size_t i) {
+        if (!decoded.isNullAt(i)) {
+          addToGroup(groups[i], delta);
+        }
+      });
+    } else {
+      rows.applyToSelected(
+          [&](vector_size_t i) { addToGroup(groups[i], delta); });
+    }
+  }
+
+  inline void addToGroup(char* group, int64_t count) {
+    *value<int64_t>(group) += count;
+  }
+
+  DecodedVector decodedIntermediate_;
+};
+
+void registerRetractableCountForTest() {
+  std::vector<std::shared_ptr<exec::AggregateFunctionSignature>> signatures{
+      exec::AggregateFunctionSignatureBuilder()
+          .returnType("bigint")
+          .intermediateType("bigint")
+          .build(),
+      exec::AggregateFunctionSignatureBuilder()
+          .typeVariable("T")
+          .returnType("bigint")
+          .intermediateType("bigint")
+          .argumentType("T")
+          .build(),
+  };
+  exec::registerAggregateFunction(
+      "count",
+      std::move(signatures),
+      [](core::AggregationNode::Step /*step*/,
+         const std::vector<TypePtr>& argTypes,
+         const TypePtr& /*resultType*/,
+         const core::QueryConfig& /*config*/)
+          -> std::unique_ptr<exec::Aggregate> {
+        VELOX_CHECK_LE(argTypes.size(), 1, "count takes at most one argument");
+        return std::make_unique<RetractableCountForTest>();
+      },
+      false /*registerCompanionFunctions*/,
+      true /*overwrite*/);
+}
 
 class SpyOperator : public exec::Operator {
  public:
@@ -104,6 +285,10 @@ class GroupAggregatorTest : public exec::test::OperatorTestBase {
   void SetUp() override {
     OperatorTestBase::SetUp();
     aggregate::prestosql::registerAllAggregateFunctions();
+    // The retract-capable count fixture replaces the baseline count for this
+    // binary: the operator's retraction path needs it, and count(x) keeps
+    // the baseline's null-skipping semantics.
+    registerRetractableCountForTest();
 
     core::PlanFragment planFragment;
     planFragment.planNode = std::make_shared<core::ValuesNode>(
@@ -148,6 +333,16 @@ class GroupAggregatorTest : public exec::test::OperatorTestBase {
     aggregate.call = std::make_shared<core::CallTypedExpr>(
         BIGINT(), std::vector<core::TypedExprPtr>{fieldC()}, "count");
     aggregate.rawInputTypes = {BIGINT()};
+    return aggregate;
+  }
+
+  // count(*): the qualifying record-count column a retracting plan can
+  // carry itself.
+  core::AggregationNode::Aggregate countStar() {
+    core::AggregationNode::Aggregate aggregate;
+    aggregate.call = std::make_shared<core::CallTypedExpr>(
+        BIGINT(), std::vector<core::TypedExprPtr>{}, "count");
+    aggregate.rawInputTypes = {};
     return aggregate;
   }
 
@@ -750,8 +945,10 @@ TEST_F(GroupAggregatorTest, testNonBooleanMaskFailsLoud) {
       "Aggregation mask column 'f' must be BOOLEAN");
 }
 
-// Any non-INSERT input row fails loud: the prototype cannot retract.
-TEST_F(GroupAggregatorTest, testNonInsertInputFailsLoud) {
+// A retracting row on a plan that does not ask for retraction is a planner
+// contract violation and fails loud; an accumulate row (+U) accumulates
+// like +I, as Flink's isAccumulateMsg split does.
+TEST_F(GroupAggregatorTest, testRetractRowOnInsertOnlyPlanFailsLoud) {
   auto aggregator = makeAggregator(
       makeNode(
           {sumOfC()},
@@ -764,14 +961,13 @@ TEST_F(GroupAggregatorTest, testNonInsertInputFailsLoud) {
           recordWithKinds({1}, {10}, {RowKind::UPDATE_BEFORE})),
       "non-INSERT row");
   VELOX_ASSERT_THROW(
-      aggregator->addInput(recordWithKinds({1}, {10}, {RowKind::UPDATE_AFTER})),
-      "non-INSERT row");
-  VELOX_ASSERT_THROW(
       aggregator->addInput(recordWithKinds({1}, {10}, {RowKind::DELETE})),
       "non-INSERT row");
 }
 
-// A plan that asks for retraction is rejected at construction.
+// A retraction plan probes every aggregate for RetractableAggregate at
+// initialization: sum does not implement it, so the plan fails loud before
+// the first input.
 TEST_F(GroupAggregatorTest, testNeedRetractionPlanFailsLoud) {
   auto node = makeNode(
       {sumOfC()},
@@ -779,9 +975,320 @@ TEST_F(GroupAggregatorTest, testNeedRetractionPlanFailsLoud) {
       /*generateUpdateBefore=*/true,
       /*needRetraction=*/true);
   auto op = std::make_unique<EmptyOperator>(0, driverCtx_.get(), node);
-  VELOX_ASSERT_THROW(
-      GroupAggregator(std::move(op), std::vector<StatefulOperatorPtr>{}, node),
-      "retraction");
+  auto aggregator = std::make_unique<GroupAggregator>(
+      std::move(op), std::vector<StatefulOperatorPtr>{}, node);
+  VELOX_ASSERT_THROW(aggregator->initialize(), "does not support retraction");
+}
+
+// One batch mixing row kinds for the same key, retract rows ahead of the
+// accumulate row: the split applies both halves and the net effect lands
+// (count 2 - 2 + 1 = 1); a batch whose halves cancel emits nothing. The plan
+// carries no count(*), so a hidden count column carries the record count.
+TEST_F(GroupAggregatorTest, testMixedRowKindBatchRetractsAndAccumulates) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countOfC()},
+          ROW({"k", "cnt"}, {BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  // Batch 1: two rows accumulate: +I (1, 2).
+  aggregator->addInput(appendOnlyRecord({1, 1}, {10, 20}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({2}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 2: two -U rows ahead of one +U row in one batch: order inside the
+  // batch does not matter, the update pair carries 2 -> 1.
+  aggregator->addInput(recordWithKinds(
+      {1, 1, 1},
+      {20, 10, 5},
+      {RowKind::UPDATE_BEFORE, RowKind::UPDATE_BEFORE, RowKind::UPDATE_AFTER}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::UPDATE_BEFORE, RowKind::UPDATE_AFTER});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1, 1}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({2, 1}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 3: one accumulate and one retract cancel: count returns to its
+  // batch-before value, no output.
+  aggregator->addInput(
+      recordWithKinds({1, 1}, {5, 5}, {RowKind::INSERT, RowKind::DELETE}));
+  EXPECT_TRUE(capturePtr->records().empty());
+}
+
+// A full retraction takes the record count to zero: -D carrying the
+// batch-before values, then the key's state is cleared - the reborn key
+// starts from zero (1, not 3) and emits +I again.
+TEST_F(GroupAggregatorTest, testRetractToZeroEmitsDeleteAndClearsState) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countOfC()},
+          ROW({"k", "cnt"}, {BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  // Batch 1: +I (1, 2).
+  aggregator->addInput(appendOnlyRecord({1, 1}, {10, 20}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  capturePtr->clear();
+
+  // Batch 2: both rows retract: the record count hits zero -> -D (1, 2).
+  aggregator->addInput(
+      recordWithKinds({1, 1}, {10, 20}, {RowKind::DELETE, RowKind::DELETE}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::DELETE});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({2}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 3: reborn on cleared state: +I (1, 1) - 1, not 2 + 1.
+  aggregator->addInput(appendOnlyRecord({1}, {7}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(1));
+}
+
+// A key whose first-ever batch only retracts is dropped, as Flink drops a
+// first message that retracts: no emission, and the next batch starts from
+// clean state (+I 1, not an update from a negative residue).
+TEST_F(GroupAggregatorTest, testNewKeyPureRetractDroppedSilently) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countOfC()},
+          ROW({"k", "cnt"}, {BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  // Batch 1: first sight of the key, retract rows only: dropped.
+  aggregator->addInput(
+      recordWithKinds({1, 1}, {10, 20}, {RowKind::DELETE, RowKind::DELETE}));
+  EXPECT_TRUE(capturePtr->records().empty());
+
+  // Batch 2: clean state: +I (1, 1).
+  aggregator->addInput(appendOnlyRecord({1}, {7}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(1));
+}
+
+// A first batch whose accumulate and retract halves cancel (record count
+// back to zero, count(c) back to nothing) emits nothing and keeps no state.
+TEST_F(GroupAggregatorTest, testNewKeyBatchNetZeroEmitsNothing) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countOfC()},
+          ROW({"k", "cnt"}, {BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  aggregator->addInput(
+      recordWithKinds({1, 1}, {10, 10}, {RowKind::INSERT, RowKind::DELETE}));
+  EXPECT_TRUE(capturePtr->records().empty());
+
+  aggregator->addInput(appendOnlyRecord({1}, {7}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(1));
+}
+
+// Over-retracting a live key takes the record count negative: zero is the
+// only death, so the key stays live and emits its update pair (count(c)
+// wraps to -1). One more accumulated row then takes the record count from -1
+// through zero: -D with the batch-before value (-1).
+TEST_F(GroupAggregatorTest, testOverRetractedKeyKeepsNegativeCount) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countOfC()},
+          ROW({"k", "cnt"}, {BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  // Batch 1: +I (1, 2).
+  aggregator->addInput(appendOnlyRecord({1, 1}, {10, 20}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  capturePtr->clear();
+
+  // Batch 2: three retractions over a two-row key: record count -1, count(c)
+  // 2 - 3 = -1, live update pair.
+  aggregator->addInput(recordWithKinds(
+      {1, 1, 1},
+      {10, 20, 5},
+      {RowKind::DELETE, RowKind::DELETE, RowKind::DELETE}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::UPDATE_BEFORE, RowKind::UPDATE_AFTER});
+  facebook::velox::test::assertEqualVectors(
+      bigints({2, -1}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 3: one row takes the record count from -1 to exactly zero: -D
+  // (1, -1).
+  aggregator->addInput(appendOnlyRecord({1}, {5}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::DELETE});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({-1}), record->record()->childAt(1));
+}
+
+// The plan's own qualifying count(*) column carries the record count (no
+// hidden one needed): full retraction reads zero there and drives -D with
+// every previous value, rebirth emits +I.
+TEST_F(GroupAggregatorTest, testReusedCountStarDrivesDelete) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countStar(), countOfC()},
+          ROW({"k", "cnt", "c"}, {BIGINT(), BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  // Batch 1: +I (1, 2, 2).
+  aggregator->addInput(appendOnlyRecord({1, 1}, {10, 20}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({2}), record->record()->childAt(1));
+  facebook::velox::test::assertEqualVectors(
+      bigints({2}), record->record()->childAt(2));
+  capturePtr->clear();
+
+  // Batch 2: count(*) 2 -> 0: -D (1, 2, 2).
+  aggregator->addInput(
+      recordWithKinds({1, 1}, {10, 20}, {RowKind::DELETE, RowKind::DELETE}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::DELETE});
+  facebook::velox::test::assertEqualVectors(
+      bigints({2}), record->record()->childAt(1));
+  facebook::velox::test::assertEqualVectors(
+      bigints({2}), record->record()->childAt(2));
+  capturePtr->clear();
+
+  // Batch 3: reborn: +I (1, 1, 1).
+  aggregator->addInput(appendOnlyRecord({1}, {7}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(1));
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(2));
+}
+
+// The hidden record counter is the zero-argument count: it counts rows the
+// null-filtering count(c) skips. A null-argument-only first batch still
+// births the key (+I with cnt 0); retracting that null row later drives -D
+// while count(c) itself has nothing to subtract.
+TEST_F(GroupAggregatorTest, testHiddenCountCountsRowsWhileCountSkipsNulls) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countOfC()},
+          ROW({"k", "cnt"}, {BIGINT(), BIGINT()}),
+          /*generateUpdateBefore=*/true,
+          /*needRetraction=*/true),
+      std::move(capture));
+
+  // Batch 1: one row with a null argument: count(c) skips it (0), the row
+  // counter counts it (1): +I (1, 0).
+  aggregator->addInput(std::make_shared<StreamRecord>(
+      "group-agg",
+      makeRowVector(
+          {"k", "c"},
+          {bigints({1}), makeNullableFlatVector<int64_t>({std::nullopt})})));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  auto record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::INSERT});
+  facebook::velox::test::assertEqualVectors(
+      bigints({0}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 2: a non-null row: count 0 -> 1: -U (1, 0), +U (1, 1).
+  aggregator->addInput(appendOnlyRecord({1}, {10}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::UPDATE_BEFORE, RowKind::UPDATE_AFTER});
+  facebook::velox::test::assertEqualVectors(
+      bigints({0, 1}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 3: retract the non-null row: count 1 -> 0, row count 2 -> 1: the
+  // key stays live, update to 0.
+  aggregator->addInput(recordWithKinds({1}, {10}, {RowKind::DELETE}));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::UPDATE_BEFORE, RowKind::UPDATE_AFTER});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1, 0}), record->record()->childAt(1));
+  capturePtr->clear();
+
+  // Batch 4: retract the null-argument row: count(c) subtracts nothing, the
+  // row counter reaches zero and kills the key: -D (1, 0).
+  aggregator->addInput(std::make_shared<StreamRecord>(
+      "group-agg",
+      makeRowVector(
+          {"k", "c"},
+          {bigints({1}), makeNullableFlatVector<int64_t>({std::nullopt})}),
+      makeFlatVector<int8_t>(
+          std::vector<int8_t>{static_cast<int8_t>(RowKind::DELETE)})));
+  ASSERT_EQ(capturePtr->records().size(), 1);
+  record = recordAt(*capturePtr, 0);
+  assertRowKinds(record, {RowKind::DELETE});
+  facebook::velox::test::assertEqualVectors(
+      bigints({1}), record->record()->childAt(0));
+  facebook::velox::test::assertEqualVectors(
+      bigints({0}), record->record()->childAt(1));
 }
 
 // Snapshot a warmed-up aggregation into a fresh operator: both the key table
