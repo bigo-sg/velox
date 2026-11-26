@@ -329,13 +329,13 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
           planNode.node());
   VELOX_CHECK(windowAggNode, "Failed to cast to StreamWindowAggregationNode");
 
-  // TUMBLE in this PR: HOP / SESSION / CUMULATE (and the two-stage
+  // TUMBLE / HOP in this PR: SESSION / CUMULATE (and the two-stage
   // local-global split) are planned follow-ups; the operator itself
   // also rejects them at initialize.
   const auto windowType = Window::getType(windowAggNode->windowType());
   VELOX_USER_CHECK(
-      windowType == WindowType::TUMBLE,
-      "StreamWindowAggregation supports TUMBLE windows in this PR; HOP / "
+      windowType == WindowType::TUMBLE || windowType == WindowType::HOP,
+      "StreamWindowAggregation supports TUMBLE / HOP windows in this PR; "
       "SESSION / CUMULATE and the two-stage split are planned follow-ups "
       "(windowType={})",
       windowAggNode->windowType());
