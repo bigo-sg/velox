@@ -17,6 +17,7 @@
 #include <cstdint>
 
 #include "velox/core/PlanNode.h"
+#include "velox/experimental/stateful/KeyedStateSpec.h"
 
 namespace facebook::velox::stateful {
 
@@ -443,13 +444,11 @@ class StreamWindowAggregationNode : public core::PlanNode {
   StreamWindowAggregationNode(
       const core::PlanNodeId& id,
       std::shared_ptr<const core::AggregationNode>& aggregationNode,
-      std::shared_ptr<const core::AggregationNode>& localAgg,
       const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
       const std::shared_ptr<const core::PartitionFunctionSpec>&
           sliceAssignerSpec,
-      int64_t windowInterval,
-      bool useDayLightSaving,
-      bool isLocalAgg,
+      const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec,
+      std::string shiftTimeZone,
       int64_t size,
       int64_t step,
       int64_t offset,
@@ -461,12 +460,10 @@ class StreamWindowAggregationNode : public core::PlanNode {
       int windowEndIndex)
       : PlanNode(id),
         aggregation_(std::move(aggregationNode)),
-        localAgg_(std::move(localAgg)),
         keySelectorSpec_(std::move(keySelectorSpec)),
         sliceAssignerSpec_(std::move(sliceAssignerSpec)),
-        windowInterval_(windowInterval),
-        useDayLightSaving_(useDayLightSaving),
-        isLocalAgg_(isLocalAgg),
+        keyedStateSpec_(std::move(keyedStateSpec)),
+        shiftTimeZone_(std::move(shiftTimeZone)),
         size_(size),
         step_(step),
         offset_(offset),
@@ -485,10 +482,6 @@ class StreamWindowAggregationNode : public core::PlanNode {
     return aggregation_;
   }
 
-  const std::shared_ptr<const core::AggregationNode>& localAgg() const {
-    return localAgg_;
-  }
-
   const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec()
       const {
     return keySelectorSpec_;
@@ -499,16 +492,16 @@ class StreamWindowAggregationNode : public core::PlanNode {
     return sliceAssignerSpec_;
   }
 
-  int64_t windowInterval() const {
-    return windowInterval_;
+  /// The keyed state configuration (the grouping key channels and their
+  /// types) the window aggregator builds its keyed state backend from.
+  const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec() const {
+    return keyedStateSpec_;
   }
 
-  bool useDayLightSaving() const {
-    return useDayLightSaving_;
-  }
-
-  bool isLocalAgg() const {
-    return isLocalAgg_;
+  /// IANA timezone name (e.g. "Asia/Shanghai") for window boundary math
+  /// and DST-corrected timer timestamps. Empty means UTC.
+  const std::string& shiftTimeZone() const {
+    return shiftTimeZone_;
   }
 
   int64_t size() const {
@@ -557,12 +550,10 @@ class StreamWindowAggregationNode : public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const std::shared_ptr<const core::AggregationNode> aggregation_;
-  const std::shared_ptr<const core::AggregationNode> localAgg_;
   const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
   const std::shared_ptr<const core::PartitionFunctionSpec> sliceAssignerSpec_;
-  int64_t windowInterval_ = 0;
-  bool useDayLightSaving_ = false;
-  bool isLocalAgg_;
+  const std::shared_ptr<const KeyedStateSpec> keyedStateSpec_;
+  const std::string shiftTimeZone_;
   int64_t size_;
   int64_t step_;
   int64_t offset_;

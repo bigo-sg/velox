@@ -34,8 +34,8 @@ velox_add_library(
   WindowJoin.cpp
   KeySelector.cpp
   CombinedWatermarkStatus.cpp
-  LocalWindowAggregator.cpp
   WindowAggregator.cpp
+  WindowAggregatorCountStar.cpp
   GroupWindowAggregator.cpp
   WatermarkGenerator.cpp
   WatermarkSource.cpp

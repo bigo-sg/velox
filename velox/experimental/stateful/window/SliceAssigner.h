@@ -19,6 +19,10 @@
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/window/Window.h"
 
+namespace facebook::velox::tzdb {
+class time_zone;
+} // namespace facebook::velox::tzdb
+
 namespace facebook::velox::stateful {
 
 /// This class is relevant to Flink SliceAssigner.
@@ -30,7 +34,8 @@ class SliceAssigner {
       int64_t step,
       int64_t offset,
       WindowType windowType,
-      int rowtimeIndex);
+      int rowtimeIndex,
+      const tzdb::time_zone* shiftTimeZone = nullptr);
 
   std::map<int64_t, RowVectorPtr> assignSliceEnd(const RowVectorPtr& input);
 
@@ -50,6 +55,9 @@ class SliceAssigner {
   const WindowType windowType_;
   int64_t sliceSize_;
   int rowtimeIndex_;
+  /// The shift time zone (Flink semantics): rowtimes are interpreted in
+  /// this zone's wall clock before boundary alignment; nullptr = UTC.
+  const tzdb::time_zone* shiftTimeZone_;
 };
 
 } // namespace facebook::velox::stateful

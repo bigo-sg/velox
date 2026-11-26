@@ -103,6 +103,35 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return newRow;
   }
 
+  /// Read-only single-key lookup: returns nullptr on a miss without
+  /// materializing a row (unlike row()/rows(), which create-and-initialize
+  /// on miss). Fire/trigger paths must use this so an already-cleared
+  /// window is not resurrected as an empty accumulator. Concrete on the
+  /// heap implementation (not part of the AggregatingState interface).
+  char* get(const K& key, const N& ns) {
+    return stateTable_->get(key, ns);
+  }
+
+  /// Visits every live (key, namespace) entry (read-only). The restore
+  /// path of operators that rebuild a derived in-memory index (e.g.
+  /// window timers after a backend restore) walks the restored entries
+  /// through this. Concrete on the heap implementation (not part of the
+  /// AggregatingState interface).
+  void forEachEntry(const std::function<void(const K&, const N&)>& fn) {
+    const auto numKeyGroups = stateTable_->numKeyGroups();
+    for (uint32_t i = 0; i < numKeyGroups; ++i) {
+      auto& map =
+          stateTable_->stateMapForKeyGroup(stateTable_->startKeyGroup() + i);
+      auto snapshot = map.createSnapshot();
+      for (const auto& head : snapshot.heads) {
+        for (auto entry = head; entry != nullptr; entry = entry->next_) {
+          fn(entry->key_, entry->namespace_);
+        }
+      }
+      map.releaseSnapshot(snapshot.version);
+    }
+  }
+
   exec::RowContainer* valueRows() override {
     return valueRows_.get();
   }
