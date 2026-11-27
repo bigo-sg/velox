@@ -76,7 +76,14 @@ TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
   EXPECT_FALSE(groupRows[1].isValid(0));
   EXPECT_TRUE(groupRows[1].isValid(1));
 
-  EXPECT_NE(nullptr, selector.keyRowContainer());
+  // Key values read back through the selector in the shape of
+  // RowContainer::extractColumn, with no reach into the key container: the
+  // distinct keys land in the result at the given positions.
+  auto values = makeFlatVector<int64_t>({0, 0});
+  const std::vector<vector_size_t> positions{0, 1};
+  selector.extractKeyColumn(distinct, positions, 0, 0, values);
+  EXPECT_EQ(kCollisionKeyA, values->asFlatVector<int64_t>()->valueAt(0));
+  EXPECT_EQ(kCollisionKeyB, values->asFlatVector<int64_t>()->valueAt(1));
 }
 
 // Usage 1 (per-row): keys are 1:1 with input rows, equal keys share the row
