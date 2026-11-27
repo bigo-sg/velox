@@ -123,11 +123,18 @@ class RowContainerStateKey : public StateKey {
     return schema_;
   }
 
+  /// Value equality: same schema and equal key rows (delegates to the
+  /// virtual equals). The timer infrastructure compares timer keys by
+  /// operator== (TimerHeapInternalTimer).
+  bool operator==(const RowContainerStateKey& other) const {
+    return equals(other);
+  }
+
  private:
   const RowContainerKeySchema* schema_;
   const char* row_;
-  const uint64_t hash_;
-  const uint32_t keyGroup_;
+  uint64_t hash_;
+  uint32_t keyGroup_;
 };
 
 inline bool RowContainerStateKey::equals(const StateKey& other) const {

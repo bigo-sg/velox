@@ -73,15 +73,31 @@ SliceAssigner::SliceAssigner(
     int64_t step,
     int64_t offset,
     WindowType windowType,
-    int rowtimeIndex)
+    int rowtimeIndex,
+    const tzdb::time_zone* shiftTimeZone)
     : keySelector_(std::move(keySelector)),
       size_(size),
       step_(step),
       offset_(offset),
       windowType_(windowType),
-      rowtimeIndex_(rowtimeIndex) {
-  // TODO: calculate sliceSize_ based on windowType.
-  sliceSize_ = std::gcd(size, step);
+      rowtimeIndex_(rowtimeIndex),
+      shiftTimeZone_(shiftTimeZone) {
+  // Calculate sliceSize based on windowType (matching Flink SliceAssigners):
+  // TUMBLE -> size, HOP -> gcd(size, step), CUMULATE -> step, SESSION -> N/A.
+  switch (windowType_) {
+    case WindowType::TUMBLE:
+      sliceSize_ = size_;
+      break;
+    case WindowType::HOP:
+      sliceSize_ = std::gcd(size_, step_);
+      break;
+    case WindowType::CUMULATIVE:
+      sliceSize_ = step_;
+      break;
+    default:
+      sliceSize_ = size_;
+      break;
+  }
 }
 
 std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
@@ -90,12 +106,21 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
     int64_t timestampMs = TimeWindowUtil::getCurrentProcessingTime();
     if (windowType_ == WindowType::TUMBLE) {
       int64_t utcTimestamp =
-          TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+          TimeWindowUtil::toUtcTimestampMills(timestampMs, shiftTimeZone_);
       int64_t windowStart = stateful::TimeWindowUtil::getWindowStartWithOffset(
           utcTimestamp, offset_, size_);
       return {{windowStart + size_, input}};
     } else {
-      return {{timestampMs, input}};
+      // Non-TUMBLE processing-time windows use the same boundary
+      // alignment as event time, with the window-type-specific slice
+      // size (gcd for HOP, step for CUMULATE); the whole batch shares
+      // the batch-arrival processing time (Flink assigns per element,
+      // which is equivalent for a batch that arrives at one instant).
+      int64_t utcTimestamp =
+          TimeWindowUtil::toUtcTimestampMills(timestampMs, shiftTimeZone_);
+      int64_t sliceStart = stateful::TimeWindowUtil::getWindowStartWithOffset(
+          utcTimestamp, offset_, sliceSize_);
+      return {{sliceStart + sliceSize_, input}};
     }
   } else {
     const VectorPtr& rowtimeVector = input->childAt(rowtimeIndex_);
@@ -106,7 +131,10 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
         tsSimple != nullptr || tsSimpleInt != nullptr,
         "rowtime column must be TIMESTAMP/Int64 simple vector");
 
+    velox::memory::MemoryPool* pool = input->pool();
+    std::map<int64_t, RowVectorPtr> sliceEndToData;
     const vector_size_t numRows = rowtimeVector->size();
+
     auto isNullAtRow = [&](vector_size_t row) {
       return tsSimple ? tsSimple->isNullAt(row) : tsSimpleInt->isNullAt(row);
     };
@@ -115,18 +143,15 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
                       : tsSimpleInt->valueAt(row);
     };
 
-    velox::memory::MemoryPool* pool = input->pool();
-    std::map<int64_t, RowVectorPtr> sliceEndToData;
-
     if (windowType_ == WindowType::TUMBLE) {
       std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
       for (vector_size_t i = 0; i < numRows; ++i) {
-        if (isNullAtRow(i)) {
-          continue;
-        }
+        // Flink throws on a null rowtime (SliceAssigners#assignSliceEnd);
+        // silently dropping rows would under-count windows.
+        VELOX_CHECK(!isNullAtRow(i), "RowTime field should not be null");
         int64_t timestampMs = timestampMillisAt(i);
         int64_t utcTimestamp =
-            TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
+            TimeWindowUtil::toUtcTimestampMills(timestampMs, shiftTimeZone_);
         int64_t windowStart =
             stateful::TimeWindowUtil::getWindowStartWithOffset(
                 utcTimestamp, offset_, size_);
@@ -145,14 +170,19 @@ std::map<int64_t, RowVectorPtr> SliceAssigner::assignSliceEnd(
       }
       return sliceEndToData;
     }
+    // Non-TUMBLE aligned windows (HOP / CUMULATE): use the same
+    // getWindowStartWithOffset boundary alignment as TUMBLE, but with
+    // the window-type-specific sliceSize (gcd for HOP, step for CUMULATE).
     std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
     for (vector_size_t i = 0; i < numRows; ++i) {
-      if (isNullAtRow(i)) {
-        continue;
-      }
+      VELOX_CHECK(!isNullAtRow(i), "RowTime field should not be null");
       int64_t timestampMs = timestampMillisAt(i);
-      int64_t key = TimeWindowUtil::toEpochMillsForTimer(timestampMs, 0);
-      groups[key].push_back(i);
+      int64_t utcTimestamp =
+          TimeWindowUtil::toUtcTimestampMills(timestampMs, shiftTimeZone_);
+      int64_t sliceStart = TimeWindowUtil::getWindowStartWithOffset(
+          utcTimestamp, offset_, sliceSize_);
+      const int64_t sliceEnd = sliceStart + sliceSize_;
+      groups[sliceEnd].push_back(i);
     }
     for (auto& [timeKey, rowIndices] : groups) {
       const vector_size_t n = rowIndices.size();
@@ -172,10 +202,23 @@ int64_t SliceAssigner::getLastWindowEnd(int64_t sliceEnd) {
   if (windowType_ == WindowType::HOP) { // Hopping window
     return sliceEnd - sliceSize_ + size_;
   }
+  if (windowType_ == WindowType::CUMULATIVE) {
+    // A step slice is owned by every cumulative window of its group
+    // from its own step to the group end (Flink
+    // SliceAssigners.java:340-343).
+    return getWindowStart(sliceEnd) + size_;
+  }
   return sliceEnd;
 }
 
 int64_t SliceAssigner::getWindowStart(int64_t windowEnd) {
+  if (windowType_ == WindowType::CUMULATIVE) {
+    // Epoch-aligned group start on the maxSize grid; windowEnd - size
+    // is only correct at the last step (H4; Flink
+    // SliceAssigners.java:345-347).
+    return TimeWindowUtil::getWindowStartWithOffset(
+        windowEnd - 1, offset_, size_);
+  }
   return windowEnd - size_;
 }
 

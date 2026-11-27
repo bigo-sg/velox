@@ -43,7 +43,6 @@
 #include "velox/experimental/stateful/EmptyOperator.h"
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
 #include "velox/experimental/stateful/KeySelector.h"
-#include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/SchemaWithRowKindNode.h"
 #include "velox/experimental/stateful/StatefulCalcOperator.h"
@@ -64,6 +63,7 @@
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
 #include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
 
@@ -329,47 +329,19 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
           planNode.node());
   VELOX_CHECK(windowAggNode, "Failed to cast to StreamWindowAggregationNode");
 
-  auto op = transformOperator(windowAggNode->aggregation());
+  // TUMBLE / HOP / CUMULATE in this PR: SESSION (and the two-stage
+  // local-global split) are planned follow-ups; the operator itself
+  // also rejects them at initialize.
+  const auto windowType = Window::getType(windowAggNode->windowType());
+  VELOX_USER_CHECK(
+      windowType == WindowType::TUMBLE || windowType == WindowType::HOP ||
+          windowType == WindowType::CUMULATIVE,
+      "StreamWindowAggregation supports TUMBLE / HOP / CUMULATE windows "
+      "in this PR; SESSION is a planned follow-up (windowType={})",
+      windowAggNode->windowType());
 
-  std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
-      windowAggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
-  std::unique_ptr<KeySelector> keySelectorForSliceAssigner =
-      std::make_unique<KeySelector>(
-          windowAggNode->sliceAssignerSpec()->create(INT_MAX, true),
-          op->pool());
-  std::unique_ptr<SliceAssigner> sliceAssigner =
-      std::make_unique<SliceAssigner>(
-          std::move(keySelectorForSliceAssigner),
-          windowAggNode->size(),
-          windowAggNode->step(),
-          windowAggNode->offset(),
-          Window::getType(windowAggNode->windowType()),
-          windowAggNode->rowtimeIndex());
-  if (windowAggNode->isLocalAgg()) {
-    return std::make_unique<LocalWindowAggregator>(
-        std::move(op),
-        std::move(targets),
-        std::move(keySelector),
-        std::move(sliceAssigner),
-        windowAggNode->windowInterval(),
-        windowAggNode->useDayLightSaving(),
-        windowAggNode->outputType());
-  } else {
-    auto localAggregator = windowAggNode->isEventTime()
-        ? transformOperator(windowAggNode->localAgg())
-        : nullptr;
-    return std::make_unique<WindowAggregator>(
-        windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
-        std::move(op),
-        std::move(targets),
-        std::move(keySelector),
-        std::move(sliceAssigner),
-        windowAggNode->windowInterval(),
-        windowAggNode->useDayLightSaving(),
-        windowAggNode->isEventTime(),
-        windowAggNode->windowStartIndex(),
-        windowAggNode->windowEndIndex());
-  }
+  return std::make_unique<WindowAggregator>(
+      std::move(targets), windowAggNode, ctx_);
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(

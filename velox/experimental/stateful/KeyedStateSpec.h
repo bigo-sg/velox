@@ -61,6 +61,7 @@ class KeyedStateSpec : public ISerializable {
 
   folly::dynamic serialize() const override {
     folly::dynamic obj = folly::dynamic::object;
+    obj["name"] = "KeyedStateSpec";
     obj["keyChannels"] = ISerializable::serialize(keyChannels_);
     obj["keyTypes"] = ISerializable::serialize(keyTypes_);
     return obj;
