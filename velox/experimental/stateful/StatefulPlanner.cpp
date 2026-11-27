@@ -299,24 +299,12 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowJoinOperator(
       transformOperator(joinNode->sources()[1]);
   std::unique_ptr<exec::Operator> probe = transformOperator(joinNode->probe());
 
-  std::unique_ptr<KeySelector> leftKeySelector = std::make_unique<KeySelector>(
-      joinNode->leftPartFuncSpec()->create(INT_MAX, false),
-      probe->pool(),
-      joinNode->numPartitions());
-  std::unique_ptr<KeySelector> rightKeySelector = std::make_unique<KeySelector>(
-      joinNode->rightPartFuncSpec()->create(INT_MAX, false),
-      probe->pool(),
-      joinNode->numPartitions());
-
   return std::make_unique<WindowJoin>(
       std::move(left),
       std::move(right),
-      std::move(leftKeySelector),
-      std::move(rightKeySelector),
       std::move(probe),
       std::move(targets),
-      joinNode->leftWindowEndIndex(),
-      joinNode->rightWindowEndIndex());
+      std::move(joinNode));
 }
 
 StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
