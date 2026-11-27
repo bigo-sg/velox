@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -61,16 +62,25 @@ namespace facebook::velox::stateful {
 /// through KeyIndex and hold only per-client probe scratch; restore probes
 /// through probeKey() on the table's private lookup, so it never disturbs
 /// any client's results.
+///
+/// An empty key type set declares global state, the way Flink keys windowAll
+/// and keyless aggregation to one constant key (NullByteKeySelector /
+/// EmptyRowDataKeySelector): every input row maps to the one key row the
+/// table creates at construction, with hash 0 and key group 0. There is no
+/// hash table in that mode - every probe is a direct hit, nothing is ever
+/// reclaimed - and the key serializer writes an empty key. The operator
+/// runs where key group 0 lives, which in practice means parallelism 1,
+/// decided by the planner as in Flink.
 class KeyTable : public KeyIndex,
                  public KeyRowLifecycleObserver<RowContainerStateKey> {
  public:
-  /// 'keyTypes' are the key column types as declared by the plan; the
-  /// container, the hash table, the hashers and the schema are built here,
-  /// at construction, so keys can be restored (through keySerializer())
-  /// before the first input arrives. 'maxParallelism' feeds
-  /// StateKey::keyGroup() = hash % maxParallelism and must be the same in
-  /// every place that derives key groups (shuffle, probe, snapshot,
-  /// restore).
+  /// 'keyTypes' are the key column types as declared by the plan, empty
+  /// for global state (see the class comment); the container, the hash
+  /// table, the hashers and the schema are built here, at construction, so
+  /// keys can be restored (through keySerializer()) before the first input
+  /// arrives. 'maxParallelism' feeds StateKey::keyGroup() = hash %
+  /// maxParallelism and must be the same in every place that derives key
+  /// groups (shuffle, probe, snapshot, restore).
   KeyTable(
       std::vector<TypePtr> keyTypes,
       uint32_t maxParallelism,
@@ -79,42 +89,53 @@ class KeyTable : public KeyIndex,
         maxParallelism_(maxParallelism),
         pool_(pool),
         keyRowType_(makeKeyRowType(keyTypes_)) {
-    VELOX_CHECK(!keyTypes_.empty(), "A key table requires a key column");
     VELOX_CHECK_GT(maxParallelism_, 0, "maxParallelism must be positive");
     // Unsupported key column types fail here, at construction, rather than
     // midway through a probe, a comparison or a serialization.
     checkStateKeyTypes(keyTypes_);
 
-    // The probe hashers are handed to the table and follow its internal
-    // hash mode evolution (kArray / kNormalizedKey / kHash). Both hasher
-    // sets read sequential channels: every probe call, runtime or restore,
-    // feeds the key-only view of the input.
-    std::vector<std::unique_ptr<exec::VectorHasher>> probeHashers;
-    probeHashers.reserve(keyTypes_.size());
-    for (auto i = 0; i < keyTypes_.size(); ++i) {
-      probeHashers.push_back(exec::VectorHasher::create(keyTypes_[i], i));
+    exec::RowContainer* rows;
+    if (keyTypes_.empty()) {
+      // Global state: the refcount column alone, and the one key row every
+      // probe maps to. It is never on the dirty list, so it outlives every
+      // entry and every boundary.
+      globalRows_ = std::make_unique<exec::RowContainer>(
+          std::vector<TypePtr>{BIGINT()}, pool_);
+      rows = globalRows_.get();
+      refcountOffset_ = rows->columnAt(0).offset();
+      globalRow_ = rows->newRow();
+      refCount(globalRow_) = 0;
+    } else {
+      // The probe hashers are handed to the table and follow its internal
+      // hash mode evolution (kArray / kNormalizedKey / kHash). Both hasher
+      // sets read sequential channels: every probe call, runtime or restore,
+      // feeds the key-only view of the input.
+      std::vector<std::unique_ptr<exec::VectorHasher>> probeHashers;
+      probeHashers.reserve(keyTypes_.size());
+      for (auto i = 0; i < keyTypes_.size(); ++i) {
+        probeHashers.push_back(exec::VectorHasher::create(keyTypes_[i], i));
+      }
+      // The rows are the key columns plus the trailing BIGINT entry-refcount
+      // column (see the class comment): a dependent column, hashed by none
+      // of the hashers. Built through the full constructor because the
+      // aggregation factory takes Accumulators, not plain payload types.
+      hashTable_ = std::make_unique<exec::HashTable<false>>(
+          std::move(probeHashers),
+          std::vector<exec::Accumulator>{}, // no accumulators
+          std::vector<TypePtr>{BIGINT()}, // the trailing refcount column
+          /*allowDuplicates=*/false,
+          /*isJoinBuild=*/false,
+          /*hasProbedFlag=*/false,
+          /*minTableSizeForParallelJoinBuild=*/0,
+          pool_);
+      rows = hashTable_->rows();
+      refcountOffset_ =
+          rows->columnAt(static_cast<int32_t>(keyTypes_.size())).offset();
+      for (auto i = 0; i < keyTypes_.size(); ++i) {
+        stableHashers_.push_back(exec::VectorHasher::create(keyTypes_[i], i));
+      }
     }
-    // The rows are the key columns plus the trailing BIGINT entry-refcount
-    // column (see the class comment): a dependent column, hashed by none of
-    // the hashers. Built through the full constructor because the
-    // aggregation factory takes Accumulators, not plain payload types.
-    hashTable_ = std::make_unique<exec::HashTable<false>>(
-        std::move(probeHashers),
-        std::vector<exec::Accumulator>{}, // no accumulators
-        std::vector<TypePtr>{BIGINT()}, // the trailing refcount column
-        /*allowDuplicates=*/false,
-        /*isJoinBuild=*/false,
-        /*hasProbedFlag=*/false,
-        /*minTableSizeForParallelJoinBuild=*/0,
-        pool_);
-    refcountOffset_ = hashTable_->rows()
-                          ->columnAt(static_cast<int32_t>(keyTypes_.size()))
-                          .offset();
-    for (auto i = 0; i < keyTypes_.size(); ++i) {
-      stableHashers_.push_back(exec::VectorHasher::create(keyTypes_[i], i));
-    }
-    schema_ =
-        std::make_unique<RowContainerKeySchema>(hashTable_->rows(), keyTypes_);
+    schema_ = std::make_unique<RowContainerKeySchema>(rows, keyTypes_);
     // The serializer probes restored keys back through this table and must
     // not outlive it; ownership here makes that a structural guarantee for
     // every copy handed out.
@@ -124,17 +145,38 @@ class KeyTable : public KeyIndex,
         });
     // The restore door's private lookup; references the table's hashers
     // (the GroupingSet wiring), so the table outlives it by declaration
-    // order.
-    probeKeyLookup_ =
-        std::make_unique<exec::HashLookup>(hashTable_->hashers(), pool_);
+    // order. In the global mode there are no hashers to reference.
+    probeKeyLookup_ = std::make_unique<exec::HashLookup>(
+        hashTable_ ? hashTable_->hashers() : noHashers_, pool_);
   }
 
   // KeyIndex:
   void probe(
+      vector_size_t numInput,
       std::vector<VectorPtr> keyColumns,
       exec::HashLookup& lookup,
       raw_vector<uint64_t>& stableHashes) override {
-    const auto numInput = keyColumns.front()->size();
+    if (keyTypes_.empty()) {
+      // Global state: every row is a direct hit on the one key row, with
+      // the constant hash and key group. The key counts as new on the
+      // first probe unless restore already gave it entries (the refcount
+      // tells), so an operator sees +I on first sight and -U/+U when it
+      // continues restored state - the same as the hashed mode, where a
+      // restored key is already in the table when first probed.
+      stableHashes.resize(numInput);
+      std::fill(stableHashes.begin(), stableHashes.end(), 0);
+      lookup.hits.resize(numInput);
+      std::fill(lookup.hits.begin(), lookup.hits.end(), globalRow_);
+      lookup.newGroups.clear();
+      if (!globalRowProbed_) {
+        globalRowProbed_ = true;
+        if (refCount(globalRow_) == 0) {
+          lookup.newGroups.resize(numInput);
+          std::iota(lookup.newGroups.begin(), lookup.newGroups.end(), 0);
+        }
+      }
+      return;
+    }
     const auto keyInput = std::make_shared<RowVector>(
         pool_,
         keyRowType_,
@@ -157,6 +199,12 @@ class KeyTable : public KeyIndex,
   }
 
   RowContainerStateKey probeKey(std::vector<VectorPtr> keyColumns) override {
+    if (keyTypes_.empty()) {
+      // The restore door in the global mode: the empty key lands on the one
+      // row, with the same constant hash as at probe time.
+      return RowContainerStateKey(
+          schema_.get(), globalRow_, 0, maxParallelism_);
+    }
     for (const auto& column : keyColumns) {
       VELOX_CHECK_EQ(1, column->size(), "probeKey probes exactly one key row");
     }
@@ -180,8 +228,38 @@ class KeyTable : public KeyIndex,
         schema_.get(), probeKeyLookup_->hits[0], hashes[0], maxParallelism_);
   }
 
-  exec::RowContainer* keyRows() override {
-    return hashTable_->rows();
+  void extractKeyColumn(
+      folly::Range<const RowContainerStateKey*> keys,
+      folly::Range<const vector_size_t*> rowNumbers,
+      column_index_t keyColumn,
+      vector_size_t resultOffset,
+      const VectorPtr& result) override {
+    // Global state has no key columns to read back.
+    if (keyTypes_.empty()) {
+      return;
+    }
+    // The container extracts over an array of row pointers; the key views
+    // hand out this table's own rows, so the array is the keys, in order.
+    std::vector<const char*> rows;
+    rows.reserve(keys.size());
+    for (const auto& key : keys) {
+      rows.push_back(key.row());
+    }
+    keyRows()->extractColumn(
+        rows.data(),
+        rowNumbers,
+        static_cast<int32_t>(keyColumn),
+        resultOffset,
+        result);
+  }
+
+  /// The key RowContainer holding one row per distinct key seen so far,
+  /// with the user key columns only (plus the trailing refcount column of
+  /// the class comment). Not part of KeyIndex: operators read key values
+  /// through extractKeyColumn(); the container is reachable for the heap
+  /// storage's own bookkeeping (tests read its row count).
+  exec::RowContainer* keyRows() {
+    return hashTable_ ? hashTable_->rows() : globalRows_.get();
   }
 
   const RowContainerKeySchema* keySchema() const override {
@@ -197,7 +275,8 @@ class KeyTable : public KeyIndex,
   }
 
   std::unique_ptr<exec::HashLookup> newLookup() override {
-    return std::make_unique<exec::HashLookup>(hashTable_->hashers(), pool_);
+    return std::make_unique<exec::HashLookup>(
+        hashTable_ ? hashTable_->hashers() : noHashers_, pool_);
   }
 
   /// The lifecycle surface the backend's state tables report entry
@@ -217,7 +296,9 @@ class KeyTable : public KeyIndex,
         count,
         0,
         "Key row refcount underflow: an entry was removed without a matching add");
-    if (--count == 0) {
+    // The global key row is never a candidate: every probe maps to it, so
+    // it lives as long as the table.
+    if (--count == 0 && !keyTypes_.empty()) {
       dirtyRows_.push_back(const_cast<char*>(key.row()));
     }
   }
@@ -312,9 +393,15 @@ class KeyTable : public KeyIndex,
   const RowTypePtr keyRowType_;
 
   // Built at construction. 'hashTable_' is destroyed before the lookups,
-  // which hold references into the table's hashers.
+  // which hold references into the table's hashers; it is null in the
+  // global mode, where 'globalRows_' holds the one key row instead and the
+  // lookups reference the empty 'noHashers_'.
   std::unique_ptr<exec::HashTable<false>> hashTable_;
   std::vector<std::unique_ptr<exec::VectorHasher>> stableHashers_;
+  std::vector<std::unique_ptr<exec::VectorHasher>> noHashers_;
+  std::unique_ptr<exec::RowContainer> globalRows_;
+  char* globalRow_{nullptr};
+  bool globalRowProbed_{false};
   std::unique_ptr<RowContainerKeySchema> schema_;
   std::shared_ptr<RowContainerStateKeySerializer> keySerializer_;
   std::unique_ptr<exec::HashLookup> probeKeyLookup_;

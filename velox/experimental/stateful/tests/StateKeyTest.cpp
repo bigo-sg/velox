@@ -274,7 +274,47 @@ TEST_F(StateKeyTest, crossSchemaKeysNeverEqual) {
 TEST(VoidNamespaceTest, singleton) {
   EXPECT_EQ(&VoidNamespace::instance(), &VoidNamespace::instance());
   EXPECT_EQ(VoidNamespace::instance().hash(), 0);
+  EXPECT_EQ(kVoidNamespaceKind, VoidNamespace::instance().kind());
   EXPECT_TRUE(VoidNamespace::instance().equals(VoidNamespace::instance()));
+}
+
+// A namespace of another kind, as a window namespace will be: equality
+// goes through kind(), so the void namespace tells it apart without knowing
+// its type, and namespaces of one kind compare their own payload.
+namespace {
+struct WindowNamespaceForTest : Namespace {
+  explicit WindowNamespaceForTest(int64_t window) : window(window) {}
+
+  bool equals(const Namespace& other) const override {
+    return other.kind() == kind() &&
+        static_cast<const WindowNamespaceForTest&>(other).window == window;
+  }
+
+  uint64_t hash() const override {
+    return static_cast<uint64_t>(window);
+  }
+
+  uint32_t kind() const override {
+    return kWindowNamespaceKindForTest;
+  }
+
+  std::shared_ptr<const Namespace> clone() const override {
+    return std::make_shared<WindowNamespaceForTest>(window);
+  }
+
+  static constexpr uint32_t kWindowNamespaceKindForTest = 2;
+  int64_t window;
+};
+} // namespace
+
+TEST(VoidNamespaceTest, equalityIsByKind) {
+  const VoidNamespace& voidNs = VoidNamespace::instance();
+  const WindowNamespaceForTest window7(7);
+  EXPECT_NE(voidNs.kind(), window7.kind());
+  EXPECT_FALSE(voidNs.equals(window7));
+  EXPECT_FALSE(window7.equals(voidNs));
+  EXPECT_TRUE(window7.equals(WindowNamespaceForTest(7)));
+  EXPECT_FALSE(window7.equals(WindowNamespaceForTest(8)));
 }
 
 class RowContainerStateKeySerializerTest : public StateKeyTest {};

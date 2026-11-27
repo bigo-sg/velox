@@ -15,12 +15,64 @@
  */
 #include "velox/experimental/stateful/StatefulOperator.h"
 #include <cstdint>
+#include <optional>
 #include "velox/exec/TableScan.h"
 #include "velox/experimental/stateful/StatefulTask.h"
 #include "velox/experimental/stateful/StreamElement.h"
+#include "velox/experimental/stateful/state/CheckpointStream.h"
+#include "velox/experimental/stateful/state/KeyedStateBackend.h"
 #include "velox/functions/flinksql/RecordClock.h"
 
 namespace facebook::velox::stateful {
+
+namespace {
+
+// The checkpoint-record envelope of the stateful-operator walk: the owning
+// operator's plan node id and the backend's checkpoint stream, both
+// length-prefixed as CheckpointWriter writes them. The restore walk routes
+// records by the id - restoreState receives every record of the task and
+// must leave foreign records alone.
+std::string frameCheckpointRecord(
+    const std::string& planNodeId,
+    const std::string& payload) {
+  std::string record;
+  CheckpointWriter writer(record);
+  writer.writeBytes(planNodeId);
+  writer.writeBytes(payload);
+  return record;
+}
+
+// Returns the payload of 'record' when it carries the envelope above for
+// 'planNodeId', nullopt otherwise. Deliberately total: records from other
+// legs of the walk are arbitrary strings and must be skipped, not
+// rejected, so nothing here throws.
+std::optional<std::string> checkpointRecordPayload(
+    const std::string& record,
+    const std::string& planNodeId) {
+  const size_t idLengthOffset = sizeof(uint32_t);
+  if (record.size() < idLengthOffset) {
+    return std::nullopt;
+  }
+  const auto idLen = littleEndianValue<uint32_t>(
+      std::string_view(record.data(), sizeof(uint32_t)));
+  if (idLen != planNodeId.size() ||
+      record.size() < idLengthOffset + idLen + sizeof(uint32_t)) {
+    return std::nullopt;
+  }
+  const size_t payloadLengthOffset = idLengthOffset + idLen;
+  if (std::string_view(record.data() + idLengthOffset, idLen) != planNodeId) {
+    return std::nullopt;
+  }
+  const auto payloadLen = littleEndianValue<uint32_t>(
+      std::string_view(record.data() + payloadLengthOffset, sizeof(uint32_t)));
+  const size_t payloadOffset = payloadLengthOffset + sizeof(uint32_t);
+  if (payloadLen != record.size() - payloadOffset) {
+    return std::nullopt;
+  }
+  return record.substr(payloadOffset, payloadLen);
+}
+
+} // namespace
 
 std::shared_ptr<JniCaller> StatefulOperator::jniCaller_;
 
@@ -249,8 +301,8 @@ std::vector<std::string> StatefulOperator::snapshotState(int64_t checkpointId) {
   std::vector<std::string> snapshots = operator_->snapshotState(checkpointId);
   // The legacy handler's leg runs only when the handler exists (it is not
   // constructed since the operators own their typed backends); the walk
-  // itself - the wrapped operator's records above, the targets' below -
-  // must not depend on it.
+  // itself - the wrapped operator's records above, the owned backend's
+  // below, the targets' - must not depend on it.
   if (stateHandler_) {
     stateHandler_->snapshotState(checkpointId);
     auto snapshotable = dynamic_cast<Snapshotable*>(op().get());
@@ -259,6 +311,14 @@ std::vector<std::string> StatefulOperator::snapshotState(int64_t checkpointId) {
       snapshotable->snapshot(
           checkpointId, 0, CheckpointOptions::defaultOptions());
     }
+  }
+  if (auto* keyedBackend = ownedKeyedStateBackend()) {
+    // The operator-owned keyed backend contributes its checkpoint bytes,
+    // framed with this node's id so the restore walk can route the record
+    // back to its owner (a scale-down restore feeds one covering stream
+    // per backend, in sequence).
+    snapshots.push_back(
+        frameCheckpointRecord(getPlanNodeId(), keyedBackend->snapshotBytes()));
   }
   for (auto& target : targets_) {
     auto targetSnapshots = target->snapshotState(checkpointId);
@@ -271,6 +331,17 @@ std::vector<std::string> StatefulOperator::snapshotState(int64_t checkpointId) {
 void StatefulOperator::restoreState(
     const std::vector<std::string>& checkpointRecords) {
   operator_->restoreState(checkpointRecords);
+  if (auto* keyedBackend = ownedKeyedStateBackend()) {
+    // Route this operator's framed backend record(s) out of the broadcast:
+    // foreign records (other operators', other legs') carry other ids and
+    // are skipped; matching records restore in order, one covering stream
+    // per record.
+    for (const auto& record : checkpointRecords) {
+      if (auto payload = checkpointRecordPayload(record, getPlanNodeId())) {
+        keyedBackend->restoreBytes(*payload);
+      }
+    }
+  }
   for (auto& target : targets_) {
     target->restoreState(checkpointRecords);
   }
