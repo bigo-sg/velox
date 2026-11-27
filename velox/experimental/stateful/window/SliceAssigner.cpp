@@ -202,10 +202,23 @@ int64_t SliceAssigner::getLastWindowEnd(int64_t sliceEnd) {
   if (windowType_ == WindowType::HOP) { // Hopping window
     return sliceEnd - sliceSize_ + size_;
   }
+  if (windowType_ == WindowType::CUMULATIVE) {
+    // A step slice is owned by every cumulative window of its group
+    // from its own step to the group end (Flink
+    // SliceAssigners.java:340-343).
+    return getWindowStart(sliceEnd) + size_;
+  }
   return sliceEnd;
 }
 
 int64_t SliceAssigner::getWindowStart(int64_t windowEnd) {
+  if (windowType_ == WindowType::CUMULATIVE) {
+    // Epoch-aligned group start on the maxSize grid; windowEnd - size
+    // is only correct at the last step (H4; Flink
+    // SliceAssigners.java:345-347).
+    return TimeWindowUtil::getWindowStartWithOffset(
+        windowEnd - 1, offset_, size_);
+  }
   return windowEnd - size_;
 }
 

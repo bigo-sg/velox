@@ -60,14 +60,14 @@ WindowAggregator::WindowAggregator(
 
 void WindowAggregator::initialize() {
   const WindowType wt = static_cast<WindowType>(node_->windowType());
-  // SESSION / CUMULATE and the two-stage local-global split are planned
-  // follow-up PRs; running them through the aligned-window logic would
-  // silently produce wrong results, so fail loud here as well as at
-  // plan translation.
-  if (wt != WindowType::TUMBLE && wt != WindowType::HOP) {
+  // SESSION is a separate follow-up PR (the merging window set); the
+  // two-stage local-global split is another. The CUMULATE step chain
+  // runs on the aligned slicing machinery with its own fire path.
+  if (wt != WindowType::TUMBLE && wt != WindowType::HOP &&
+      wt != WindowType::CUMULATIVE) {
     VELOX_UNSUPPORTED(
-        "WindowAggregator supports TUMBLE / HOP windows in this PR; "
-        "SESSION / CUMULATE and the two-stage split are planned "
+        "WindowAggregator supports TUMBLE / HOP / CUMULATE windows in "
+        "this PR; SESSION and the two-stage split are planned "
         "follow-ups");
   }
   VELOX_CHECK_NOT_NULL(
@@ -75,16 +75,16 @@ void WindowAggregator::initialize() {
       "StreamWindowAggregationNode must carry a KeyedStateSpec");
   VELOX_CHECK_GT(
       node_->size(), 0, "window size must be positive, got {}", node_->size());
-  if (wt == WindowType::HOP) {
+  if (wt == WindowType::HOP || wt == WindowType::CUMULATIVE) {
+    const char* kind =
+        wt == WindowType::HOP ? "HOP window slide" : "CUMULATE window step";
     VELOX_CHECK_GT(
-        node_->step(),
-        0,
-        "HOP window slide must be positive, got {}",
-        node_->step());
+        node_->step(), 0, "{} must be positive, got {}", kind, node_->step());
     VELOX_CHECK_EQ(
         node_->size() % node_->step(),
         0,
-        "HOP window size must be a multiple of slide (size={}, slide={})",
+        "{} size must be a multiple of step (size={}, step={})",
+        wt == WindowType::HOP ? "HOP" : "CUMULATE",
         node_->size(),
         node_->step());
   }
@@ -540,8 +540,13 @@ void WindowAggregator::fireWindow(
     const RowContainerStateKey& key,
     int64_t windowStart,
     int64_t windowEnd) {
-  if (static_cast<WindowType>(node_->windowType()) == WindowType::HOP) {
+  const auto windowType = static_cast<WindowType>(node_->windowType());
+  if (windowType == WindowType::HOP) {
     fireHopWindow(key, windowEnd);
+    return;
+  }
+  if (windowType == WindowType::CUMULATIVE) {
+    fireCumulateWindow(key, windowEnd);
     return;
   }
   // TUMBLE: the slice is the window. Read-only peek: a miss means the
@@ -647,6 +652,85 @@ void WindowAggregator::fireHopWindow(
   if (nextHasState) {
     registerFire(key, windowStart(nextWindowEnd), nextWindowEnd);
   }
+}
+
+void WindowAggregator::fireCumulateWindow(
+    const RowContainerStateKey& key,
+    int64_t windowEnd) {
+  // Each step fires the cumulative window [groupStart, windowEnd): the
+  // step slice folds into the group's first slice (write-back merge)
+  // and the result emits from there (Flink CumulativeSliceAssigner:
+  // mergeSlices :374-386, expiredSlices :350-366, nextTriggerWindow
+  // :387-397).
+  const int64_t sliceSize = sliceAssigner_->getSliceEndInterval();
+  const int64_t groupStart = sliceAssigner_->getWindowStart(windowEnd);
+  const int64_t firstSliceEnd = groupStart + sliceSize;
+  const int64_t lastSliceEnd = groupStart + node_->size();
+
+  // The group accumulator lives in the first slice. A first-step miss
+  // means the group never materialized (a fire at the first step is
+  // only ever registered by a row of that slice) - fire nothing.
+  char* firstRow = state_->get(key, SliceEndNs(firstSliceEnd));
+  if (firstRow == nullptr && windowEnd == firstSliceEnd) {
+    return;
+  }
+
+  // MergeSlices: a non-first step folds its slice into the first slice
+  // and writes back; the first-slice accumulator materializes here when
+  // the group's data starts in a later step (the fire at that step is
+  // the group's first registration - empty leading steps never fire,
+  // matching Flink where only slices with rows carry timers).
+  if (windowEnd != firstSliceEnd) {
+    if (char* sourceRow = state_->get(key, SliceEndNs(windowEnd))) {
+      if (firstRow == nullptr) {
+        firstRow = state_->row(key, SliceEndNs(firstSliceEnd));
+      }
+      mergeAccumulatorRows(firstRow, sourceRow);
+    }
+  }
+  if (firstRow == nullptr) {
+    return;
+  }
+  if (!countStarIsZero(firstRow, countStarOffset_)) {
+    emitWindowResult(key, groupStart, windowEnd, firstRow);
+  }
+
+  // ExpiredSlices three-branch cleanup: the first step keeps the shared
+  // accumulator; a middle step clears its own slice; the last step
+  // clears both the step slice and the shared first slice (Flink
+  // SliceAssigners.java:350-366).
+  if (windowEnd == lastSliceEnd) {
+    state_->remove(key, SliceEndNs(windowEnd));
+    if (windowEnd != firstSliceEnd) {
+      state_->remove(key, SliceEndNs(firstSliceEnd));
+    }
+  } else if (windowEnd != firstSliceEnd) {
+    state_->remove(key, SliceEndNs(windowEnd));
+  }
+
+  // Chain to the next step unconditionally - empty steps do not stop
+  // the chain (Flink nextTriggerWindow ignores isWindowEmpty for
+  // CUMULATE, :387-396, unlike HOP :279-285). The first-slice state
+  // keeps the key row alive until the last-step cleanup, preserving the
+  // R1 fire-entry liveness invariant; at the last step the chain stops
+  // exactly when the shared state goes away, so no dangling entry
+  // remains.
+  const int64_t nextWindowEnd = windowEnd + sliceSize;
+  if (nextWindowEnd <= lastSliceEnd) {
+    registerFire(key, groupStart, nextWindowEnd);
+  }
+}
+
+void WindowAggregator::mergeAccumulatorRows(char* targetRow, char* sourceRow) {
+  // One-row intermediate extraction per aggregate, merged into the
+  // target accumulator — the same path restore uses (mergeRow).
+  std::vector<VectorPtr> columns(aggregates_.size());
+  for (size_t i = 0; i < aggregates_.size(); ++i) {
+    columns[i] =
+        BaseVector::create(aggregates_[i].intermediateType, 1, memoryPool());
+    aggregates_[i].function->extractAccumulators(&sourceRow, 1, &columns[i]);
+  }
+  mergeRow(targetRow, columns);
 }
 
 void WindowAggregator::emitWindowResult(

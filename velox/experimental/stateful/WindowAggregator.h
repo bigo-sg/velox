@@ -194,6 +194,22 @@ class WindowAggregator : public StatefulOperator,
   /// nextTriggerWindow).
   void fireHopWindow(const RowContainerStateKey& key, int64_t windowEnd);
 
+  /// Fires one CUMULATE step window [groupStart, windowEnd): the step
+  /// slice folds into the group's first slice (write-back merge) and
+  /// emits from there; the first step keeps the shared accumulator,
+  /// a middle step clears its own slice, and the last step clears both
+  /// (Flink CumulativeSliceAssigner#mergeSlices/expiredSlices/
+  /// nextTriggerWindow).
+  void fireCumulateWindow(const RowContainerStateKey& key, int64_t windowEnd);
+
+  /// Merges one source accumulator row into a target accumulator row via
+  /// the intermediate (extractAccumulators -> addSingleGroupIntermediate
+  /// Results) path; the source row is left untouched. Reuses
+  /// mergeScratchColumns_ across calls (see the .cpp for the reuse
+  /// safety argument). Used by the CUMULATE write-back merge; the HOP
+  /// fire path uses the batched mergeAccumulatorRowsBatch instead.
+  void mergeAccumulatorRows(char* targetRow, char* sourceRow);
+
   /// Emits the result row: [key columns, window_start, window_end, agg
   /// values] extracted from 'row'.
   void emitWindowResult(
@@ -343,6 +359,11 @@ class WindowAggregator : public StatefulOperator,
   /// covered-slice count, and the source row pointer gather.
   std::vector<VectorPtr> hopMergeScratchColumns_;
   std::vector<const char*> hopMergeScratchRows_;
+
+  /// Lazily-built single-row intermediate columns backing
+  /// mergeAccumulatorRows (the CUMULATE write-back merge); one column
+  /// per aggregate.
+  std::vector<VectorPtr> mergeScratchColumns_;
 
   /// Reused single-argument vector for the per-aggregate merge call
   /// (see mergeRow; the restore path consumes the input
