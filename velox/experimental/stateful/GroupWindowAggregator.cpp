@@ -97,8 +97,7 @@ void GroupWindowAggregator::initialize() {
   }
   trigger_ = std::make_shared<AfterEndOfWindow>();
   windowTimerService_ =
-      std::make_shared<EventTimeTimerService<RowContainerStateKey, TimeWindow>>(
-          this);
+      std::make_shared<InternalTimerService<TimerKey, TimeWindow>>(this);
   triggerContext_ = std::make_shared<WindowTriggerContext>(this);
   windowContext_ = std::make_shared<WindowContext>(this);
   triggerContext_->open();
@@ -329,11 +328,10 @@ void GroupWindowAggregator::processWatermark(int64_t timestamp) {
 }
 
 void GroupWindowAggregator::onEventTime(
-    std::shared_ptr<TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>>
-        timer) {
+    std::shared_ptr<TimerHeapInternalTimer<TimerKey, TimeWindow>> timer) {
   // The key view copies, it never assigns (see addInput): optional::emplace
-  // constructs in place.
-  currentKey_.emplace(timer->key());
+  // constructs in place. TimerKey dereferences to the shared row view.
+  currentKey_.emplace(*timer->key());
   const TimeWindow window = timer->ns();
   const int64_t time = timer->timestamp();
   // The callback runs under the timer service's queue lock; the cleanup
@@ -345,7 +343,7 @@ void GroupWindowAggregator::onEventTime(
   firedTimer_ = std::move(timer);
   if (triggerContext_->onEventTime(window, time)) {
     // Fire the window and emit its result (empty windows suppressed).
-    emitWindowResult(firedTimer_->key(), window);
+    emitWindowResult(*firedTimer_->key(), window);
   }
   if (windowAssigner_->isEventTime()) {
     // Clean exactly at the cleanup time (the fire and cleanup timers are
@@ -641,7 +639,7 @@ void GroupWindowAggregator::WindowTriggerContext::registerEventTimeTimer(
   VELOX_CHECK(
       !owner_->inTimerCallback_,
       "registering a timer inside onEventTime would deadlock the timer queue");
-  owner_->windowTimerService_->registerTimer(key, window, time);
+  owner_->windowTimerService_->registerEventTimeTimer(TimerKey(key), window, time);
 }
 
 void GroupWindowAggregator::WindowTriggerContext::deleteProcessingTimeTimer(
@@ -668,7 +666,7 @@ void GroupWindowAggregator::WindowTriggerContext::deleteEventTimeTimer(
         "the fired timer is not tracked inside onEventTime");
     const auto& fired = *owner_->firedTimer_;
     VELOX_CHECK(
-        fired.key().equals(key) && fired.ns() == window &&
+        fired.key().key->equals(key) && fired.ns() == window &&
             fired.timestamp() == time,
         "deleting a timer other than the fired one inside onEventTime would "
         "deadlock the timer queue: ({}, {})",
@@ -676,7 +674,7 @@ void GroupWindowAggregator::WindowTriggerContext::deleteEventTimeTimer(
         time);
     return;
   }
-  owner_->windowTimerService_->deleteTimer(key, window, time);
+  owner_->windowTimerService_->deleteEventTimeTimer(TimerKey(key), window, time);
 }
 
 int GroupWindowAggregator::WindowTriggerContext::getShiftTimeZone() {

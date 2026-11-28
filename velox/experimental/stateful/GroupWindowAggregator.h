@@ -18,7 +18,7 @@
 #include <optional>
 #include <vector>
 
-#include "velox/experimental/stateful/EventTimeTimerService.h"
+#include "velox/experimental/stateful/InternalTimerService.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
@@ -37,29 +37,41 @@
 namespace facebook::velox::stateful {
 
 /// Timer-heap adaptation for the typed state key. RowContainerStateKey is an
-/// immutable view with const members: it has no operator== (the generic
-/// HeapTimerEquals would need one) and no implicit conversion into the
-/// uint64_t the generic HeapTimerHasher mixes in. Both route through the
-/// key's value identity instead - the cached hash and the StateKey::equals
-/// virtual - the same adaptation MergingWindowSet applies for its in-flight
-/// window cache (RowContainerStateKeyHash / RowContainerStateKeyEqual).
+/// immutable view with const members: it deletes copy assignment, which the
+/// upstream TimerHeapInternalTimer's percolating heap needs, and it has no
+/// operator== (the generic HeapTimerEquals would need one). The operator-side
+/// adapter below carries the key behind a shared_ptr (copy-assignable, value
+/// semantics preserved) and routes hashing / equality through the key's
+/// cached hash and StateKey::equals virtual - the same adaptation
+/// MergingWindowSet applies for its in-flight window cache.
 /// Declared before the service instantiation below (specializations must
 /// precede the first implicit instantiation).
-template <>
-struct HeapTimerHasher<RowContainerStateKey, TimeWindow> {
-  size_t operator()(
-      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& a) const {
-    return bits::hashMix(a.timestamp(), a.key().hash());
+struct TimerKey {
+  std::shared_ptr<const RowContainerStateKey> key;
+
+  TimerKey() = default;
+  explicit TimerKey(const RowContainerStateKey& k)
+      : key(std::make_shared<RowContainerStateKey>(k)) {}
+
+  const RowContainerStateKey& operator*() const {
+    return *key;
   }
 };
 
 template <>
-struct HeapTimerEquals<RowContainerStateKey, TimeWindow> {
+struct HeapTimerHasher<TimerKey, TimeWindow> {
+  size_t operator()(const TimerHeapInternalTimer<TimerKey, TimeWindow>& a) const {
+    return bits::hashMix(a.timestamp(), a.key().key->hash());
+  }
+};
+
+template <>
+struct HeapTimerEquals<TimerKey, TimeWindow> {
   bool operator()(
-      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& a,
-      const TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>& b) const {
-    return a.timestamp() == b.timestamp() && a.key().equals(b.key()) &&
-        a.ns() == b.ns();
+      const TimerHeapInternalTimer<TimerKey, TimeWindow>& a,
+      const TimerHeapInternalTimer<TimerKey, TimeWindow>& b) const {
+    return a.timestamp() == b.timestamp() &&
+        a.key().key->equals(*b.key().key) && a.ns() == b.ns();
   }
 };
 
@@ -78,7 +90,7 @@ struct HeapTimerEquals<RowContainerStateKey, TimeWindow> {
 /// watermark (the retained VELOX_CHECK guard, decision #15).
 class GroupWindowAggregator
     : public StatefulOperator,
-      public Triggerable<RowContainerStateKey, TimeWindow> {
+      public Triggerable<TimerKey, TimeWindow> {
  public:
   GroupWindowAggregator(
       std::unique_ptr<GroupWindowAggsHandler> windowAggsHandler,
@@ -97,7 +109,7 @@ class GroupWindowAggregator
   void processWatermark(int64_t timestamp) override;
 
   void onEventTime(
-      std::shared_ptr<TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>>
+      std::shared_ptr<TimerHeapInternalTimer<TimerKey, TimeWindow>>
           timer) override;
 
   void close() override;
@@ -118,7 +130,7 @@ class GroupWindowAggregator
   /// Test / observability hook: whether the in-memory timer queue is empty
   /// (the queue lives outside the typed snapshot plane - C3).
   bool timersEmpty() const {
-    return windowTimerService_ == nullptr || windowTimerService_->empty();
+    return windowTimerService_ == nullptr || windowTimerService_->eventTimeTimerService().empty();
   }
 
   /// Test / observability hook: the number of pending timers. The restore
@@ -126,7 +138,7 @@ class GroupWindowAggregator
   /// a snapshot -> restore round trip: one deduped entry per live (key,
   /// actual window) before the snapshot, the same after the rebuild.
   size_t timersSize() const {
-    return windowTimerService_ == nullptr ? 0 : windowTimerService_->size();
+    return windowTimerService_ == nullptr ? 0 : windowTimerService_->eventTimeTimerService().size();
   }
 
   /// Test / observability hook: the late-element counter (equivalent of
@@ -267,7 +279,7 @@ class GroupWindowAggregator
   std::shared_ptr<WindowTrigger> trigger_;
   std::shared_ptr<WindowTriggerContext> triggerContext_;
   std::shared_ptr<WindowContext> windowContext_;
-  std::shared_ptr<EventTimeTimerService<RowContainerStateKey, TimeWindow>>
+  std::shared_ptr<InternalTimerService<TimerKey, TimeWindow>>
       windowTimerService_;
 
   // Typed keyed state, five steps of initializeStateBackend.
@@ -294,7 +306,7 @@ class GroupWindowAggregator
   bool inTimerCallback_ = false;
   // The registration whose onEventTime callback is running (see
   // inTimerCallback_); null outside the callback.
-  std::shared_ptr<TimerHeapInternalTimer<RowContainerStateKey, TimeWindow>>
+  std::shared_ptr<TimerHeapInternalTimer<TimerKey, TimeWindow>>
       firedTimer_;
   // The key whose row / windows the process function operates on (engaged
   // before the first assignStateNamespace / onEventTime of every row and

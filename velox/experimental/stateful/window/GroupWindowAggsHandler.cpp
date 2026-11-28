@@ -164,13 +164,14 @@ void GroupWindowAggsHandler::initializeWindowAggregates(
 
   // Cross-check the declared output column types against the resolved
   // functions' result types: the emission path extracts the functions'
-  // values straight into the output columns.
+  // values straight into the output columns. Full type equality, not just
+  // the kind — a DECIMAL(p, s) or TIMESTAMP precision mismatch would pass a
+  // kind-only check and put a wrongly-typed vector under the column.
   for (size_t i = 0; i < aggregates_.size(); ++i) {
     const auto& declared = outputType_->childAt(numKeys + i);
     const auto& resolved = aggregates_[i].function->resultType();
-    VELOX_CHECK_EQ(
-        declared->kind(),
-        resolved->kind(),
+    VELOX_CHECK(
+        *declared == *resolved,
         "group-window-agg output column {} declares {} but the aggregate function '{}' produces {}",
         numKeys + i,
         declared->toString(),

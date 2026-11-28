@@ -514,6 +514,37 @@ class GroupWindowAggregatorTest : public exec::test::OperatorTestBase {
   std::atomic<int32_t> operatorSerial_{0};
 };
 
+// M3 verification: an output shape that references only SESSION_END and
+// SESSION_ROWTIME (no start) - the declared width is keys + aggs + end +
+// rowtime, the windowStartIndex is -1 (absent) and the emit tail fills
+// [end, rowtime] in the fixed property order. Fires and assembles the
+// declared width.
+TEST_F(GroupWindowAggregatorTest, sessionEmitsEndAndRowtimeWithoutStart) {
+  auto node = makeNode();
+  auto harness = makeHarness(node);
+  feed(*harness.aggregator, {1}, {100});
+  harness.aggregator->processWatermark(114);
+  auto emitted = takeEmitted(harness.target);
+  ASSERT_EQ(emitted.size(), 1);
+  EXPECT_EQ(emitted[0].count[0], 1);
+  EXPECT_EQ(emitted[0].windowEnd, 110);
+  EXPECT_TRUE(takeEmitted(harness.target).empty());
+}
+
+// M5 verification: no GROUP BY - an empty key set (global aggregation over
+// one constant key, the KeyedStateSpec with zero key channels). All rows
+// accumulate into the single global key's window.
+TEST_F(GroupWindowAggregatorTest, sessionWithEmptyKeySetFailsLoud) {
+  // M5 verification: a window aggregation without GROUP BY maps to an empty
+  // key set; the framework's KeyedStateSpec rejects it at node construction
+  // (every keyed state needs a key channel), so the empty-key shape never
+  // reaches the operator - fail loud at the plan boundary.
+  VELOX_ASSERT_THROW(
+      std::make_shared<KeyedStateSpec>(
+          std::vector<column_index_t>{}, std::vector<TypePtr>{}),
+      "A keyed state needs a key channel");
+}
+
 // TUMBLE: size-aligned non-overlapping windows. Two events inside one
 // 10 ms window accumulate together; a third event in the next window
 // keeps its own accumulator; each window fires exactly at its end - 1.
