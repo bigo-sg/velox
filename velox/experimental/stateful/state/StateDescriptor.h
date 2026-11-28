@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "velox/common/base/Exceptions.h"
 #include "velox/common/memory/MemoryPool.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/TypeSerializer.h"
@@ -63,13 +64,17 @@ class StateDescriptor {
 // operator's own aggregates). Mirrors Flink AggregatingStateDescriptor
 // holding createAccumulator. The state layer has zero dependency on
 // AggregateInfo: it drives construction and checkpoint round-trips entirely
-// through the accumulator array and the two callbacks.
+// through the accumulator array and the two callbacks, and takes the
+// aggregate functions themselves ('aggregates') for one purpose only - wiring
+// each function to the accumulator layout of the state's value storage, so
+// the functions are ready for the first rows() call and the operator never
+// touches that storage.
 class AggregatingStateDescriptor : public StateDescriptor {
  public:
   // Initializes freshly materialized value rows; invoked by the state once
   // per batch of misses (a single miss arrives as a one-row array). The
   // batch shape matches Aggregate::initializeNewGroups. Operator-supplied so
-  // that the state never calls any Aggregate method itself.
+  // that the state never orchestrates accumulation itself.
   using InitRowsCallback = std::function<void(char** rows, size_t numRows)>;
 
   // Merges row 0 of 'columns' (one one-row intermediate column per
@@ -82,16 +87,31 @@ class AggregatingStateDescriptor : public StateDescriptor {
   using MergeRowCallback =
       std::function<void(char* row, const std::vector<VectorPtr>& columns)>;
 
+  /// 'aggregates' are the aggregate functions behind 'accumulators', one per
+  /// accumulator in the same order: the state wires each function (allocator
+  /// and row offsets) to its accumulator column when it builds the value
+  /// storage.
   AggregatingStateDescriptor(
       const std::string& name,
+      std::vector<exec::Aggregate*> aggregates,
       std::vector<exec::Accumulator> accumulators,
       InitRowsCallback initializeRows,
       MergeRowCallback mergeRow,
       memory::MemoryPool* pool = nullptr)
       : StateDescriptor(name, "", pool),
+        aggregates_(std::move(aggregates)),
         accumulators_(std::move(accumulators)),
         initializeRows_(std::move(initializeRows)),
-        mergeRow_(std::move(mergeRow)) {}
+        mergeRow_(std::move(mergeRow)) {
+    VELOX_CHECK_EQ(
+        aggregates_.size(),
+        accumulators_.size(),
+        "AggregatingStateDescriptor needs one aggregate function per accumulator");
+  }
+
+  const std::vector<exec::Aggregate*>& aggregates() const {
+    return aggregates_;
+  }
 
   const std::vector<exec::Accumulator>& accumulators() const {
     return accumulators_;
@@ -122,8 +142,10 @@ class AggregatingStateDescriptor : public StateDescriptor {
   // Non-owning: each entry's closures capture the operator's raw Aggregate
   // pointers. The Aggregate objects must outlive every state handle created
   // from this descriptor (the value container destroys accumulators through
-  // these closures) and must have setAllocator/setOffsets wired to the
-  // state's valueRows() container before the first rows() call.
+  // these closures). One function per accumulator, in the same order; a
+  // function belongs to one state at a time, since the state wires it to
+  // that state's value storage.
+  const std::vector<exec::Aggregate*> aggregates_;
   const std::vector<exec::Accumulator> accumulators_;
   const InitRowsCallback initializeRows_;
   const MergeRowCallback mergeRow_;

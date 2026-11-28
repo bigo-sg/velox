@@ -76,7 +76,14 @@ TEST_F(KeySelectorTest, collisionPairLandsOnDifferentRows) {
   EXPECT_FALSE(groupRows[1].isValid(0));
   EXPECT_TRUE(groupRows[1].isValid(1));
 
-  EXPECT_NE(nullptr, selector.keyRowContainer());
+  // Key values read back through the selector in the shape of
+  // RowContainer::extractColumn, with no reach into the key container: the
+  // distinct keys land in the result at the given positions.
+  auto values = makeFlatVector<int64_t>({0, 0});
+  const std::vector<vector_size_t> positions{0, 1};
+  selector.extractKeyColumn(distinct, positions, 0, 0, values);
+  EXPECT_EQ(kCollisionKeyA, values->asFlatVector<int64_t>()->valueAt(0));
+  EXPECT_EQ(kCollisionKeyB, values->asFlatVector<int64_t>()->valueAt(1));
 }
 
 // Usage 1 (per-row): keys are 1:1 with input rows, equal keys share the row
@@ -402,6 +409,50 @@ TEST_F(KeySelectorTest, keySerializerIsOwnedByTheTable) {
     EXPECT_EQ(key.keyGroup(), restored.keyGroup());
     EXPECT_TRUE(key.equals(restored));
   }
+}
+
+// Global state: a table with an empty key set maps every input row to its
+// one key row - hash 0, key group 0, new on the first probe only - the way
+// Flink keys keyless aggregation to one constant key. The empty key
+// round-trips through the serializer onto that same row.
+TEST_F(KeySelectorTest, globalKeyMapsEveryRowToOneKey) {
+  KeyTable keyTable({}, 128, pool());
+  KeySelector selector(keyTable, {});
+  selector.probe(makeInput({7, std::nullopt, 7}));
+
+  auto keys = selector.keys();
+  ASSERT_EQ(3, keys.size());
+  EXPECT_EQ(keys[0].row(), keys[1].row());
+  EXPECT_EQ(keys[0].row(), keys[2].row());
+  EXPECT_TRUE(keys[0].equals(keys[1]));
+  EXPECT_EQ(0, keys[0].hash());
+  EXPECT_EQ(0, keys[0].keyGroup());
+  // The key counts as new on the first probe, like a hashed key on its
+  // first appearance, so an operator emits +I on first sight.
+  ASSERT_EQ(3, selector.newGroups().size());
+  EXPECT_EQ(0, selector.newGroups()[0]);
+  EXPECT_EQ(2, selector.newGroups()[2]);
+
+  auto distinct = selector.distinctKeys();
+  ASSERT_EQ(1, distinct.size());
+  EXPECT_EQ(3, selector.groupRows()[0].countSelected());
+  EXPECT_EQ(1, keyTable.keyRows()->numRows());
+
+  // A second probe changes nothing: the same row, still nothing new.
+  selector.probe(makeInput({9}));
+  keys = selector.keys();
+  ASSERT_EQ(1, keys.size());
+  EXPECT_EQ(distinct[0].row(), keys[0].row());
+  EXPECT_TRUE(selector.newGroups().empty());
+  EXPECT_EQ(1, keyTable.keyRows()->numRows());
+
+  // The empty key serializes to nothing and lands on the same row.
+  auto serializer = keyTable.keySerializer();
+  const auto bytes = serializer->serialize(keys[0]);
+  EXPECT_TRUE(bytes.empty());
+  const auto restored = serializer->deserialize(bytes);
+  EXPECT_EQ(keys[0].row(), restored.row());
+  EXPECT_EQ(0, restored.keyGroup());
 }
 
 } // namespace

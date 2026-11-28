@@ -19,9 +19,13 @@
 #include <memory>
 #include <vector>
 
+#include <folly/Range.h>
+
 #include "velox/common/memory/RawVector.h"
 #include "velox/experimental/stateful/state/StateKey.h"
+#include "velox/type/Type.h"
 #include "velox/vector/BaseVector.h"
+#include "velox/vector/SelectivityVector.h"
 
 namespace facebook::velox::exec {
 struct HashLookup;
@@ -37,17 +41,25 @@ class RowContainerStateKeySerializer;
 /// maxParallelism live on the table. The heap backend implements it over
 /// the two-layer structure (key table + per-state StateMaps); a future
 /// single-table form would implement the same surface over its key-prefix
-/// projection.
+/// projection. Keeping the keys in a table of their own is what the states
+/// count on: every state of the backend, and restore, addresses entries
+/// through this table's key views, so a state cannot fold its values into
+/// the key rows (the [key | accumulators] shape of HashAggregation); the
+/// key data reaches operators through extractKeyColumn() instead of the
+/// container itself.
 class KeyIndex {
  public:
   virtual ~KeyIndex() = default;
 
   /// Probes one batch of key columns (one VectorPtr per key column, all of
-  /// equal size) through the table into the caller-owned lookup, writing
-  /// the stable-hash chain output of every row into 'stableHashes'.
+  /// size 'numInput') through the table into the caller-owned lookup,
+  /// writing the stable-hash chain output of every row into 'stableHashes'.
   /// Per-client scratch: one selector, one lookup; restore has its own
-  /// door below and never runs through a client's lookup.
+  /// door below and never runs through a client's lookup. With an empty
+  /// key set (global state) the key columns are empty and every row is a
+  /// direct hit on the table's one key row.
   virtual void probe(
+      vector_size_t numInput,
       std::vector<VectorPtr> keyColumns,
       exec::HashLookup& lookup,
       raw_vector<uint64_t>& stableHashes) = 0;
@@ -56,11 +68,21 @@ class KeyIndex {
   /// never touching any client's per-probe scratch.
   virtual RowContainerStateKey probeKey(std::vector<VectorPtr> keyColumns) = 0;
 
-  /// The key RowContainer holding one row per distinct key seen so far,
-  /// with the user key columns only.
-  virtual exec::RowContainer* keyRows() = 0;
+  /// Copies one key column of the given keys into 'result', in the shape
+  /// of RowContainer::extractColumn: for every i, result[i + resultOffset]
+  /// receives key column 'keyColumn' of keys[rowNumbers[i]] (positions may
+  /// repeat or arrive out of order; a negative position writes null). This
+  /// is how operators read key values back - the key rows themselves stay
+  /// behind the index. An index with an empty key set has nothing to read
+  /// back and leaves 'result' alone.
+  virtual void extractKeyColumn(
+      folly::Range<const RowContainerStateKey*> keys,
+      folly::Range<const vector_size_t*> rowNumbers,
+      column_index_t keyColumn,
+      vector_size_t resultOffset,
+      const VectorPtr& result) = 0;
 
-  /// The key schema of keyRows(), available from construction.
+  /// The key schema of the key rows, available from construction.
   virtual const RowContainerKeySchema* keySchema() const = 0;
 
   /// Defines the key-group space, hash % maxParallelism, and stays stable

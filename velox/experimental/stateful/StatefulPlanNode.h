@@ -372,7 +372,11 @@ class StreamWindowJoinNode : public core::PlanNode {
       RowTypePtr outputType,
       int numPartitions,
       int leftWindowEndIndex,
-      int rightWindowEndIndex)
+      int rightWindowEndIndex,
+      std::vector<column_index_t> leftKeyChannels = {},
+      std::vector<column_index_t> rightKeyChannels = {},
+      int shiftTimeZone = 0,
+      int joinType = 0)
       : core::PlanNode(id),
         sources_(std::move(sources)),
         leftPartFuncSpec_(std::move(leftPartFuncSpec)),
@@ -381,7 +385,11 @@ class StreamWindowJoinNode : public core::PlanNode {
         outputType_(std::move(outputType)),
         numPartitions_(numPartitions),
         leftWindowEndIndex_(leftWindowEndIndex),
-        rightWindowEndIndex_(rightWindowEndIndex) {}
+        rightWindowEndIndex_(rightWindowEndIndex),
+        leftKeyChannels_(std::move(leftKeyChannels)),
+        rightKeyChannels_(std::move(rightKeyChannels)),
+        shiftTimeZone_(shiftTimeZone),
+        joinType_(joinType) {}
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -421,6 +429,22 @@ class StreamWindowJoinNode : public core::PlanNode {
     return rightWindowEndIndex_;
   }
 
+  const std::vector<column_index_t>& leftKeyChannels() const {
+    return leftKeyChannels_;
+  }
+
+  const std::vector<column_index_t>& rightKeyChannels() const {
+    return rightKeyChannels_;
+  }
+
+  int shiftTimeZone() const {
+    return shiftTimeZone_;
+  }
+
+  int joinType() const {
+    return joinType_;
+  }
+
   folly::dynamic serialize() const override;
 
   static core::PlanNodePtr create(const folly::dynamic& obj, void* context);
@@ -436,6 +460,10 @@ class StreamWindowJoinNode : public core::PlanNode {
   const int numPartitions_;
   const int leftWindowEndIndex_;
   const int rightWindowEndIndex_;
+  const std::vector<column_index_t> leftKeyChannels_;
+  const std::vector<column_index_t> rightKeyChannels_;
+  const int shiftTimeZone_;
+  const int joinType_;
 };
 
 class StreamWindowAggregationNode : public core::PlanNode {

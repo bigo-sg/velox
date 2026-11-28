@@ -196,6 +196,26 @@ void RocksDBKeyedStateBackend::snapshot(
     int64_t timestamp,
     CheckpointOptions checkpointOptions) {}
 
+void RocksDBKeyedStateBackend::snapshot(CheckpointSink& /*sink*/) {
+  // TODO: implement this
+  VELOX_NYI("RocksDBKeyedStateBackend does not support snapshot yet");
+}
+
+void RocksDBKeyedStateBackend::restore(CheckpointSource& /*source*/) {
+  // TODO: implement this
+  VELOX_NYI("RocksDBKeyedStateBackend does not support restore yet");
+}
+
+void RocksDBKeyedStateBackend::commit() {
+  // TODO: implement this
+  VELOX_NYI("RocksDBKeyedStateBackend does not support commit yet");
+}
+
+void RocksDBKeyedStateBackend::reclaim() {
+  // TODO: implement this
+  VELOX_NYI("RocksDBKeyedStateBackend does not support reclaim yet");
+}
+
 void RocksDBKeyedStateBackend::notifyCheckpointComplete(int64_t checkpointId) {}
 
 void RocksDBKeyedStateBackend::notifyCheckpointAborted(int64_t checkpointId) {}

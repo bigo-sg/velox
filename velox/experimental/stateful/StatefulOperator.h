@@ -94,8 +94,18 @@ class StatefulOperator {
   /// implementation recursively forwards the call to downstream targets;
   /// operators with keyed state override this to create their own keyed
   /// state backend (the key type is a compile-time parameter only the
-  /// operator can name).
+  /// operator can name) and store it erased in keyedBackend_.
   virtual void initializeStateBackend(StateBackend* stateBackend);
+
+  /// The keyed state backend this operator owns, type-erased for the
+  /// checkpoint walk: snapshotState collects its bytes into the task's
+  /// checkpoint records and restoreState routes them back. Operators with
+  /// keyed state create their backend typed in initializeStateBackend()
+  /// (only the operator can name the key type) and store it erased in
+  /// keyedBackend_. Null for operators without keyed state.
+  KeyedStateBackend* ownedKeyedStateBackend() const {
+    return keyedBackend_.get();
+  }
 
   std::vector<std::string> snapshotState(int64_t checkpointId);
 
@@ -165,6 +175,12 @@ class StatefulOperator {
   virtual int numInputs() const {
     return 1;
   }
+
+  /// The keyed state backend owned by this operator, assigned
+  /// (type-erased) by subclasses with keyed state inside
+  /// initializeStateBackend(); null for operators without keyed state.
+  /// See ownedKeyedStateBackend().
+  std::unique_ptr<KeyedStateBackend> keyedBackend_;
 
  private:
   bool isSink() {

@@ -112,6 +112,71 @@ struct CheckpointHeader {
   uint32_t numKeyGroups{};
 };
 
+/// Receives a checkpoint stream as it is produced. snapshot() writes the
+/// stream through this interface in write order; a sink may hand the bytes
+/// to storage incrementally and must not require them to be buffered in
+/// full.
+///
+/// TODO: reserve a slot for external references. An entry whose state lives
+/// outside the stream (an offset into a shared file, for instance) needs a
+/// place to register that reference next to its payload frame; the format
+/// has no such slot yet, and entries today always inline their payload.
+class CheckpointSink {
+ public:
+  virtual ~CheckpointSink() = default;
+
+  /// Appends the bytes to the stream, in write order.
+  virtual void append(std::string_view bytes) = 0;
+};
+
+/// Supplies a checkpoint stream as it is read back. restore() consumes the
+/// stream through this interface and must not assume the whole stream is
+/// buffered; a chunked delivery (a network read, for instance) must work.
+class CheckpointSource {
+ public:
+  virtual ~CheckpointSource() = default;
+
+  /// Returns the next chunk of up to 'maxSize' bytes. The returned bytes
+  /// stay valid until the next next() call on the same source; an empty
+  /// return value ends the stream.
+  virtual std::string_view next(size_t maxSize) = 0;
+};
+
+/// A CheckpointSink over an in-memory buffer: the whole stream is
+/// accumulated and moved out at the end.
+class BufferCheckpointSink : public CheckpointSink {
+ public:
+  void append(std::string_view bytes) override {
+    buffer_.append(bytes.data(), bytes.size());
+  }
+
+  /// Moves the accumulated stream out; the sink is empty afterwards.
+  std::string finish() {
+    return std::move(buffer_);
+  }
+
+ private:
+  std::string buffer_;
+};
+
+/// A CheckpointSource over an in-memory buffer, delivering it in chunks of
+/// up to the requested size.
+class BufferCheckpointSource : public CheckpointSource {
+ public:
+  explicit BufferCheckpointSource(std::string_view bytes) : bytes_(bytes) {}
+
+  std::string_view next(size_t maxSize) override {
+    const size_t length = std::min(maxSize, bytes_.size() - offset_);
+    std::string_view chunk(bytes_.data() + offset_, length);
+    offset_ += length;
+    return chunk;
+  }
+
+ private:
+  std::string_view bytes_;
+  size_t offset_{0};
+};
+
 /// Appends the keyed-state checkpoint stream to a std::string. All
 /// integers and length prefixes are little-endian; variable-length
 /// components are length-prefixed. The int32 placeholder / patch pair

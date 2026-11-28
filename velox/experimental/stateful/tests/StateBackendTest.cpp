@@ -41,6 +41,7 @@
 #include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/KeySerializer.h"
 #include "velox/experimental/stateful/state/KeyTable.h"
+#include "velox/experimental/stateful/state/KeyedStateBackendFactory.h"
 #include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
 #include "velox/experimental/stateful/state/RocksDBStateBackend.h"
@@ -87,6 +88,25 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
     return std::vector<RowContainerStateKey>(keys.begin(), keys.end());
   }
 
+  // The value container is the heap state's own storage, not part of the
+  // state interface (operators treat the rows() handles as opaque); these
+  // tests reach it through the concrete handle to assert how many
+  // accumulator rows are resident.
+  static exec::RowContainer* valueRows(
+      const std::shared_ptr<AggregatingState<RowContainerStateKey>>& state) {
+    return static_cast<HeapAggregatingState<RowContainerStateKey>&>(*state)
+        .valueRows();
+  }
+
+  // Likewise for the key container of the heap key table: it sits behind
+  // KeyIndex (operators read key values through extractKeyColumn()), and
+  // these tests reach it through the concrete table to assert how many key
+  // rows are resident.
+  static exec::RowContainer* keyRows(
+      HeapKeyedStateBackend<RowContainerStateKey>& backend) {
+    return static_cast<KeyTable&>(backend.keyIndex()).keyRows();
+  }
+
   // Hand-built key container for tests that control hashes and key groups
   // directly. The hash mirrors what the identity contract requires: equal
   // values get equal hashes.
@@ -110,15 +130,15 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
     }
   };
 
-  // A real partial sum(BIGINT) aggregate wired the way StreamingAggregation
-  // wires HashAggregation rows: the descriptor's accumulator array, the init
-  // callback (initializeNewGroups) and the merge callback
-  // (addSingleGroupIntermediateResults) all come from the aggregate, so the
-  // tests exercise the production accumulator layout instead of hand-written
-  // row offsets. The counters record callback runs for assertions. An
-  // instance must be declared before the backend and outlive it: the
-  // accumulator closures capture 'function' by raw pointer and the value
-  // container destroys accumulators through them.
+  // A real partial sum(BIGINT) aggregate: the descriptor's aggregate, its
+  // accumulator array, the init callback (initializeNewGroups) and the merge
+  // callback (addSingleGroupIntermediateResults) all come from the aggregate
+  // function, and the state wires the function to its value rows at
+  // creation, so the tests exercise the production accumulator layout
+  // instead of hand-written row offsets. The counters record callback runs
+  // for assertions. An instance must be declared before the backend and
+  // outlive it: the accumulator closures capture 'function' by raw pointer
+  // and the value container destroys accumulators through them.
   struct SumAggregate {
     // Registration must precede the create call in the member initializer,
     // hence the static factory.
@@ -137,25 +157,10 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
     int initCount = 0;
     int mergeCount = 0;
 
-    // Wires the aggregate to the first accumulator column of the state's
-    // value container. Must run before the first rows() call (and before
-    // restore, which also constructs rows) so the callbacks write the
-    // offsets the container actually laid out.
-    void wire(exec::RowContainer* valueRows) {
-      function->setAllocator(&valueRows->stringAllocator());
-      const auto column = valueRows->columnAt(0);
-      function->setOffsets(
-          column.offset(),
-          column.nullByte(),
-          column.nullMask(),
-          column.initializedByte(),
-          column.initializedMask(),
-          valueRows->rowSizeOffset());
-    }
-
     AggregatingStateDescriptor descriptor(memory::MemoryPool* pool) {
       return AggregatingStateDescriptor(
           "acc",
+          {function.get()},
           {exec::Accumulator(function.get(), BIGINT())},
           [this](char** rows, size_t numRows) {
             initCount += numRows;
@@ -199,8 +204,8 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
   // against column order, checkpoint frame order and merge dispatch), a
   // complex intermediate type (avg: row(double, bigint) through the presto
   // serde) and the null-accumulator lifecycle (aggregates of no non-null
-  // input snapshot as null and restore as null). Same wiring pattern and
-  // lifecycle rules as SumAggregate.
+  // input snapshot as null and restore as null). Same lifecycle rules as
+  // SumAggregate.
   struct SumAvgMin {
     static std::unique_ptr<exec::Aggregate> makeFunction(
         const std::string& name,
@@ -226,21 +231,6 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
     int initCount = 0;
     int mergeCount = 0;
 
-    void wire(exec::RowContainer* valueRows) {
-      exec::Aggregate* functions[] = {sum.get(), avg.get(), min.get()};
-      for (size_t i = 0; i < std::size(functions); ++i) {
-        functions[i]->setAllocator(&valueRows->stringAllocator());
-        const auto column = valueRows->columnAt(static_cast<int32_t>(i));
-        functions[i]->setOffsets(
-            column.offset(),
-            column.nullByte(),
-            column.nullMask(),
-            column.initializedByte(),
-            column.initializedMask(),
-            valueRows->rowSizeOffset());
-      }
-    }
-
     AggregatingStateDescriptor descriptor(memory::MemoryPool* pool) {
       std::vector<exec::Accumulator> accumulators;
       accumulators.emplace_back(sum.get(), BIGINT());
@@ -248,6 +238,7 @@ class StateBackendTest : public testing::Test, public test::VectorTestBase {
       accumulators.emplace_back(min.get(), BIGINT());
       return AggregatingStateDescriptor(
           "acc",
+          {sum.get(), avg.get(), min.get()},
           std::move(accumulators),
           [this](char** rows, size_t numRows) {
             initCount += numRows;
@@ -335,7 +326,7 @@ TEST_F(StateBackendTest, stateMapBasics) {
   auto keyB = lab.key(kCollisionKeyB);
   const VoidNamespace ns;
 
-  StateMap<RowContainerStateKey, VoidNamespace, char*> map;
+  StateMap<RowContainerStateKey, char*> map;
   char valueA{'a'};
   char valueB{'b'};
 
@@ -365,7 +356,7 @@ TEST_F(StateBackendTest, stateMapKeyEqualityByValue) {
   ASSERT_TRUE(keyA1.equals(keyA2));
   const VoidNamespace ns;
 
-  StateMap<RowContainerStateKey, VoidNamespace, char*> map;
+  StateMap<RowContainerStateKey, char*> map;
   char value{'v'};
   map.put(keyA1, ns, &value);
   EXPECT_EQ(&value, map.get(keyA2, ns));
@@ -377,7 +368,7 @@ TEST_F(StateBackendTest, stateMapKeyEqualityByValue) {
 TEST_F(StateBackendTest, stateMapGrowsAndRehashes) {
   KeyLab lab(pool());
   const VoidNamespace ns;
-  StateMap<RowContainerStateKey, VoidNamespace, char*> map;
+  StateMap<RowContainerStateKey, char*> map;
 
   constexpr int kNumKeys = 300;
   std::vector<RowContainerStateKey> keys;
@@ -410,7 +401,7 @@ TEST_F(StateBackendTest, stateMapSnapshotIsolation) {
   auto key2 = lab.key(2);
   auto key3 = lab.key(3);
   const VoidNamespace ns;
-  StateMap<RowContainerStateKey, VoidNamespace, char*> map(8);
+  StateMap<RowContainerStateKey, char*> map(8);
   char a{'a'}, b{'b'}, x{'x'}, c{'c'};
   map.put(key1, ns, &a);
   map.put(key2, ns, &b);
@@ -444,7 +435,7 @@ TEST_F(StateBackendTest, stateMapSnapshotIsolation) {
 TEST_F(StateBackendTest, stateMapSnapshotDuringIncrementalRehash) {
   KeyLab lab(pool());
   const VoidNamespace ns;
-  StateMap<RowContainerStateKey, VoidNamespace, char*> map(8);
+  StateMap<RowContainerStateKey, char*> map(8);
 
   std::vector<RowContainerStateKey> keys;
   std::vector<char> values;
@@ -497,7 +488,7 @@ TEST_F(StateBackendTest, stateTableBucketsBySubRange) {
     maxGroup = std::max<uint32_t>(maxGroup, key.keyGroup());
   }
 
-  StateTable<RowContainerStateKey, VoidNamespace, char*> table(
+  StateTable<RowContainerStateKey, char*> table(
       minGroup, maxGroup - minGroup + 1);
   EXPECT_EQ(minGroup, table.startKeyGroup());
   EXPECT_EQ(maxGroup - minGroup + 1, table.numKeyGroups());
@@ -542,8 +533,7 @@ TEST_F(StateBackendTest, stateTableCollisionPairStaysApart) {
   ASSERT_EQ(3, keys.size());
 
   const VoidNamespace ns;
-  StateTable<RowContainerStateKey, VoidNamespace, char*> table(
-      0, kMaxParallelism);
+  StateTable<RowContainerStateKey, char*> table(0, kMaxParallelism);
   char valueA{'a'};
   char valueB{'b'};
   table.put(keys[0], ns, &valueA);
@@ -555,7 +545,7 @@ TEST_F(StateBackendTest, stateTableCollisionPairStaysApart) {
 
 // AggregatingState: misses materialize + initialize fresh value rows, duplicate
 // keys share a row, the collision pair accumulates independently, and the
-// handle is idempotent per descriptor name. Accumulation runs through a real
+// state is idempotent per descriptor name. Accumulation runs through a real
 // partial sum(BIGINT) aggregate over the accumulator-layout value rows.
 TEST_F(StateBackendTest, backendAggregatingState) {
   SumAggregate sum;
@@ -566,13 +556,16 @@ TEST_F(StateBackendTest, backendAggregatingState) {
       probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
   ASSERT_EQ(3, keys.size());
 
-  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(
-      sum.descriptor(pool()));
-  sum.wire(state->valueRows());
+  auto state = backend.getOrCreateAggregatingState(
+      sum.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+  // Same name returns the same engine state; identity is asserted on the
+  // value container.
   EXPECT_EQ(
-      state.get(),
-      backend.getOrCreateAggregatingState<VoidNamespace>(sum.descriptor(pool()))
-          .get());
+      valueRows(state),
+      valueRows(backend.getOrCreateAggregatingState(
+          sum.descriptor(pool()),
+          NamespaceSerializerTraits<VoidNamespace>::create())));
 
   std::vector<char*> rows(keys.size(), nullptr);
   state->rows(
@@ -620,22 +613,22 @@ TEST_F(StateBackendTest, aggregatingStateRemoveReclaimsValueRow) {
   auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
   const VoidNamespace ns;
 
-  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(
-      sum.descriptor(pool()));
-  sum.wire(state->valueRows());
+  auto state = backend.getOrCreateAggregatingState(
+      sum.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   auto* rowA = state->row(keys[0], ns);
   state->row(keys[1], ns);
-  const auto rowsBefore = state->valueRows()->numRows();
+  const auto rowsBefore = valueRows(state)->numRows();
   ASSERT_EQ(2, rowsBefore);
   ASSERT_EQ(2, sum.initCount);
 
   state->remove(probeKeys(selector, {999})[0], ns);
-  EXPECT_EQ(rowsBefore, state->valueRows()->numRows());
+  EXPECT_EQ(rowsBefore, valueRows(state)->numRows());
 
   state->remove(keys[0], ns);
   auto* rebuilt = state->row(keys[0], ns);
   EXPECT_EQ(rowA, rebuilt);
-  EXPECT_EQ(rowsBefore, state->valueRows()->numRows());
+  EXPECT_EQ(rowsBefore, valueRows(state)->numRows());
   EXPECT_EQ(3, sum.initCount);
 }
 
@@ -650,12 +643,12 @@ TEST_F(StateBackendTest, aggregatingStateClearReclaimsValueRows) {
   auto keys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
   const VoidNamespace ns;
 
-  auto state = backend.getOrCreateAggregatingState<VoidNamespace>(
-      sum.descriptor(pool()));
-  sum.wire(state->valueRows());
+  auto state = backend.getOrCreateAggregatingState(
+      sum.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   auto* rowA = state->row(keys[0], ns);
   auto* rowB = state->row(keys[1], ns);
-  const auto rowsBefore = state->valueRows()->numRows();
+  const auto rowsBefore = valueRows(state)->numRows();
   ASSERT_EQ(2, rowsBefore);
 
   state->clear();
@@ -663,7 +656,7 @@ TEST_F(StateBackendTest, aggregatingStateClearReclaimsValueRows) {
   auto* freshB = state->row(keys[1], ns);
   EXPECT_TRUE(
       (freshA == rowA && freshB == rowB) || (freshA == rowB && freshB == rowA));
-  EXPECT_EQ(rowsBefore, state->valueRows()->numRows());
+  EXPECT_EQ(rowsBefore, valueRows(state)->numRows());
 }
 
 // Restoring the same stream twice overwrites the earlier entries (Flink's
@@ -677,25 +670,25 @@ TEST_F(StateBackendTest, aggregatingStateRestoreOverwriteReleasesOldRow) {
   KeySelector selectorA(backendA.keyIndex(), {0});
   auto keysA = probeKeys(selectorA, {kCollisionKeyA});
   const VoidNamespace ns;
-  auto stateA = backendA.getOrCreateAggregatingState<VoidNamespace>(
-      sumA.descriptor(pool()));
-  sumA.wire(stateA->valueRows());
+  auto stateA = backendA.getOrCreateAggregatingState(
+      sumA.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   sumA.add(stateA->row(keysA[0], ns), makeNullableFlatVector<int64_t>({7}));
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   SumAggregate sumB;
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   KeySelector selectorB(backendB.keyIndex(), {0});
-  auto stateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
-      sumB.descriptor(pool()));
-  sumB.wire(stateB->valueRows());
-  backendB.restore(bytes);
-  const auto rowsAfterFirstRestore = stateB->valueRows()->numRows();
+  auto stateB = backendB.getOrCreateAggregatingState(
+      sumB.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+  backendB.restoreBytes(bytes);
+  const auto rowsAfterFirstRestore = valueRows(stateB)->numRows();
   ASSERT_EQ(1, rowsAfterFirstRestore);
 
-  backendB.restore(bytes);
-  EXPECT_EQ(rowsAfterFirstRestore, stateB->valueRows()->numRows());
+  backendB.restoreBytes(bytes);
+  EXPECT_EQ(rowsAfterFirstRestore, valueRows(stateB)->numRows());
 
   auto keysB = probeKeys(selectorB, {kCollisionKeyA});
   EXPECT_EQ(7, sumB.valueOf(stateB->row(keysB[0], ns), pool()));
@@ -805,9 +798,9 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
       probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
   ASSERT_EQ(3, keysA.size());
 
-  auto aggregatingState = backendA.getOrCreateAggregatingState<VoidNamespace>(
-      sumA.descriptor(pool()));
-  sumA.wire(aggregatingState->valueRows());
+  auto aggregatingState = backendA.getOrCreateAggregatingState(
+      sumA.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   auto valueState = backendA.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -837,8 +830,8 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   mapState->put(keysA[0], ns, 10, 111);
   mapState->put(keysA[1], ns, 30, 300);
 
-  const auto bytes = backendA.snapshot();
-  EXPECT_EQ(bytes, backendA.snapshot());
+  const auto bytes = backendA.snapshotBytes();
+  EXPECT_EQ(bytes, backendA.snapshotBytes());
 
   // Side B: a fresh backend over its own key container. Each restored
   // aggregating entry runs the init callback on a fresh row and merges the
@@ -850,9 +843,9 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   KeySelector selectorB(backendB.keyIndex(), {0});
   auto keysB =
       probeKeys(selectorB, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
-  auto aggregatingStateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
-      sumB.descriptor(pool()));
-  sumB.wire(aggregatingStateB->valueRows());
+  auto aggregatingStateB = backendB.getOrCreateAggregatingState(
+      sumB.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
@@ -861,7 +854,7 @@ TEST_F(StateBackendTest, snapshotRestoreRoundTrip) {
   auto mapStateB = backendB.getOrCreateMapState<VoidNamespace>(
       MapStateDescriptor<int64_t, int64_t>(
           "map", int64Serializer(), int64Serializer(), pool()));
-  backendB.restore(bytes);
+  backendB.restoreBytes(bytes);
   EXPECT_EQ(2, sumB.initCount);
   EXPECT_EQ(2, sumB.mergeCount);
 
@@ -901,9 +894,9 @@ TEST_F(StateBackendTest, aggregatingStateMultipleAggregatesRoundTrip) {
   auto keysA = probeKeys(selectorA, {kCollisionKeyA, kCollisionKeyB});
   ASSERT_EQ(2, keysA.size());
 
-  auto stateA = backendA.getOrCreateAggregatingState<VoidNamespace>(
-      aggsA.descriptor(pool()));
-  aggsA.wire(stateA->valueRows());
+  auto stateA = backendA.getOrCreateAggregatingState(
+      aggsA.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
   std::vector<char*> rows(keysA.size(), nullptr);
   stateA->rows(
       folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
@@ -916,17 +909,17 @@ TEST_F(StateBackendTest, aggregatingStateMultipleAggregatesRoundTrip) {
   // Only null input: the min accumulator stays null.
   aggsA.add(rows[1], makeNullableFlatVector<int64_t>({std::nullopt}));
 
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   SumAvgMin aggsB;
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   KeySelector selectorB(backendB.keyIndex(), {0});
   auto keysB = probeKeys(selectorB, {kCollisionKeyA, kCollisionKeyB});
-  auto stateB = backendB.getOrCreateAggregatingState<VoidNamespace>(
-      aggsB.descriptor(pool()));
-  aggsB.wire(stateB->valueRows());
-  backendB.restore(bytes);
+  auto stateB = backendB.getOrCreateAggregatingState(
+      aggsB.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+  backendB.restoreBytes(bytes);
   EXPECT_EQ(2, aggsB.initCount);
   EXPECT_EQ(2, aggsB.mergeCount);
 
@@ -957,7 +950,7 @@ TEST_F(StateBackendTest, snapshotRestoreEmptyStates) {
           "value", sharedInt64Serializer(), pool()));
   backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
@@ -967,8 +960,8 @@ TEST_F(StateBackendTest, snapshotRestoreEmptyStates) {
           "value", sharedInt64Serializer(), pool()));
   auto listState = backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  backendB.restore(bytes);
-  EXPECT_EQ(bytes, backendB.snapshot());
+  backendB.restoreBytes(bytes);
+  EXPECT_EQ(bytes, backendB.snapshotBytes());
 
   auto key = probeKeys(selectorB, {42})[0];
   const VoidNamespace ns;
@@ -1024,13 +1017,13 @@ TEST_F(StateBackendTest, restoreRejectsUnknownState) {
   backendA.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
   backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+  EXPECT_THROW(backendB.restoreBytes(bytes), VeloxException);
 }
 
 // A checkpoint whose key-group range does not overlap the target backend's
@@ -1041,13 +1034,13 @@ TEST_F(StateBackendTest, restoreRejectsKeyGroupRangeMismatch) {
       {BIGINT()}, kMaxParallelism, 4, 2, pool());
   backendA.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 100, 28, pool());
   backendB.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
-  EXPECT_THROW(backendB.restore(bytes), VeloxException);
+  EXPECT_THROW(backendB.restoreBytes(bytes), VeloxException);
 }
 
 // A header with a zero key-group count is corruption, not an empty range:
@@ -1067,7 +1060,7 @@ TEST_F(StateBackendTest, restoreRejectsZeroKeyGroupCount) {
   header.startKeyGroup = kMaxParallelism / 2;
   header.numKeyGroups = 0;
   writeCheckpointHeader(writer, header);
-  EXPECT_THROW(backend.restore(bytes), VeloxException);
+  EXPECT_THROW(backend.restoreBytes(bytes), VeloxException);
 }
 
 // A key-group block whose entries do not belong to it is rejected at the
@@ -1133,7 +1126,7 @@ TEST_F(StateBackendTest, restoreRejectsEntryOutsideItsKeyGroupBlock) {
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   // The entry-level check fires (not a later stream check): the restored
   // key's group is not the block label.
-  VELOX_ASSERT_THROW(backendB.restore(bytes), "rides in the block of");
+  VELOX_ASSERT_THROW(backendB.restoreBytes(bytes), "rides in the block of");
 }
 
 // A sub-range backend picks its own key groups out of a wider checkpoint,
@@ -1171,7 +1164,7 @@ TEST_F(StateBackendTest, restorePicksSubRange) {
   for (const auto i : high) {
     valueStateA->update(keysA[i], ns, std::make_shared<int64_t>(*inputs[i]));
   }
-  const auto bytes = backendA.snapshot();
+  const auto bytes = backendA.snapshotBytes();
 
   // The upper half as its own backend, as a doubled parallelism would cut it.
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
@@ -1181,7 +1174,7 @@ TEST_F(StateBackendTest, restorePicksSubRange) {
   auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
-  backendB.restore(bytes);
+  backendB.restoreBytes(bytes);
 
   for (const auto i : high) {
     auto restored = valueStateB->value(keysB[i], ns);
@@ -1237,8 +1230,8 @@ TEST_F(StateBackendTest, restoreAccumulatesStreams) {
     valueStateHigh->update(
         keysHigh[i], ns, std::make_shared<int64_t>(*inputs[i]));
   }
-  const auto bytesLow = backendLow.snapshot();
-  const auto bytesHigh = backendHigh.snapshot();
+  const auto bytesLow = backendLow.snapshotBytes();
+  const auto bytesHigh = backendHigh.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendB(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
@@ -1247,8 +1240,8 @@ TEST_F(StateBackendTest, restoreAccumulatesStreams) {
   auto valueStateB = backendB.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
-  backendB.restore(bytesLow);
-  backendB.restore(bytesHigh);
+  backendB.restoreBytes(bytesLow);
+  backendB.restoreBytes(bytesHigh);
 
   for (const auto i : low) {
     auto restored = valueStateB->value(keysB[i], ns);
@@ -1276,7 +1269,7 @@ TEST_F(StateBackendTest, restoreDoesNotDisturbBoundSelectors) {
   auto listX = backendX.getOrCreateListState<VoidNamespace>(
       ListStateDescriptor<int64_t>("list", int64Serializer(), pool()));
   listX->add(keysX[0], ns, 7);
-  const auto bytes = backendX.snapshot();
+  const auto bytes = backendX.snapshotBytes();
 
   HeapKeyedStateBackend<RowContainerStateKey> backendY(
       {BIGINT()}, kMaxParallelism, 0, kMaxParallelism, pool());
@@ -1288,7 +1281,7 @@ TEST_F(StateBackendTest, restoreDoesNotDisturbBoundSelectors) {
 
   // Restore lands key 42 in backendY's own table; selectorY's cached
   // results of its last probe were not touched by it.
-  backendY.restore(bytes);
+  backendY.restoreBytes(bytes);
   EXPECT_EQ(1, selectorY.keys().size());
   EXPECT_EQ(1, selectorY.newGroups().size());
   EXPECT_EQ(1, selectorY.distinctKeys().size());
@@ -1377,7 +1370,7 @@ TEST_F(StateBackendTest, keyedStateBuiltAtInitializeFromSpecAndParameters) {
   EXPECT_EQ(
       parameters->getMaxParallelism(), backend.keyIndex().maxParallelism());
   // The selector probes the backend's own key table.
-  EXPECT_EQ(backend.keyIndex().keyRows(), selector.keyRowContainer());
+  EXPECT_EQ(backend.keyIndex().keySchema(), selector.schema());
 
   auto keys =
       probeKeys(selector, {kCollisionKeyA, kCollisionKeyB, kCollisionKeyA});
@@ -1487,7 +1480,7 @@ TEST_F(StateBackendTest, mapRemoveLastUserEntryDropsStoredMap) {
           "map", int64Serializer(), int64Serializer(), pool()));
   mapY->put(keysY[1], ns, 30, 300);
 
-  EXPECT_EQ(backendY.snapshot(), backendX.snapshot());
+  EXPECT_EQ(backendY.snapshotBytes(), backendX.snapshotBytes());
 }
 
 // A key whose entries are all removed is physically reclaimed at the batch
@@ -1509,7 +1502,7 @@ TEST_F(StateBackendTest, advanceReclaimsRemovedKeyRows) {
   valueState->update(keys[1], ns, stored);
   valueState->remove(keys[0], ns);
 
-  backend.advance();
+  backend.reclaim();
 
   // Key A (input row 0) lost its only entry and was erased; key B kept its
   // entry. The state of B survives, A reads back empty over its fresh row.
@@ -1530,18 +1523,18 @@ TEST_F(StateBackendTest, probeBornKeyNeverWrittenIsReclaimed) {
   KeySelector selector(backend.keyIndex(), {0});
   auto keys = probeKeys(selector, {kCollisionKeyA});
   const auto* erasedRow = keys[0].row();
-  const auto numRowsBefore = backend.keyIndex().keyRows()->numRows();
+  const auto numRowsBefore = keyRows(backend)->numRows();
 
-  backend.advance();
+  backend.reclaim();
 
   auto rekeys = probeKeys(selector, {kCollisionKeyA});
   EXPECT_EQ(1, selector.newGroups().size());
   EXPECT_EQ(erasedRow, rekeys[0].row());
-  EXPECT_EQ(numRowsBefore, backend.keyIndex().keyRows()->numRows());
+  EXPECT_EQ(numRowsBefore, keyRows(backend)->numRows());
 }
 
 // A key that goes to zero and back within one batch (entry removed, then
-// re-added before the boundary) survives advance(): the dirty list is
+// re-added before the boundary) survives reclaim(): the dirty list is
 // re-verified, not blindly erased.
 TEST_F(StateBackendTest, removeAndReAddWithinBatchKeepsKey) {
   HeapKeyedStateBackend<RowContainerStateKey> backend(
@@ -1557,7 +1550,7 @@ TEST_F(StateBackendTest, removeAndReAddWithinBatchKeepsKey) {
   auto rewritten = std::make_shared<int64_t>(9);
   valueState->update(keys[0], ns, rewritten);
 
-  backend.advance();
+  backend.reclaim();
 
   auto rekeys = probeKeys(selector, {kCollisionKeyA});
   EXPECT_TRUE(selector.newGroups().empty());
@@ -1577,13 +1570,13 @@ TEST_F(StateBackendTest, removedKeyReAddedNextBatchRebuildsRow) {
           "value", sharedInt64Serializer(), pool()));
   valueState->update(keys[0], ns, std::make_shared<int64_t>(7));
   valueState->remove(keys[0], ns);
-  backend.advance();
+  backend.reclaim();
 
   auto rekeys = probeKeys(selector, {kCollisionKeyA});
   ASSERT_EQ(1, selector.newGroups().size());
   auto rewritten = std::make_shared<int64_t>(9);
   valueState->update(rekeys[0], ns, rewritten);
-  backend.advance();
+  backend.reclaim();
 
   auto rekeys2 = probeKeys(selector, {kCollisionKeyA});
   EXPECT_TRUE(selector.newGroups().empty());
@@ -1608,19 +1601,19 @@ TEST_F(StateBackendTest, keyWithEntriesInTwoStatesReclaimsWhenAllRemoved) {
   mapState->put(keys[0], ns, 10, 100);
 
   valueState->remove(keys[0], ns);
-  backend.advance();
+  backend.reclaim();
   auto rekeys = probeKeys(selector, {kCollisionKeyA});
   EXPECT_TRUE(selector.newGroups().empty());
 
   // Removing the last user entry drops the map's table entry (the commit-2
   // behavior); that was the key's last reference.
   mapState->remove(rekeys[0], ns, 10);
-  backend.advance();
+  backend.reclaim();
   auto rekeys2 = probeKeys(selector, {kCollisionKeyA});
   EXPECT_EQ(1, selector.newGroups().size());
 }
 
-// snapshot() runs the reclamation first: dead key rows never sit across a
+// snapshotBytes() runs the reclamation first: dead key rows never sit across a
 // checkpoint barrier. The key whose entry survives the snapshot keeps its
 // row; the key whose entry was removed before the snapshot is gone.
 TEST_F(StateBackendTest, snapshotReclaimsDeadKeyRowsFirst) {
@@ -1637,7 +1630,7 @@ TEST_F(StateBackendTest, snapshotReclaimsDeadKeyRowsFirst) {
   valueState->update(keys[1], ns, stored);
   valueState->remove(keys[0], ns);
 
-  backend.snapshot();
+  backend.snapshotBytes();
 
   auto rekeys = probeKeys(selector, {kCollisionKeyA, kCollisionKeyB});
   ASSERT_EQ(1, selector.newGroups().size());
@@ -1646,7 +1639,7 @@ TEST_F(StateBackendTest, snapshotReclaimsDeadKeyRowsFirst) {
 }
 
 // Entries restored from a checkpoint count toward the key refcount like any
-// other entry: the restore-born row survives advance() with its entry, and
+// other entry: the restore-born row survives reclaim() with its entry, and
 // only removing the restored entry retires the row.
 TEST_F(StateBackendTest, restoredEntriesCountTowardKeyRefcount) {
   HeapKeyedStateBackend<RowContainerStateKey> backendX(
@@ -1659,7 +1652,7 @@ TEST_F(StateBackendTest, restoredEntriesCountTowardKeyRefcount) {
           "value", sharedInt64Serializer(), pool()));
   auto stored = std::make_shared<int64_t>(7);
   valueStateX->update(keysX[0], ns, stored);
-  const auto bytes = backendX.snapshot();
+  const auto bytes = backendX.snapshotBytes();
 
   // Side B never probes before restore; the restored key row is born through
   // the restore door and its refcount comes from the restored entry alone.
@@ -1668,8 +1661,8 @@ TEST_F(StateBackendTest, restoredEntriesCountTowardKeyRefcount) {
   auto valueStateY = backendY.getOrCreateValueState<VoidNamespace>(
       ValueStateDescriptor<std::shared_ptr<int64_t>>(
           "value", sharedInt64Serializer(), pool()));
-  backendY.restore(bytes);
-  backendY.advance();
+  backendY.restoreBytes(bytes);
+  backendY.reclaim();
 
   KeySelector selectorY(backendY.keyIndex(), {0});
   auto keysY = probeKeys(selectorY, {kCollisionKeyA});
@@ -1679,14 +1672,14 @@ TEST_F(StateBackendTest, restoredEntriesCountTowardKeyRefcount) {
   EXPECT_EQ(*stored, *restored);
 
   valueStateY->remove(keysY[0], ns);
-  backendY.advance();
+  backendY.reclaim();
   auto rekeysY = probeKeys(selectorY, {kCollisionKeyA});
   EXPECT_EQ(1, selectorY.newGroups().size());
 }
 
 // Many add/remove cycles pile the same row up in the dirty list (its birth
-// plus every zero transition); one advance() must deduplicate before
-// erasing - erasing twice would be a double free - and a second advance()
+// plus every zero transition); one reclaim() must deduplicate before
+// erasing - erasing twice would be a double free - and a second reclaim()
 // over the emptied list is a no-op.
 TEST_F(StateBackendTest, repeatedRemoveAddCyclesAdvanceOnceSafely) {
   HeapKeyedStateBackend<RowContainerStateKey> backend(
@@ -1702,11 +1695,11 @@ TEST_F(StateBackendTest, repeatedRemoveAddCyclesAdvanceOnceSafely) {
     valueState->remove(keys[0], ns);
   }
 
-  backend.advance();
+  backend.reclaim();
   auto rekeys = probeKeys(selector, {kCollisionKeyA});
   EXPECT_EQ(1, selector.newGroups().size());
 
-  backend.advance();
+  backend.reclaim();
   auto rekeys2 = probeKeys(selector, {kCollisionKeyA});
   EXPECT_EQ(1, selector.newGroups().size());
 }
@@ -1745,6 +1738,58 @@ TEST_F(StateBackendTest, sharedValueCorruptNullFlagFailsLoud) {
   EXPECT_EQ(7, *restored);
 
   EXPECT_THROW(serializer.deserialize(std::string(1, '\x02')), VeloxException);
+}
+
+// Global state: a backend over an empty key set holds one key row that
+// every probe maps to. An aggregating state under it accumulates across the
+// whole input, survives a checkpoint round trip, and reclaim() never
+// retires the key row - Flink's keyless aggregation shape.
+TEST_F(StateBackendTest, globalAggregatingStateWithoutKeys) {
+  SumAggregate sumA;
+  HeapKeyedStateBackend<RowContainerStateKey> backendA(
+      {}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorA(backendA.keyIndex(), {});
+  auto stateA = backendA.getOrCreateAggregatingState(
+      sumA.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+
+  const auto keysA = probeKeys(selectorA, {10, 20, std::nullopt});
+  ASSERT_EQ(3, keysA.size());
+  // New on the first probe; the entries then count toward the key row.
+  ASSERT_EQ(3, selectorA.newGroups().size());
+  std::vector<char*> rows(keysA.size(), nullptr);
+  stateA->rows(
+      folly::Range<const RowContainerStateKey*>(keysA.data(), keysA.size()),
+      VoidNamespace::instance(),
+      rows.data());
+  ASSERT_EQ(1, sumA.initCount);
+  EXPECT_EQ(rows[0], rows[1]);
+  sumA.add(rows[0], makeNullableFlatVector<int64_t>({10}));
+  sumA.add(rows[1], makeNullableFlatVector<int64_t>({20}));
+  EXPECT_EQ(30, sumA.valueOf(rows[0], pool()));
+
+  // The key row outlives the batch boundary: every probe maps to it.
+  backendA.reclaim();
+  EXPECT_EQ(1, keyRows(backendA)->numRows());
+  const auto bytes = backendA.snapshotBytes();
+
+  SumAggregate sumB;
+  HeapKeyedStateBackend<RowContainerStateKey> backendB(
+      {}, kMaxParallelism, 0, kMaxParallelism, pool());
+  KeySelector selectorB(backendB.keyIndex(), {});
+  auto stateB = backendB.getOrCreateAggregatingState(
+      sumB.descriptor(pool()),
+      NamespaceSerializerTraits<VoidNamespace>::create());
+  backendB.restoreBytes(bytes);
+
+  const auto keysB = probeKeys(selectorB, {1});
+  ASSERT_EQ(1, keysB.size());
+  // Restored entries make the global key an existing one: not new.
+  EXPECT_TRUE(selectorB.newGroups().empty());
+  EXPECT_EQ(
+      30,
+      sumB.valueOf(stateB->row(keysB[0], VoidNamespace::instance()), pool()));
+  EXPECT_EQ(1, keyRows(backendB)->numRows());
 }
 
 } // namespace

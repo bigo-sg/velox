@@ -260,6 +260,18 @@ folly::dynamic StreamWindowJoinNode::serialize() const {
   obj["numPartitions"] = numPartitions_;
   obj["leftWindowEndIndex"] = leftWindowEndIndex_;
   obj["rightWindowEndIndex"] = rightWindowEndIndex_;
+  folly::dynamic leftKeyChannels = folly::dynamic::array();
+  for (auto channel : leftKeyChannels_) {
+    leftKeyChannels.push_back(static_cast<int64_t>(channel));
+  }
+  folly::dynamic rightKeyChannels = folly::dynamic::array();
+  for (auto channel : rightKeyChannels_) {
+    rightKeyChannels.push_back(static_cast<int64_t>(channel));
+  }
+  obj["leftKeyChannels"] = std::move(leftKeyChannels);
+  obj["rightKeyChannels"] = std::move(rightKeyChannels);
+  obj["shiftTimeZone"] = shiftTimeZone_;
+  obj["joinType"] = joinType_;
   return obj;
 }
 
@@ -283,6 +295,26 @@ core::PlanNodePtr StreamWindowJoinNode::create(
 
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
 
+  std::vector<column_index_t> leftKeyChannels;
+  if (obj.count("leftKeyChannels") > 0) {
+    const auto& arr = obj["leftKeyChannels"];
+    if (arr.isArray()) {
+      for (const auto& channel : arr) {
+        leftKeyChannels.push_back(channel.asInt());
+      }
+    }
+  } else {
+  }
+  std::vector<column_index_t> rightKeyChannels;
+  if (obj.count("rightKeyChannels") > 0) {
+    for (const auto& channel : obj["rightKeyChannels"]) {
+      rightKeyChannels.push_back(channel.asInt());
+    }
+  }
+  int shiftTimeZone =
+      obj.count("shiftTimeZone") ? obj["shiftTimeZone"].asInt() : 0;
+  int joinType = obj.count("joinType") ? obj["joinType"].asInt() : 0;
+
   return std::make_shared<StreamWindowJoinNode>(
       planNodeId,
       std::move(sources),
@@ -292,7 +324,11 @@ core::PlanNodePtr StreamWindowJoinNode::create(
       outputType,
       obj["numPartitions"].asInt(),
       obj["leftWindowEndIndex"].asInt(),
-      obj["rightWindowEndIndex"].asInt());
+      obj["rightWindowEndIndex"].asInt(),
+      std::move(leftKeyChannels),
+      std::move(rightKeyChannels),
+      shiftTimeZone,
+      joinType);
 }
 
 const std::vector<core::PlanNodePtr>& StreamWindowAggregationNode::sources()

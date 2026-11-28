@@ -1,0 +1,613 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#pragma once
+
+#include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include <folly/Range.h>
+
+#include "velox/common/base/Exceptions.h"
+#include "velox/common/memory/ByteStream.h"
+#include "velox/exec/Aggregate.h"
+#include "velox/exec/RowContainer.h"
+#include "velox/experimental/stateful/TypeSerializer.h"
+#include "velox/experimental/stateful/state/CheckpointStream.h"
+#include "velox/experimental/stateful/state/KeyIndex.h"
+#include "velox/experimental/stateful/state/KeyRowLifecycleObserver.h"
+#include "velox/experimental/stateful/state/KeySerializer.h"
+#include "velox/experimental/stateful/state/KeyTable.h"
+#include "velox/experimental/stateful/state/KeyedStateBackend.h"
+#include "velox/experimental/stateful/state/Namespace.h"
+#include "velox/experimental/stateful/state/NamespaceSerializer.h"
+#include "velox/experimental/stateful/state/State.h"
+#include "velox/experimental/stateful/state/StateDescriptor.h"
+#include "velox/experimental/stateful/state/StateKey.h"
+#include "velox/serializers/PrestoSerializer.h"
+#include "velox/type/Type.h"
+#include "velox/vector/BaseVector.h"
+#include "velox/vector/FlatVector.h"
+
+namespace facebook::velox::stateful {
+
+/// Aggregating state over serialized entries, the storage of the test-only
+/// ByteBufferKeyedStateBackend. The committed state is a byte map from key
+/// bytes to accumulator bytes; rows() stages the entries an operator works
+/// on in a RowContainer (materializing a committed entry back into a row,
+/// or creating a fresh row) and commit() writes the staged rows back into
+/// the map and drops them. Unlike the heap state, which commits in place,
+/// this makes commit() an observable step and every row handle handed out
+/// before a commit() invalid after it - the two properties the backend
+/// contract test pins. The payload bytes are the heap format (one
+/// [length + presto-serde bytes] frame per accumulator); the test double
+/// shares the encode/decode code rather than the layout being a contract.
+class ByteBufferAggregatingState
+    : public AggregatingState<RowContainerStateKey> {
+ public:
+  ByteBufferAggregatingState(
+      const AggregatingStateDescriptor& descriptor,
+      std::shared_ptr<TypeSerializer<RowContainerStateKey>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer,
+      KeyRowLifecycleObserver<RowContainerStateKey>* keyLifecycle)
+      : staging_(std::make_unique<exec::RowContainer>(
+            std::vector<TypePtr>{},
+            true,
+            descriptor.accumulators(),
+            std::vector<TypePtr>{},
+            false,
+            false,
+            false,
+            false,
+            descriptor.memoryPool())),
+        initializeRows_(descriptor.initializeRows()),
+        mergeRow_(descriptor.mergeRow()),
+        pool_(descriptor.memoryPool()),
+        keySerializer_(std::move(keySerializer)),
+        keyLifecycle_(keyLifecycle),
+        nsSerializer_(std::move(nsSerializer)),
+        nsKind_(nsSerializer_->kind()),
+        valueSchemaId_(
+            "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {
+    // The byte map addresses entries by key alone, which holds for the void
+    // namespace only: it is the single namespace of a state, so a key names
+    // one entry.
+    VELOX_CHECK_EQ(
+        nsKind_,
+        kVoidNamespaceKind,
+        "The byte-buffer backend stores aggregating state under the void namespace only");
+    // The wiring the contract asks of a state: each aggregate function
+    // points at its accumulator column of the row storage.
+    const auto& aggregates = descriptor.aggregates();
+    for (size_t i = 0; i < aggregates.size(); ++i) {
+      aggregates[i]->setAllocator(&staging_->stringAllocator());
+      const auto column = staging_->columnAt(static_cast<int32_t>(i));
+      aggregates[i]->setOffsets(
+          column.offset(),
+          column.nullByte(),
+          column.nullMask(),
+          column.initializedByte(),
+          column.initializedMask(),
+          staging_->rowSizeOffset());
+    }
+  }
+
+  void rows(
+      folly::Range<const RowContainerStateKey*> keys,
+      const Namespace& ns,
+      char** outRows) override {
+    checkNamespace(ns);
+    for (size_t i = 0; i < keys.size(); ++i) {
+      outRows[i] = stagedRow(keys[i]);
+    }
+  }
+
+  char* row(const RowContainerStateKey& key, const Namespace& ns) override {
+    checkNamespace(ns);
+    return stagedRow(key);
+  }
+
+  void remove(const RowContainerStateKey& key, const Namespace& ns) override {
+    checkNamespace(ns);
+    const auto keyBytes = keySerializer_->serialize(key);
+    if (!hasEntry(keyBytes)) {
+      return;
+    }
+    eraseStaged(keyBytes);
+    storage_.erase(keyBytes);
+    keyLifecycle_->onEntryRemoved(key);
+  }
+
+  void clear() override {
+    for (const auto& keyBytes : entryKeys()) {
+      eraseStaged(keyBytes);
+      storage_.erase(keyBytes);
+      keyLifecycle_->onEntryRemoved(keySerializer_->deserialize(keyBytes));
+    }
+  }
+
+  /// Writes the staged rows into the byte map and drops the staging rows:
+  /// from here on the entries live in committed form, and every handle
+  /// handed out before is invalid.
+  void commit() {
+    for (const auto& [keyBytes, row] : staged_) {
+      storage_[keyBytes] = serializeRow(row);
+    }
+    for (const auto& [keyBytes, row] : staged_) {
+      char* rowPtr = row;
+      staging_->eraseRows(folly::Range<char**>(&rowPtr, 1));
+    }
+    staged_.clear();
+  }
+
+  /// Appends the committed entries as one count-headed block of entry
+  /// frames, in the byte order of the map (the contract test does not rely
+  /// on a particular order).
+  void writeEntries(CheckpointWriter& writer) const {
+    const auto countPosition = writer.writeInt32Placeholder();
+    int32_t entryCount = 0;
+    for (const auto& [keyBytes, payload] : storage_) {
+      writeEntryFrames(writer, std::string_view(), keyBytes, payload);
+      ++entryCount;
+    }
+    writer.patchInt32(countPosition, entryCount);
+  }
+
+  /// Reads one entry frame into the map as is - the payload already is the
+  /// stored form - unless the key lies outside the key-group range of the
+  /// stream. A duplicate key overwrites the earlier entry, as in Flink.
+  void readEntry(
+      CheckpointReader& reader,
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups) {
+    const auto frames = readEntryFrames(reader);
+    const auto key = keySerializer_->deserialize(frames.key);
+    VELOX_CHECK(
+        key.keyGroup() >= startKeyGroup &&
+            key.keyGroup() < startKeyGroup + numKeyGroups,
+        "Corrupt checkpoint: entry key belongs to key group {} outside the stream's range [{},{})",
+        key.keyGroup(),
+        startKeyGroup,
+        startKeyGroup + numKeyGroups);
+    const std::string keyBytes(frames.key);
+    const bool fresh =
+        storage_.count(keyBytes) == 0 && staged_.count(keyBytes) == 0;
+    storage_[keyBytes] = std::string(frames.payload);
+    if (fresh) {
+      keyLifecycle_->onEntryAdded(key);
+    }
+  }
+
+  std::string namespaceSchemaId() const override {
+    return nsSerializer_->schemaId();
+  }
+
+  std::string valueSchemaId() const override {
+    return valueSchemaId_;
+  }
+
+ private:
+  /// The use-time guard of the runtime namespace, as on the heap state.
+  void checkNamespace(const Namespace& ns) const {
+    VELOX_CHECK_EQ(
+        ns.kind(),
+        nsKind_,
+        "This state holds namespaces of kind {} and cannot take one of kind {}",
+        nsKind_,
+        ns.kind());
+  }
+
+  /// The staging row for 'key': an already staged row as is, a committed
+  /// entry materialized back into a row (fresh accumulators, then the
+  /// stored intermediates merged in), or a fresh row for a new entry.
+  char* stagedRow(const RowContainerStateKey& key) {
+    const auto keyBytes = keySerializer_->serialize(key);
+    if (auto it = staged_.find(keyBytes); it != staged_.end()) {
+      return it->second;
+    }
+    char* row = staging_->newRow();
+    initializeRows_(&row, 1);
+    if (auto stored = storage_.find(keyBytes); stored != storage_.end()) {
+      mergeRow_(row, decodePayload(stored->second));
+    } else {
+      keyLifecycle_->onEntryAdded(key);
+    }
+    staged_.emplace(keyBytes, row);
+    return row;
+  }
+
+  bool hasEntry(const std::string& keyBytes) const {
+    return staged_.count(keyBytes) != 0 || storage_.count(keyBytes) != 0;
+  }
+
+  void eraseStaged(const std::string& keyBytes) {
+    if (auto it = staged_.find(keyBytes); it != staged_.end()) {
+      staging_->eraseRows(folly::Range<char**>(&it->second, 1));
+      staged_.erase(it);
+    }
+  }
+
+  /// Every key with an entry, staged or stored (or both).
+  std::vector<std::string> entryKeys() const {
+    std::vector<std::string> keys;
+    for (const auto& [keyBytes, row] : staged_) {
+      keys.push_back(keyBytes);
+    }
+    for (const auto& [keyBytes, payload] : storage_) {
+      if (staged_.count(keyBytes) == 0) {
+        keys.push_back(keyBytes);
+      }
+    }
+    return keys;
+  }
+
+  /// Decodes a stored payload into one one-row intermediate column per
+  /// accumulator; the same frames the heap state decodes on restore.
+  std::vector<VectorPtr> decodePayload(std::string_view payload) {
+    std::vector<VectorPtr> columns;
+    columns.reserve(staging_->accumulators().size());
+    size_t offset = 0;
+    for (const auto& accumulator : staging_->accumulators()) {
+      VELOX_CHECK_LE(
+          offset + sizeof(uint32_t),
+          payload.size(),
+          "Corrupt entry: truncated accumulator column frame");
+      const auto size =
+          littleEndianValue<uint32_t>(payload.substr(offset, sizeof(uint32_t)));
+      offset += sizeof(uint32_t);
+      VELOX_CHECK_LE(
+          offset + size,
+          payload.size(),
+          "Corrupt entry: truncated accumulator column frame");
+      const auto data = payload.substr(offset, size);
+      offset += size;
+      ByteRange range{
+          reinterpret_cast<uint8_t*>(const_cast<char*>(data.data())),
+          static_cast<int64_t>(size),
+          0};
+      BufferInputStream stream(std::vector<ByteRange>{{range}});
+      VectorPtr column;
+      serde_.deserializeSingleColumn(
+          &stream, pool_, accumulator.spillType(), &column, nullptr);
+      columns.push_back(std::move(column));
+    }
+    return columns;
+  }
+
+  /// Encodes one staging row: each accumulator column extracted into a
+  /// one-row intermediate vector and framed as [4-byte little-endian length
+  /// + presto-serde bytes], in accumulator order.
+  std::string serializeRow(const char* row) {
+    char* rowPtr = const_cast<char*>(row);
+    const folly::Range<char**> rows(&rowPtr, 1);
+    std::string payload;
+    for (const auto& accumulator : staging_->accumulators()) {
+      VectorPtr intermediate =
+          BaseVector::create(accumulator.spillType(), rows.size(), pool_);
+      accumulator.extractForSpill(rows, intermediate);
+      std::ostringstream output;
+      serde_.serializeSingleColumn(intermediate, nullptr, pool_, &output);
+      const auto bytes = output.str();
+      payload += littleEndianBytes(static_cast<uint32_t>(bytes.size()));
+      payload += bytes;
+    }
+    return payload;
+  }
+
+  static std::string spillTypesSchema(const std::vector<TypePtr>& spillTypes) {
+    std::string schema;
+    for (const auto& spillType : spillTypes) {
+      if (!schema.empty()) {
+        schema += ",";
+      }
+      schema += spillType->toString();
+    }
+    return "(" + schema + ")";
+  }
+
+  std::unique_ptr<exec::RowContainer> staging_;
+  std::unordered_map<std::string, char*> staged_;
+  std::unordered_map<std::string, std::string> storage_;
+  AggregatingStateDescriptor::InitRowsCallback initializeRows_;
+  AggregatingStateDescriptor::MergeRowCallback mergeRow_;
+  serializer::presto::PrestoVectorSerde serde_;
+  memory::MemoryPool* pool_;
+  std::shared_ptr<TypeSerializer<RowContainerStateKey>> keySerializer_;
+  KeyRowLifecycleObserver<RowContainerStateKey>* keyLifecycle_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
+  const uint32_t nsKind_;
+  const std::string valueSchemaId_;
+};
+
+/// A second keyed state backend, next to the heap one, for the backend
+/// contract test: same key table, same probe path, same state interface,
+/// a different storage. Entries live as bytes in a map and reach operators
+/// through staging rows written back at commit(), so commit() is a real
+/// step here and row handles do not survive it. Checkpoints are one flat
+/// block of entry frames per state over the shared header, schema table
+/// and CRC trailer - no key-group nesting, since one backend owns exactly
+/// one key-group range and the header names it. Aggregating state under
+/// the void namespace only; everything else on the interface is
+/// not-implemented, as on the heap backend.
+class ByteBufferKeyedStateBackend
+    : public TypedKeyedStateBackend<RowContainerStateKey> {
+ public:
+  ByteBufferKeyedStateBackend(
+      std::vector<TypePtr> keyTypes,
+      uint32_t maxParallelism,
+      uint32_t startKeyGroup,
+      uint32_t numKeyGroups,
+      memory::MemoryPool* pool)
+      : keyTable_(std::make_unique<KeyTable>(
+            std::move(keyTypes),
+            maxParallelism,
+            pool)),
+        keySerializer_(keyTable_->keySerializer()),
+        maxParallelism_(maxParallelism),
+        startKeyGroup_(startKeyGroup),
+        numKeyGroups_(numKeyGroups) {
+    VELOX_CHECK(numKeyGroups > 0, "numKeyGroups must be greater than 0");
+    VELOX_CHECK(
+        static_cast<uint64_t>(startKeyGroup) + numKeyGroups <= maxParallelism,
+        "Key-group range [{}, {}) exceeds maxParallelism {}",
+        startKeyGroup,
+        startKeyGroup + numKeyGroups,
+        maxParallelism);
+  }
+
+  KeyIndex& keyIndex() override {
+    return *keyTable_;
+  }
+
+  uint32_t maxParallelism() const override {
+    return maxParallelism_;
+  }
+
+  uint32_t startKeyGroup() const override {
+    return startKeyGroup_;
+  }
+
+  uint32_t numKeyGroups() const override {
+    return numKeyGroups_;
+  }
+
+  std::shared_ptr<MapState<uint32_t, int, RowVectorPtr, int>>
+  getOrCreateMapState(StateDescriptor& /* stateDescriptor */) override {
+    VELOX_NYI(
+        "getOrCreateMapState is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<ListState<uint32_t, int64_t, RowVectorPtr>>
+  getOrCreateListState(StateDescriptor& /* stateDescriptor */) override {
+    VELOX_NYI(
+        "getOrCreateListState is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<ValueState<int64_t, int64_t, RowVectorPtr>>
+  getOrCreateValueState(StateDescriptor& /* stateDescriptor */) override {
+    VELOX_NYI(
+        "getOrCreateValueState is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<ValueState<uint32_t, TimeWindow, RowVectorPtr>>
+  getOrCreateGroupValueState(StateDescriptor& /* stateDescriptor */) override {
+    VELOX_NYI(
+        "getOrCreateGroupValueState is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
+  getOrCreateGroupMapState(StateDescriptor& /* stateDescriptor */) override {
+    VELOX_NYI(
+        "getOrCreateGroupMapState is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<MapState<uint32_t, int, uint32_t, RowVectorPtr>>
+  getOrCreateRankMapState(StateDescriptor& /* stateDescriptor */) override {
+    VELOX_NYI(
+        "getOrCreateRankMapState is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<InternalTimerService<int64_t, int64_t>> createTimerService(
+      Triggerable<int64_t, int64_t>* /* triggerable */) override {
+    VELOX_NYI("createTimerService is not available on the byte-buffer backend");
+  }
+
+  std::shared_ptr<InternalTimerService<int64_t, TimeWindow>>
+  createGroupWindowAggTimerService(
+      Triggerable<int64_t, TimeWindow>* /* triggerable */) override {
+    VELOX_NYI(
+        "createGroupWindowAggTimerService is not available on the byte-buffer backend");
+  }
+
+  void snapshot(
+      int64_t /* checkpointId */,
+      int64_t /* timestamp */,
+      CheckpointOptions /* checkpointOptions */) override {}
+
+  void notifyCheckpointComplete(int64_t /* checkpointId */) override {}
+
+  void notifyCheckpointAborted(int64_t /* checkpointId */) override {}
+
+  /// Writes every state's staged rows back into its byte map.
+  void commit() override {
+    for (auto& [name, state] : states_) {
+      state->commit();
+    }
+  }
+
+  void reclaim() override {
+    keyTable_->advance();
+  }
+
+  /// Same shape as the heap entry: the namespace arrives as its runtime
+  /// serializer; the byte map is written for the void namespace only.
+  std::shared_ptr<AggregatingState<RowContainerStateKey>>
+  getOrCreateAggregatingState(
+      const AggregatingStateDescriptor& descriptor,
+      std::shared_ptr<NamespaceSerializer> nsSerializer) override {
+    if (auto it = states_.find(descriptor.name()); it != states_.end()) {
+      VELOX_CHECK_EQ(
+          it->second->namespaceSchemaId(),
+          nsSerializer->schemaId(),
+          "State '{}' is already registered under a different namespace type",
+          descriptor.name());
+      return it->second;
+    }
+    auto state = std::make_shared<ByteBufferAggregatingState>(
+        descriptor,
+        keySerializer_,
+        std::move(nsSerializer),
+        keyTable_->keyLifecycle());
+    states_.emplace(descriptor.name(), state);
+    return state;
+  }
+
+  void snapshot(CheckpointSink& sink) override {
+    commit();
+    reclaim();
+    std::vector<std::pair<std::string, ByteBufferAggregatingState*>> states;
+    for (const auto& [name, state] : states_) {
+      states.emplace_back(name, state.get());
+    }
+    std::sort(states.begin(), states.end(), [](const auto& a, const auto& b) {
+      return a.first < b.first;
+    });
+    std::string bytes;
+    CheckpointWriter writer(bytes);
+    CheckpointHeader header;
+    header.flags = kCheckpointFlagLittleEndian | kCheckpointFlagCrcTrailer;
+    header.maxParallelism = maxParallelism_;
+    header.startKeyGroup = startKeyGroup_;
+    header.numKeyGroups = numKeyGroups_;
+    writeCheckpointHeader(writer, header);
+    writer.writeBytes(keySerializer_->schemaId());
+    writer.writeUInt32(static_cast<uint32_t>(states.size()));
+    for (const auto& [name, state] : states) {
+      writer.writeBytes(name);
+      writer.writeBytes(state->namespaceSchemaId());
+      writer.writeBytes(state->valueSchemaId());
+    }
+    for (const auto& [name, state] : states) {
+      writer.writeBytes(name);
+      state->writeEntries(writer);
+    }
+    writer.writeUInt32(checkpointCrc32(bytes));
+    sink.append(bytes);
+  }
+
+  void restore(CheckpointSource& source) override {
+    std::string bytes;
+    for (;;) {
+      const auto chunk = source.next(kRestoreChunkBytes);
+      if (chunk.empty()) {
+        break;
+      }
+      bytes.append(chunk.data(), chunk.size());
+    }
+    CheckpointReader headerReader(bytes.data(), bytes.size());
+    const auto header = readCheckpointHeader(headerReader);
+    size_t bodySize = bytes.size();
+    if ((header.flags & kCheckpointFlagCrcTrailer) != 0) {
+      VELOX_CHECK_GE(
+          bytes.size(),
+          kCheckpointHeaderSize + sizeof(uint32_t),
+          "Corrupt checkpoint: too short for the announced CRC trailer");
+      bodySize = bytes.size() - sizeof(uint32_t);
+      VELOX_CHECK_EQ(
+          littleEndianValue<uint32_t>(
+              std::string_view(bytes.data() + bodySize, sizeof(uint32_t))),
+          checkpointCrc32(std::string_view(bytes.data(), bodySize)),
+          "Corrupt checkpoint: CRC-32 mismatch");
+    }
+    CheckpointReader reader(bytes.data(), bodySize);
+    const auto streamHeader = readCheckpointHeader(reader);
+    VELOX_CHECK_EQ(
+        streamHeader.maxParallelism,
+        maxParallelism_,
+        "Checkpoint maxParallelism {} does not match this backend's {}",
+        streamHeader.maxParallelism,
+        maxParallelism_);
+    VELOX_CHECK(
+        streamHeader.startKeyGroup <= startKeyGroup_ &&
+            streamHeader.startKeyGroup + streamHeader.numKeyGroups >=
+                startKeyGroup_ + numKeyGroups_,
+        "Checkpoint key-group range [{},{}) does not cover this backend's [{},{})",
+        streamHeader.startKeyGroup,
+        streamHeader.startKeyGroup + streamHeader.numKeyGroups,
+        startKeyGroup_,
+        startKeyGroup_ + numKeyGroups_);
+    VELOX_CHECK_EQ(
+        reader.readBytes(),
+        keySerializer_->schemaId(),
+        "Checkpoint key schema does not match this backend's key serializer");
+    const auto stateCount = reader.readUInt32();
+    std::vector<std::string> stateIds;
+    std::vector<ByteBufferAggregatingState*> statesById;
+    for (uint32_t id = 0; id < stateCount; ++id) {
+      const std::string stateId(reader.readBytes());
+      const auto nsSchemaId = reader.readBytes();
+      const auto valueSchemaId = reader.readBytes();
+      auto it = states_.find(stateId);
+      VELOX_CHECK(
+          it != states_.end(),
+          "Checkpoint contains state '{}' which is not registered",
+          stateId);
+      VELOX_CHECK_EQ(
+          it->second->namespaceSchemaId(),
+          nsSchemaId,
+          "Namespace schema of state '{}' changed since the checkpoint",
+          stateId);
+      VELOX_CHECK_EQ(
+          it->second->valueSchemaId(),
+          valueSchemaId,
+          "Value schema of state '{}' changed since the checkpoint",
+          stateId);
+      stateIds.push_back(stateId);
+      statesById.push_back(it->second.get());
+    }
+    for (uint32_t id = 0; id < stateCount; ++id) {
+      VELOX_CHECK_EQ(
+          reader.readBytes(),
+          stateIds[id],
+          "Corrupt checkpoint: state blocks out of schema-table order");
+      const auto entryCount = reader.readInt32();
+      VELOX_CHECK_GE(entryCount, 0, "Corrupt checkpoint: negative entry count");
+      for (int32_t i = 0; i < entryCount; ++i) {
+        statesById[id]->readEntry(
+            reader, streamHeader.startKeyGroup, streamHeader.numKeyGroups);
+      }
+    }
+    VELOX_CHECK(reader.atEnd(), "Corrupt checkpoint: trailing bytes");
+  }
+
+ private:
+  static constexpr size_t kRestoreChunkBytes = 4096;
+
+  std::unique_ptr<KeyTable> keyTable_;
+  std::shared_ptr<RowContainerStateKeySerializer> keySerializer_;
+  const uint32_t maxParallelism_;
+  const uint32_t startKeyGroup_;
+  const uint32_t numKeyGroups_;
+  std::unordered_map<std::string, std::shared_ptr<ByteBufferAggregatingState>>
+      states_;
+};
+
+} // namespace facebook::velox::stateful
