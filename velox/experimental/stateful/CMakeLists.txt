@@ -38,6 +38,7 @@ velox_add_library(
   WindowAggregatorCountStar.cpp
   LocalWindowAggregator.cpp
   window/WindowSliceAssigner.cpp
+  WindowAggregatorHopMerge.cpp
   GroupWindowAggregator.cpp
   WatermarkGenerator.cpp
   WatermarkSource.cpp

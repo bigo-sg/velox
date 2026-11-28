@@ -37,6 +37,7 @@
 #include "velox/experimental/stateful/StreamElement.h"
 #include "velox/experimental/stateful/TimerHeapInternalTimer.h"
 #include "velox/experimental/stateful/Triggerable.h"
+#include "velox/experimental/stateful/WindowAggregatorHopMerge.h"
 #include "velox/experimental/stateful/state/HeapAggregatingState.h"
 #include "velox/experimental/stateful/state/HeapKeyedStateBackend.h"
 #include "velox/experimental/stateful/state/Namespace.h"
@@ -50,11 +51,13 @@ namespace facebook::velox::stateful {
 /// a trivially copyable snapshot of the RowContainerStateKey fields.
 struct WindowTimerKey;
 
-/// Streaming window TVF aggregation (TUMBLE) over the keyed state
+/// Streaming window TVF aggregation (TUMBLE / HOP) over the keyed state
 /// backend, the counterpart of Flink's WindowAggOperator +
-/// SliceWindowAggProcessor. HOP / SESSION / CUMULATE and the two-stage
-/// local-global split are planned follow-up PRs; the plan translation
-/// rejects them (see StatefulPlanner).
+/// SliceWindowAggProcessor. A HOP window's covered slices merge on the
+/// heap at fire time (fireHopWindow, Flink SharedSliceAssigner
+/// mergeSlices/expiredSlices/nextTriggerWindow). SESSION / CUMULATE and
+/// the two-stage local-global split are planned follow-up PRs; the plan
+/// translation rejects them (see StatefulPlanner).
 ///
 /// State model: AggregatingState<RowContainerStateKey, SliceEndNs> -
 /// the grouping key row is the key, the window slice end (Flink's Long
@@ -193,6 +196,12 @@ class WindowAggregator : public StatefulOperator,
       int64_t windowStart,
       int64_t windowEnd);
 
+  /// Fires one HOP window: heap-merges the covered slices' accumulators
+  /// into the first slice, emits, clears the first slice only, and chains
+  /// the next window (Flink SharedSliceAssigner#mergeSlices/expiredSlices/
+  /// nextTriggerWindow).
+  void fireHopWindow(const RowContainerStateKey& key, int64_t windowEnd);
+
   /// Emits the result row: [key columns, window_start, window_end, agg
   /// values] extracted from 'row'.
   void emitWindowResult(
@@ -213,6 +222,15 @@ class WindowAggregator : public StatefulOperator,
       char* stateRow,
       int64_t windowStart,
       int64_t windowEnd);
+
+  /// Flushes the timer registrations deferred during an event-time
+  /// dispatch (the HOP fire chain re-registers the next window from
+  /// onEventTime; the dispatch holds the Triggerable mutex, which a
+  /// std::mutex cannot re-enter), then re-advances the watermark once
+  /// so a chain entry that is already due fires in the same
+  /// processWatermark call (Flink's dispatch loop re-checks the queue
+  /// head the same way).
+  void flushPendingTimers(int64_t watermark);
 
   /// Processing-time mode only: (re-)arms the one-shot background wake-up
   /// timer at the proc-time fire-index head so the Java mailbox drains
@@ -260,6 +278,36 @@ class WindowAggregator : public StatefulOperator,
       stateHandle_;
   std::unique_ptr<InternalTimerService<WindowTimerKey, SliceEndNs>>
       timerService_;
+  /// Deferred (timer key, ns, due) registrations made during an
+  /// event-time dispatch (see registerFire); flushed under no lock.
+  std::vector<std::tuple<WindowTimerKey, SliceEndNs, int64_t>> pendingTimers_;
+  /// Windows fired in the current processWatermark pass (key row,
+  /// window end): the HOP fire chain defers its next-window
+  /// registration to the post-pass flush, by which time the next
+  /// window's own timer may already have been polled and fired in the
+  /// same pass - re-registering it would duplicate the fire (the
+  /// queue only deduplicates against pending entries). Flink's
+  /// dispatch loop instead re-checks the queue head, so its
+  /// registration deduplicates against the still-pending timer; the
+  /// fired set is the deferred-flush equivalent of that invariant.
+  std::set<std::pair<const char*, int64_t>> firedThisPass_;
+  /// True while an onEventTime dispatch is on the call stack.
+  bool inEventTimeDispatch_ = false;
+  /// Reads the slice row cache; nullptr means the slice has no live
+  /// state (the caller must treat it as an empty slice, never
+  /// materialize on this path).
+  char* lookupSliceRow(const char* keyRow, int64_t sliceEnd) {
+    auto it = sliceRowCache_.find({keyRow, sliceEnd});
+    return it == sliceRowCache_.end() ? nullptr : it->second;
+  }
+
+  /// Slice-level row cache: (key row, sliceEnd) -> the slice's
+  /// accumulator row, mirrored at every slice mutation (accumulate /
+  /// materialize / remove). The HOP fire path reads a window's
+  /// covered slices through this cache (an operator-owned replacement
+  /// for a read-only state get()); a miss means the slice has no live
+  /// state.
+  std::map<std::pair<const char*, int64_t>, char*> sliceRowCache_;
 
   /// Proc-time fire index (wake-up + task-thread firing only; see the
   /// class comment for why proc timers stay out of the framework's
@@ -321,6 +369,12 @@ class WindowAggregator : public StatefulOperator,
   /// int64 (SimpleNumericAggregate<bool, int64_t, int64_t>), so a raw
   /// read at this offset is the live count.
   int32_t countStarOffset_ = -1;
+
+  /// Batched HOP fire merge scratch (see WindowAggregatorHopMerge.h):
+  /// per-aggregate intermediate columns sized to the widest window's
+  /// covered-slice count, and the source row pointer gather.
+  std::vector<VectorPtr> hopMergeScratchColumns_;
+  std::vector<const char*> hopMergeScratchRows_;
 
   /// Reused single-argument vector for the per-aggregate merge call
   /// (see mergeRow; the restore path consumes the input

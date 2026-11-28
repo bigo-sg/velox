@@ -75,8 +75,12 @@ class WindowSliceAssigner {
   }
 
   /// The last window end owning the slice ending at 'sliceEnd'
-  /// (TUMBLE: the window itself; HOP and CUMULATE extend in their PRs).
+  /// (TUMBLE: the window itself; HOP: the slice belongs to windows up
+  /// to sliceEnd - sliceSize + size, Flink SliceAssigners).
   int64_t getLastWindowEnd(int64_t sliceEnd) {
+    if (windowType_ == WindowType::HOP) {
+      return sliceEnd - sliceSize_ + size_;
+    }
     return sliceEnd;
   }
 
