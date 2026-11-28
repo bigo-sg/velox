@@ -1,0 +1,146 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "velox/experimental/stateful/agg/AggregateInfos.h"
+
+#include "velox/core/Expressions.h"
+#include "velox/exec/Aggregate.h"
+#include "velox/expression/FunctionSignature.h"
+#include "velox/expression/SignatureBinder.h"
+
+namespace facebook::velox::stateful {
+
+namespace {
+
+// Resolves the signature-bound final result type of an aggregate call the
+// same way Aggregate::intermediateType resolves the intermediate type: the
+// first registered signature whose variables bind to argTypes decides.
+TypePtr resolveFinalResultType(
+    const std::string& name,
+    const std::vector<TypePtr>& argTypes) {
+  const auto signatures = exec::getAggregateFunctionSignatures(name);
+  VELOX_USER_CHECK(
+      signatures.has_value(), "Aggregate function not registered: {}", name);
+  for (const auto& signature : signatures.value()) {
+    exec::SignatureBinder binder(*signature, argTypes);
+    if (binder.tryBind()) {
+      auto type = binder.tryResolveReturnType();
+      VELOX_USER_CHECK(
+          type,
+          "Cannot resolve the final result type of aggregate function {}",
+          exec::toString(name, argTypes));
+      return type;
+    }
+  }
+  VELOX_USER_FAIL(
+      "Aggregate function signature is not supported: {}",
+      exec::toString(name, argTypes));
+}
+
+} // namespace
+
+std::vector<exec::AggregateInfo> makeAggregateInfos(
+    const std::vector<core::AggregationNode::Aggregate>& aggregates,
+    const RowTypePtr& inputType,
+    const RowTypePtr& outputType,
+    column_index_t numLeadingColumns,
+    const core::QueryConfig& queryConfig,
+    memory::MemoryPool* pool,
+    core::AggregationNode::Step step) {
+  std::vector<exec::AggregateInfo> infos;
+  infos.reserve(aggregates.size());
+  for (auto i = 0; i < aggregates.size(); ++i) {
+    const auto& aggregate = aggregates[i];
+    exec::AggregateInfo info;
+    if (step == core::AggregationNode::Step::kFinal) {
+      // The two-stage global side consumes the partial row [keys,
+      // intermediates, windowEnd]: each aggregate's input is its
+      // intermediate column at the fixed position ahead of the trailing
+      // windowEnd, merged via addIntermediateResults. The call's
+      // rawInputTypes still describe the ORIGINAL input (they drive the
+      // intermediate-type resolution below); the field-name resolution
+      // does not apply to the partial row.
+      info.inputs.push_back(static_cast<column_index_t>(
+          inputType->size() - aggregates.size() - 1 + i));
+      info.constantInputs.push_back(nullptr);
+      // The FINAL stage never re-applies filters: the local stage
+      // filtered its raw accumulation and the partial row carries no
+      // mask column (Flink two-phase semantics).
+    } else {
+      for (const auto& arg : aggregate.call->inputs()) {
+        if (auto field =
+                dynamic_cast<const core::FieldAccessTypedExpr*>(arg.get())) {
+          info.inputs.push_back(inputType->getChildIdx(field->name()));
+          info.constantInputs.push_back(nullptr);
+        } else if (
+            auto constant =
+                dynamic_cast<const core::ConstantTypedExpr*>(arg.get())) {
+          info.inputs.push_back(kConstantChannel);
+          info.constantInputs.push_back(constant->toConstantVector(pool));
+        } else {
+          VELOX_NYI("Unsupported aggregate argument: {}", arg->toString());
+        }
+      }
+    }
+    if (aggregate.mask && step != core::AggregationNode::Step::kFinal) {
+      auto maskField =
+          dynamic_cast<const core::FieldAccessTypedExpr*>(aggregate.mask.get());
+      VELOX_USER_CHECK(
+          maskField != nullptr,
+          "Only column-reference aggregation masks are supported, got: {}",
+          aggregate.mask->toString());
+      info.mask = inputType->getChildIdx(maskField->name());
+      VELOX_USER_CHECK_EQ(
+          inputType->childAt(*info.mask)->kind(),
+          TypeKind::BOOLEAN,
+          "Aggregation mask column '{}' must be BOOLEAN",
+          maskField->name());
+    }
+    VELOX_CHECK(
+        aggregate.sortingKeys.empty(),
+        "Sorted aggregates are not supported yet");
+    VELOX_CHECK(
+        !aggregate.distinct, "Distinct aggregates are not supported yet");
+    info.distinct = false;
+    info.intermediateType = exec::Aggregate::intermediateType(
+        aggregate.call->name(), aggregate.rawInputTypes);
+    // The declared output column must carry exactly the type the
+    // function's signature produces; a mismatch would otherwise surface
+    // later at value extraction without naming the function.
+    const auto& declaredResult = outputType->childAt(numLeadingColumns + i);
+    const auto signatureResult = step == core::AggregationNode::Step::kPartial
+        ? info.intermediateType
+        : resolveFinalResultType(
+              aggregate.call->name(), aggregate.rawInputTypes);
+    VELOX_USER_CHECK(
+        *signatureResult == *declaredResult,
+        "Aggregate function {} produces {}, but the declared output column "
+        "carries {}",
+        exec::toString(aggregate.call->name(), aggregate.rawInputTypes),
+        signatureResult->toString(),
+        declaredResult->toString());
+    info.function = exec::Aggregate::create(
+        aggregate.call->name(),
+        step,
+        aggregate.rawInputTypes,
+        outputType->childAt(numLeadingColumns + i),
+        queryConfig);
+    info.output = numLeadingColumns + i;
+    infos.emplace_back(std::move(info));
+  }
+  return infos;
+}
+
+} // namespace facebook::velox::stateful
