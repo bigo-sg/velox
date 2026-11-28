@@ -64,6 +64,7 @@
 #include "velox/experimental/stateful/rank/AppendOnlyTopNRanker.h"
 #include "velox/experimental/stateful/rank/RowTimeDeduplicateRanker.h"
 #include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
+#include "velox/experimental/stateful/window/TimeWindowUtil.h"
 
 namespace facebook::velox::stateful {
 
@@ -329,46 +330,45 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
           planNode.node());
   VELOX_CHECK(windowAggNode, "Failed to cast to StreamWindowAggregationNode");
 
-  auto op = transformOperator(windowAggNode->aggregation());
+  // TUMBLE / HOP in this PR: SESSION / CUMULATE (and the two-stage
+  // local-global split) are planned follow-ups; the operator itself
+  // also rejects them at initialize.
+  const auto windowType = Window::getType(windowAggNode->windowType());
+  VELOX_USER_CHECK(
+      windowType == WindowType::TUMBLE || windowType == WindowType::HOP,
+      "StreamWindowAggregation supports TUMBLE / HOP windows in this PR; "
+      "SESSION / CUMULATE and the two-stage split are planned follow-ups "
+      "(windowType={})",
+      windowAggNode->windowType());
 
-  std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
-      windowAggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
-  std::unique_ptr<KeySelector> keySelectorForSliceAssigner =
-      std::make_unique<KeySelector>(
-          windowAggNode->sliceAssignerSpec()->create(INT_MAX, true),
-          op->pool());
-  std::unique_ptr<SliceAssigner> sliceAssigner =
-      std::make_unique<SliceAssigner>(
-          std::move(keySelectorForSliceAssigner),
-          windowAggNode->size(),
-          windowAggNode->step(),
-          windowAggNode->offset(),
-          Window::getType(windowAggNode->windowType()),
-          windowAggNode->rowtimeIndex());
   if (windowAggNode->isLocalAgg()) {
+    // The local stage keys through its own probe-based key table (the
+    // deprecated partition()-based KeySelector merged distinct keys
+    // under hash collisions); only the slice assigner is shared with
+    // the plan.
+    std::unique_ptr<WindowSliceAssigner> sliceAssigner =
+        std::make_unique<WindowSliceAssigner>(
+            windowAggNode->size(),
+            windowAggNode->step(),
+            windowAggNode->offset(),
+            Window::getType(windowAggNode->windowType()),
+            windowAggNode->rowtimeIndex(),
+            WindowTimezoneUtil::locateTimeZone(windowAggNode->shiftTimeZone()));
     return std::make_unique<LocalWindowAggregator>(
-        std::move(op),
-        std::move(targets),
-        std::move(keySelector),
-        std::move(sliceAssigner),
-        windowAggNode->windowInterval(),
-        windowAggNode->useDayLightSaving(),
-        windowAggNode->outputType());
+        std::move(targets), std::move(sliceAssigner), windowAggNode, ctx_);
   } else {
-    auto localAggregator = windowAggNode->isEventTime()
-        ? transformOperator(windowAggNode->localAgg())
-        : nullptr;
-    return std::make_unique<WindowAggregator>(
-        windowAggNode->isEventTime() ? std::move(localAggregator) : nullptr,
-        std::move(op),
+    // The two-stage global node carries no localAgg (it IS the global
+    // side); the single-stage event-time node carries one from the
+    // legacy local-pre-aggregation design. transformOperator would
+    // dereference a null PlanNodePtr.
+    auto windowAggregator = std::make_unique<WindowAggregator>(
+        windowAggNode->isEventTime() && windowAggNode->localAgg()
+            ? transformOperator(windowAggNode->localAgg())
+            : nullptr,
         std::move(targets),
-        std::move(keySelector),
-        std::move(sliceAssigner),
-        windowAggNode->windowInterval(),
-        windowAggNode->useDayLightSaving(),
-        windowAggNode->isEventTime(),
-        windowAggNode->windowStartIndex(),
-        windowAggNode->windowEndIndex());
+        windowAggNode,
+        ctx_);
+    return windowAggregator;
   }
 }
 

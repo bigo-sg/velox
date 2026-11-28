@@ -303,11 +303,17 @@ const std::vector<core::PlanNodePtr>& StreamWindowAggregationNode::sources()
 folly::dynamic StreamWindowAggregationNode::serialize() const {
   auto obj = core::PlanNode::serialize();
   obj["aggregation"] = aggregation_->serialize();
-  obj["localAgg"] = localAgg_ ? localAgg_->serialize() : nullptr;
   obj["keySelectorSpec"] = keySelectorSpec_->serialize();
   obj["sliceAssignerSpec"] = sliceAssignerSpec_->serialize();
-  obj["windowInterval"] = windowInterval_;
-  obj["useDayLightSaving"] = useDayLightSaving_;
+  // The spec class carries no serde name tag; the Java-side polymorphic
+  // deserializer routes by "name", so inject it here (deserialize goes
+  // through the spec's own create() factory, which reads the two
+  // fields directly - the tag is opaque to the C++ side either way).
+  folly::dynamic specObj = keyedStateSpec_->serialize();
+  specObj["name"] = "KeyedStateSpec";
+  obj["keyedStateSpec"] = specObj;
+  obj["shiftTimeZone"] = shiftTimeZone_;
+  obj["localAgg"] = localAgg_ ? localAgg_->serialize() : nullptr;
   obj["isLocalAgg"] = isLocalAgg_;
   obj["size"] = size_;
   obj["step"] = step_;
@@ -325,8 +331,8 @@ void StreamWindowAggregationNode::addDetails(std::stringstream& stream) const {
   stream << "aggregation: " << aggregation_->toString();
   stream << ", keySelector: " << keySelectorSpec_->toString();
   stream << ", sliceAssigner: " << sliceAssignerSpec_->toString();
-  stream << ", windowType: " << windowType_;
   stream << ", isLocalAgg: " << isLocalAgg_;
+  stream << ", windowType: " << windowType_;
   stream << ", output: " << outputType_->toString();
 }
 
@@ -344,8 +350,18 @@ core::PlanNodePtr StreamWindowAggregationNode::create(
       ISerializable::deserialize<core::PartitionFunctionSpec>(
           obj["sliceAssignerSpec"], context);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
+  std::shared_ptr<const KeyedStateSpec> keyedStateSpec;
+  if (obj.count("keyedStateSpec") && !obj["keyedStateSpec"].isNull()) {
+    // The spec has no polymorphic serde name tag (the base class carries
+    // none); parse its two fields through the existing create() factory.
+    keyedStateSpec = KeyedStateSpec::create(obj["keyedStateSpec"], context);
+  }
+  std::string shiftTimeZone;
+  if (obj.count("shiftTimeZone") && !obj["shiftTimeZone"].isNull()) {
+    shiftTimeZone = obj["shiftTimeZone"].asString();
+  }
   std::shared_ptr<const core::AggregationNode> localAgg;
-  if (obj.count("localAgg")) {
+  if (obj.count("localAgg") && !obj["localAgg"].isNull()) {
     localAgg = ISerializable::deserialize<core::AggregationNode>(
         obj["localAgg"], context);
   }
@@ -355,8 +371,8 @@ core::PlanNodePtr StreamWindowAggregationNode::create(
       localAgg,
       keySelectorSpec,
       sliceAssignerSpec,
-      obj["windowInterval"].asInt(),
-      obj["useDayLightSaving"].asBool(),
+      keyedStateSpec,
+      shiftTimeZone,
       obj["isLocalAgg"].asBool(),
       obj["size"].asInt(),
       obj["step"].asInt(),
