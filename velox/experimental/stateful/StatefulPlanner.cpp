@@ -334,9 +334,11 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
   // also rejects them at initialize.
   const auto windowType = Window::getType(windowAggNode->windowType());
   VELOX_USER_CHECK(
-      windowType == WindowType::TUMBLE || windowType == WindowType::HOP,
-      "StreamWindowAggregation supports TUMBLE / HOP windows in this PR; "
-      "SESSION / CUMULATE and the two-stage split are planned follow-ups "
+      windowType == WindowType::TUMBLE || windowType == WindowType::HOP ||
+          windowType == WindowType::CUMULATIVE,
+      "StreamWindowAggregation supports TUMBLE / HOP / CUMULATE windows "
+      "in this PR; "
+      "SESSION and the two-stage split are planned follow-ups "
       "(windowType={})",
       windowAggNode->windowType());
 

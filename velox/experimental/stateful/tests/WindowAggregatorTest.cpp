@@ -358,6 +358,7 @@ class WindowAggregatorTest : public exec::test::OperatorTestBase {
   // type carries the trailing "$keyless_key" BIGINT column gluten adds.
   static constexpr int64_t kTumble = 1;
   static constexpr int64_t kHop = 0;
+  static constexpr int64_t kCumulative = 3;
 
   std::string nextNodeId() {
     return "node_" + std::to_string(nextNodeId_++);
@@ -977,20 +978,18 @@ TEST_F(WindowAggregatorTest, testNullRowtimeFailsLoud) {
   VELOX_ASSERT_THROW(aggregator->advance(), "RowTime field should not be null");
 }
 
-// L5 lifted for SESSION; CUMULATE stays deferred (preserved on the
-// TUMBLE-only in this PR: the other window types fail loud at
-// initialize (HOP / SESSION / CUMULATE and the two-stage split are
-// planned follow-ups; the planner rejects them at translation too).
+// SESSION is a planned follow-up PR: it fails loud at initialize (the
+// planner rejects it at translation too; HOP / CUMULATE are supported
+// in this PR).
 TEST_F(WindowAggregatorTest, testNonTumbleWindowTypesRejected) {
-  for (auto windowType :
-       std::vector<int64_t>{0 /* HOP */, 2 /* SESSION */, 3 /* CUMULATIVE */}) {
+  for (auto windowType : std::vector<int64_t>{2 /* SESSION */}) {
     auto node = makeNode({sumOfC()}, 5000, 0, windowType);
     std::vector<StatefulOperatorPtr> targets;
     targets.push_back(
         std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId()));
     auto aggregator = std::make_unique<WindowAggregator>(
         std::move(targets), node, driverCtx_.get());
-    VELOX_ASSERT_THROW(aggregator->initialize(), "follow-ups");
+    VELOX_ASSERT_THROW(aggregator->initialize(), "SESSION");
   }
 }
 
@@ -1209,6 +1208,176 @@ TEST_F(WindowAggregatorTest, testHopRequiresCountStar) {
       std::move(targets), node, driverCtx_.get());
   VELOX_ASSERT_THROW(
       aggregator->initialize(), "Hopping window requires a COUNT");
+}
+
+TEST_F(WindowAggregatorTest, testCumulateStepwiseEmission) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countStarOfC(), sumOfC()},
+          /*size=*/4000,
+          /*step=*/2000,
+          kCumulative),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1, 1}, {1000, 3000}, {10, 20}));
+  aggregator->advance();
+  aggregator->processWatermark(2000);
+  aggregator->processWatermark(4000);
+
+  ASSERT_EQ(capturePtr->records().size(), 2);
+  struct Expected {
+    int64_t start;
+    int64_t end;
+    int64_t count;
+    int64_t sum;
+  };
+  const std::vector<Expected> expected{{0, 2000, 1, 10}, {0, 4000, 2, 30}};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    auto out = capturePtr->records()[i];
+    ASSERT_EQ(out->size(), 1);
+    EXPECT_EQ(
+        out->childAt(1)->asFlatVector<Timestamp>()->valueAt(0),
+        Timestamp::fromMillis(expected[i].start))
+        << "window start at record " << i;
+    EXPECT_EQ(
+        out->childAt(2)->asFlatVector<Timestamp>()->valueAt(0),
+        Timestamp::fromMillis(expected[i].end))
+        << "window end at record " << i;
+    EXPECT_EQ(
+        out->childAt(3)->asFlatVector<int64_t>()->valueAt(0), expected[i].count)
+        << "window count at record " << i;
+    EXPECT_EQ(
+        out->childAt(4)->asFlatVector<int64_t>()->valueAt(0), expected[i].sum)
+        << "window sum at record " << i;
+  }
+}
+
+TEST_F(WindowAggregatorTest, testCumulateEmptyStepEmitsCarriedValue) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countStarOfC(), sumOfC()},
+          /*size=*/6000,
+          /*step=*/2000,
+          kCumulative),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1}, {1000}, {10}));
+  aggregator->advance();
+  aggregator->processWatermark(2000);
+  aggregator->processWatermark(4000);
+  aggregator->processWatermark(6000);
+
+  ASSERT_EQ(capturePtr->records().size(), 3);
+  const std::vector<int64_t> expectedEnds{2000, 4000, 6000};
+  const std::vector<int64_t> expectedSums{10, 10, 10};
+  for (size_t i = 0; i < 3; ++i) {
+    auto out = capturePtr->records()[i];
+    ASSERT_EQ(out->size(), 1);
+    EXPECT_EQ(
+        out->childAt(1)->asFlatVector<Timestamp>()->valueAt(0),
+        Timestamp::fromMillis(0))
+        << "window start at record " << i;
+    EXPECT_EQ(
+        out->childAt(2)->asFlatVector<Timestamp>()->valueAt(0),
+        Timestamp::fromMillis(expectedEnds[i]))
+        << "window end at record " << i;
+    EXPECT_EQ(
+        out->childAt(4)->asFlatVector<int64_t>()->valueAt(0), expectedSums[i])
+        << "window sum at record " << i;
+  }
+}
+
+TEST_F(WindowAggregatorTest, testCumulateEpochAlignedWindowStart) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countStarOfC(), sumOfC()},
+          /*size=*/4000,
+          /*step=*/2000,
+          kCumulative),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1, 1}, {-3000, -1000}, {1, 2}));
+  aggregator->advance();
+  // Fires the first step [-4000,-2000) of the group [-4000,0):
+  // windowEnd - size would give -6000.
+  aggregator->processWatermark(-1000);
+  aggregator->processWatermark(0);
+
+  ASSERT_EQ(capturePtr->records().size(), 2);
+  EXPECT_EQ(
+      capturePtr->records()[0]->childAt(1)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(-4000));
+  EXPECT_EQ(
+      capturePtr->records()[0]->childAt(2)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(-2000));
+  EXPECT_EQ(
+      capturePtr->records()[0]->childAt(4)->asFlatVector<int64_t>()->valueAt(0),
+      1);
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(1)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(-4000));
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(2)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(0));
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(4)->asFlatVector<int64_t>()->valueAt(0),
+      3);
+}
+
+TEST_F(WindowAggregatorTest, testCumulateThreeBranchCleanup) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode(
+          {countStarOfC(), sumOfC()},
+          /*size=*/6000,
+          /*step=*/2000,
+          kCumulative),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1, 1, 1}, {1000, 3000, 5000}, {1, 2, 3}));
+  aggregator->advance();
+  aggregator->processWatermark(2000);
+  aggregator->processWatermark(4000);
+  aggregator->processWatermark(6000);
+
+  ASSERT_EQ(capturePtr->records().size(), 3);
+  const std::vector<int64_t> expectedSums{1, 3, 6};
+  const std::vector<int64_t> expectedEnds{2000, 4000, 6000};
+  for (size_t i = 0; i < 3; ++i) {
+    EXPECT_EQ(
+        capturePtr->records()[i]
+            ->childAt(2)
+            ->asFlatVector<Timestamp>()
+            ->valueAt(0),
+        Timestamp::fromMillis(expectedEnds[i]));
+    EXPECT_EQ(
+        capturePtr->records()[i]->childAt(4)->asFlatVector<int64_t>()->valueAt(
+            0),
+        expectedSums[i]);
+  }
+
+  // The whole group fired: a late row of the group is dropped
+  // (getLastWindowEnd is the group end, not the slice end).
+  aggregator->addInput(windowRecord({1}, {1000}, {100}));
+  aggregator->advance();
+  EXPECT_EQ(aggregator->lateDroppedRows(), 1);
+  aggregator->processWatermark(8000);
+  EXPECT_EQ(capturePtr->records().size(), 3);
 }
 
 // Flink TimeWindowUtil DST semantics. Inputs are shifted (naive-UTC)

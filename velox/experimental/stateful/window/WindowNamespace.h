@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
 #include <cstdint>
@@ -28,8 +29,6 @@ namespace facebook::velox::stateful {
 
 /// Namespace for aligned windows (TUMBLE / HOP / CUMULATE): the window is
 /// identified by the slice-end epoch-millis, mirroring Flink's Long
-/// namespace for slicing window processors. Two slices are equal iff their
-/// sliceEnd values are equal.
 class SliceEndNs : public Namespace {
  public:
   explicit SliceEndNs(int64_t sliceEnd) : sliceEnd_(sliceEnd) {}
@@ -44,14 +43,12 @@ class SliceEndNs : public Namespace {
   }
 
   /// Value equality (timer infrastructure compares namespaces by
-  /// operator==, TimerHeapInternalTimer).
   bool operator==(const SliceEndNs& other) const {
     return sliceEnd_ == other.sliceEnd_;
   }
 
   uint64_t hash() const override {
     // Mix the full 64 bits into the (K, N) composite hash: a plain
-    // low-bits identity would collide with the key hash on every probe.
     uint64_t h = static_cast<uint64_t>(sliceEnd_);
     h ^= h >> 33;
     h *= 0xff51afd7ed558ccdULL;

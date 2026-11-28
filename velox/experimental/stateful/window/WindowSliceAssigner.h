@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
 #include <cstdint>
@@ -30,13 +31,9 @@ class time_zone;
 namespace facebook::velox::stateful {
 
 /// Zone-aware slice assigner owned by the window TVF aggregation
-/// operator: rows are reinterpreted in the shift time zone's wall clock
 /// before boundary alignment (Flink semantics), a null rowtime fails
 /// loud (Flink SliceAssigners#assignSliceEnd throws; silently dropping
-/// rows would under-count windows), and the slice size follows the
 /// Flink-per-window-type mapping (TUMBLE -> size, HOP -> gcd(size,
-/// step), CUMULATE -> step). The framework SliceAssigner stays
-/// untouched (still used by the legacy group-window operator).
 class WindowSliceAssigner {
  public:
   WindowSliceAssigner(
@@ -53,7 +50,6 @@ class WindowSliceAssigner {
         rowtimeIndex_(rowtimeIndex),
         shiftTimeZone_(shiftTimeZone) {
     // SliceSize per window type (matching Flink SliceAssigners):
-    // TUMBLE -> size, HOP -> gcd(size, step), CUMULATE -> step.
     switch (windowType_) {
       case WindowType::HOP:
         sliceSize_ = std::gcd(size_, step_);
@@ -71,15 +67,25 @@ class WindowSliceAssigner {
 
   /// The start of the window ending at 'windowEnd' (TUMBLE: end - size).
   int64_t getWindowStart(int64_t windowEnd) {
+    if (windowType_ == WindowType::CUMULATIVE) {
+      // Epoch-aligned group start on the maxSize grid; windowEnd - size
+      // is only correct at the last step (H4; Flink
+      return TimeWindowUtil::getWindowStartWithOffset(
+          windowEnd - 1, offset_, size_);
+    }
     return windowEnd - size_;
   }
 
   /// The last window end owning the slice ending at 'sliceEnd'
-  /// (TUMBLE: the window itself; HOP: the slice belongs to windows up
   /// to sliceEnd - sliceSize + size, Flink SliceAssigners).
   int64_t getLastWindowEnd(int64_t sliceEnd) {
     if (windowType_ == WindowType::HOP) {
       return sliceEnd - sliceSize_ + size_;
+    }
+    if (windowType_ == WindowType::CUMULATIVE) {
+      // A step slice is owned by every cumulative window of its group
+      // from its own step to the group end (Flink
+      return getWindowStart(sliceEnd) + size_;
     }
     return sliceEnd;
   }
