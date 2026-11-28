@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include "velox/experimental/stateful/window/WindowSliceAssigner.h"
 
 #include <numeric>
@@ -68,8 +69,6 @@ std::map<int64_t, RowVectorPtr> WindowSliceAssigner::assignSliceEnd(
   if (rowtimeIndex_ < 0) {
     // Processing-time windows: the whole batch shares the batch-arrival
     // wall-clock instant (Flink assigns per element, which is
-    // equivalent for a batch that arrives at one instant), aligned in
-    // the shift time zone like event time.
     const int64_t now = WindowTimezoneUtil::getCurrentProcessingTime();
     const int64_t utcTimestamp =
         WindowTimezoneUtil::toUtcTimestampMills(now, shiftTimeZone_);
@@ -101,7 +100,6 @@ std::map<int64_t, RowVectorPtr> WindowSliceAssigner::assignSliceEnd(
   std::unordered_map<int64_t, std::vector<vector_size_t>> groups;
   for (vector_size_t i = 0; i < numRows; ++i) {
     // Flink throws on a null rowtime (SliceAssigners#assignSliceEnd);
-    // silently dropping rows would under-count windows.
     VELOX_CHECK(!isNullAtRow(i), "RowTime field should not be null");
     const int64_t timestampMs = timestampMillisAt(i);
     const int64_t utcTimestamp =

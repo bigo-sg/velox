@@ -305,7 +305,13 @@ folly::dynamic StreamWindowAggregationNode::serialize() const {
   obj["aggregation"] = aggregation_->serialize();
   obj["keySelectorSpec"] = keySelectorSpec_->serialize();
   obj["sliceAssignerSpec"] = sliceAssignerSpec_->serialize();
-  obj["keyedStateSpec"] = keyedStateSpec_->serialize();
+  // The spec class carries no serde name tag; the Java-side polymorphic
+  // deserializer routes by "name", so inject it here (deserialize goes
+  // through the spec's own create() factory, which reads the two
+  // fields directly - the tag is opaque to the C++ side either way).
+  folly::dynamic specObj = keyedStateSpec_->serialize();
+  specObj["name"] = "KeyedStateSpec";
+  obj["keyedStateSpec"] = specObj;
   obj["shiftTimeZone"] = shiftTimeZone_;
   obj["size"] = size_;
   obj["step"] = step_;

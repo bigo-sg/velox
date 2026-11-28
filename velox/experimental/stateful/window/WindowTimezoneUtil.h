@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
 #include <chrono>
@@ -33,9 +34,6 @@ using Millis = std::chrono::milliseconds;
 
 // The instant of a local wall clock per java.time ZonedDateTime semantics
 // (Flink's LocalDateTime.atZone): an ambiguous wall clock resolves to the
-// FIRST (earlier) occurrence - the pre-transition offset; a nonexistent
-// one (DST gap) is shifted forward by the gap, which nets to the same
-// pre-transition offset: (lt + gap) - offsetAfter == lt - offsetBefore.
 inline int64_t localToInstantMillis(
     const date::local_time<wtutil::Millis>& lt,
     const tzdb::time_zone* zone) {
@@ -46,15 +44,11 @@ inline int64_t localToInstantMillis(
 } // namespace wtutil
 
 /// Zone-aware window math for the window TVF aggregation operator.
-/// Operator-owned (the framework TimeWindowUtil stays untouched); mirrors
 /// Flink TimeWindowUtil function for function, including the DST gap and
 /// overlap handling (the DST unit tests pin Flink's javadoc example
-/// values).
 class WindowTimezoneUtil {
  public:
   /// Flink TimeWindowUtil#locateTimeZone: "" and "UTC" mean no shift
-  /// (nullptr keeps the zone-aware overloads identity); unknown names
-  /// fail loud.
   static const tzdb::time_zone* locateTimeZone(const std::string& name) {
     if (name.empty() || name == "UTC") {
       return nullptr; // Identity: window math runs in plain UTC millis.
@@ -67,8 +61,6 @@ class WindowTimezoneUtil {
   }
 
   /// Flink TimeWindowUtil#toUtcTimestampMills: reinterpret the
-  /// zone-local wall clock of 'epochMillis' as UTC epoch millis
-  /// (input-side shift before window alignment).
   static int64_t toUtcTimestampMills(
       int64_t epochMillis,
       const tzdb::time_zone* zone) {
@@ -82,11 +74,7 @@ class WindowTimezoneUtil {
   }
 
   /// Flink TimeWindowUtil#toEpochMillsForTimer (zone-aware): the epoch
-  /// millis to register a timer at. DST gap -> the wall-clock hour
-  /// covers zero real time, floor the gap-shifted instant to the hour
   /// boundary (Flink's truncated %); DST overlap -> one wall-clock hour
-  /// spans two real hours, take the later epoch so both hours of data
-  /// fire properly.
   static int64_t toEpochMillsForTimer(
       int64_t utcTimestampMillis,
       const tzdb::time_zone* zone) {

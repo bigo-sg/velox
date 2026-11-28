@@ -16,6 +16,8 @@
 
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include "velox/exec/HashPartitionFunction.h"
+#include "velox/experimental/stateful/WindowAggregatorHopMerge.h"
+#include "velox/experimental/stateful/window/WindowPartitionFunction.h"
 
 #include <folly/init/Init.h>
 #include <gtest/gtest.h>
@@ -355,6 +357,7 @@ class WindowAggregatorTest : public exec::test::OperatorTestBase {
   // The keyless runtime batch: ROW<k, ts, c> while the declared input
   // type carries the trailing "$keyless_key" BIGINT column gluten adds.
   static constexpr int64_t kTumble = 1;
+  static constexpr int64_t kHop = 0;
 
   std::string nextNodeId() {
     return "node_" + std::to_string(nextNodeId_++);
@@ -979,15 +982,14 @@ TEST_F(WindowAggregatorTest, testNullRowtimeFailsLoud) {
 // initialize (HOP / SESSION / CUMULATE and the two-stage split are
 // planned follow-ups; the planner rejects them at translation too).
 TEST_F(WindowAggregatorTest, testNonTumbleWindowTypesRejected) {
-  for (auto windowType :
-       std::vector<int64_t>{0 /* HOP */, 2 /* SESSION */, 3 /* CUMULATIVE */}) {
+  for (auto windowType : std::vector<int64_t>{2 /* SESSION */}) {
     auto node = makeNode({sumOfC()}, 5000, 0, windowType);
     std::vector<StatefulOperatorPtr> targets;
     targets.push_back(
         std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId()));
     auto aggregator = std::make_unique<WindowAggregator>(
         std::move(targets), node, driverCtx_.get());
-    VELOX_ASSERT_THROW(aggregator->initialize(), "TUMBLE");
+    VELOX_ASSERT_THROW(aggregator->initialize(), "SESSION");
   }
 }
 
@@ -1049,6 +1051,164 @@ TEST_F(WindowAggregatorTest, testNamespaceSerdeRoundTrip) {
 }
 
 } // namespace
+
+TEST_F(WindowAggregatorTest, testHopMultiSliceMerge) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode({countStarOfC(), sumOfC()}, /*size=*/4000, /*step=*/2000, kHop),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1, 1}, {1000, 3000}, {10, 20}));
+  aggregator->advance();
+  aggregator->processWatermark(2000);
+  aggregator->processWatermark(4000);
+  aggregator->processWatermark(6000);
+  aggregator->processWatermark(8000);
+
+  ASSERT_EQ(capturePtr->records().size(), 3);
+  struct Expected {
+    int64_t start;
+    int64_t end;
+    int64_t sum;
+  };
+  const std::vector<Expected> expected{
+      {-2000, 2000, 10}, {0, 4000, 30}, {2000, 6000, 20}};
+  const std::vector<int64_t> expectedCount{1, 2, 1};
+  for (size_t i = 0; i < expected.size(); ++i) {
+    auto out = capturePtr->records()[i];
+    ASSERT_EQ(out->size(), 1);
+    EXPECT_EQ(
+        out->childAt(1)->asFlatVector<Timestamp>()->valueAt(0),
+        Timestamp::fromMillis(expected[i].start))
+        << "window start at record " << i;
+    EXPECT_EQ(
+        out->childAt(2)->asFlatVector<Timestamp>()->valueAt(0),
+        Timestamp::fromMillis(expected[i].end))
+        << "window end at record " << i;
+    EXPECT_EQ(
+        out->childAt(3)->asFlatVector<int64_t>()->valueAt(0), expectedCount[i])
+        << "window count at record " << i;
+    EXPECT_EQ(
+        out->childAt(4)->asFlatVector<int64_t>()->valueAt(0), expected[i].sum)
+        << "window sum at record " << i;
+  }
+}
+
+TEST_F(WindowAggregatorTest, testHopBatchedMergeWideWindow) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode({countStarOfC(), sumOfC()}, /*size=*/12000, /*step=*/2000, kHop),
+      std::move(capture));
+
+  // One row per covered slice of [0,12000): slices end at
+  // 2000..12000, prices 2..12 - the window sum folds all of them.
+  aggregator->addInput(windowRecord(
+      {1, 1, 1, 1, 1, 1},
+      {1000, 3000, 5000, 7000, 9000, 11000},
+      {2, 4, 6, 8, 10, 12}));
+  aggregator->advance();
+  // Earlier windows fire along the way; drive past the wide window.
+  for (int64_t wm = 2000; wm <= 14000; wm += 2000) {
+    aggregator->processWatermark(wm);
+  }
+
+  int64_t sawWide = false;
+  for (const auto& out : capturePtr->records()) {
+    const auto start =
+        out->childAt(1)->asFlatVector<Timestamp>()->valueAt(0).toMillis();
+    const auto end =
+        out->childAt(2)->asFlatVector<Timestamp>()->valueAt(0).toMillis();
+    if (start == 0 && end == 12000) {
+      sawWide = true;
+      EXPECT_EQ(out->childAt(3)->asFlatVector<int64_t>()->valueAt(0), 6);
+      EXPECT_EQ(out->childAt(4)->asFlatVector<int64_t>()->valueAt(0), 42);
+    }
+  }
+  EXPECT_TRUE(sawWide) << "the [0,12000) window must fire";
+  aggregator->close();
+}
+
+TEST_F(WindowAggregatorTest, testHopChainContinuationFromFirstSliceOnly) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode({countStarOfC(), sumOfC()}, 4000, 2000, kHop),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1}, {1000}, {10}));
+  aggregator->advance();
+  aggregator->processWatermark(2000);
+  aggregator->processWatermark(4000);
+  aggregator->processWatermark(8000);
+
+  // [-2000,2000) fires from the only slice; [0,4000) fires through the
+  // chain with the SAME slice's data; [4000,...) has nothing and the
+  // chain stops - no phantom emissions.
+  ASSERT_EQ(capturePtr->records().size(), 2);
+  EXPECT_EQ(
+      capturePtr->records()[0]->childAt(4)->asFlatVector<int64_t>()->valueAt(0),
+      10);
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(4)->asFlatVector<int64_t>()->valueAt(0),
+      10);
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(1)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(0));
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(2)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(4000));
+}
+
+TEST_F(WindowAggregatorTest, testHopLatePartialAccumulatesIntoUnfiredWindow) {
+  auto capture =
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId());
+  auto* capturePtr = capture.get();
+  auto aggregator = makeAggregator(
+      makeNode({countStarOfC(), sumOfC()}, 4000, 2000, kHop),
+      std::move(capture));
+
+  aggregator->addInput(windowRecord({1}, {1000}, {10}));
+  aggregator->advance();
+  // Fires window [-2000,2000) only; currentProgress = 2.
+  aggregator->processWatermark(2000);
+
+  // ts=1500: slice [0,2000) has fired, but its last owning window
+  // [0,4000) has not: the row lands in that window.
+  aggregator->addInput(windowRecord({1}, {1500}, {5}));
+  aggregator->advance();
+  EXPECT_EQ(aggregator->lateDroppedRows(), 0);
+
+  aggregator->processWatermark(4000);
+  ASSERT_EQ(capturePtr->records().size(), 2);
+  EXPECT_EQ(
+      capturePtr->records()[0]->childAt(4)->asFlatVector<int64_t>()->valueAt(0),
+      10);
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(4)->asFlatVector<int64_t>()->valueAt(0),
+      15);
+  EXPECT_EQ(
+      capturePtr->records()[1]->childAt(1)->asFlatVector<Timestamp>()->valueAt(
+          0),
+      Timestamp::fromMillis(0));
+}
+
+TEST_F(WindowAggregatorTest, testHopRequiresCountStar) {
+  auto node = makeNode({sumOfC()}, 4000, 2000, kHop);
+  std::vector<StatefulOperatorPtr> targets;
+  targets.push_back(
+      std::make_unique<CaptureTarget>(driverCtx_.get(), nextNodeId()));
+  auto aggregator = std::make_unique<WindowAggregator>(
+      std::move(targets), node, driverCtx_.get());
+  VELOX_ASSERT_THROW(
+      aggregator->initialize(), "Hopping window requires a COUNT");
+}
 
 // Flink TimeWindowUtil DST semantics. Inputs are shifted (naive-UTC)
 // wall clocks; outputs are real UTC instants (comparable against raw
