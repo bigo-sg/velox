@@ -50,11 +50,14 @@ namespace facebook::velox::stateful {
 /// a trivially copyable snapshot of the RowContainerStateKey fields.
 struct WindowTimerKey;
 
-/// Streaming window TVF aggregation (TUMBLE) over the keyed state
-/// backend, the counterpart of Flink's WindowAggOperator +
-/// SliceWindowAggProcessor. HOP / SESSION / CUMULATE and the two-stage
-/// local-global split are planned follow-up PRs; the plan translation
-/// rejects them (see StatefulPlanner).
+/// Streaming window TVF aggregation (TUMBLE / SESSION) over the keyed
+/// state backend, the counterpart of Flink's WindowAggOperator +
+/// SliceWindowAggProcessor / UnsliceWindowAggProcessor. SESSION windows
+/// merge per-row [ts, ts+gap) covers through the persistent
+/// actual-window -> state-window mapping (Flink MergingWindowSet); the
+/// merged window's start rides the TimeWindowNs timer namespace. HOP /
+/// CUMULATE and the two-stage local-global split are planned follow-up
+/// PRs; the plan translation rejects them (see StatefulPlanner).
 ///
 /// State model: AggregatingState<RowContainerStateKey, SliceEndNs> -
 /// the grouping key row is the key, the window slice end (Flink's Long
@@ -90,7 +93,8 @@ struct WindowTimerKey;
 /// (the keyed state backend requires at least one key channel; empty-key
 /// support is a planned follow-up).
 class WindowAggregator : public StatefulOperator,
-                         public Triggerable<WindowTimerKey, SliceEndNs> {
+                         public Triggerable<WindowTimerKey, SliceEndNs>,
+                         public Triggerable<WindowTimerKey, TimeWindowNs> {
  public:
   WindowAggregator(
       std::vector<StatefulOperatorPtr> targets,
@@ -131,6 +135,12 @@ class WindowAggregator : public StatefulOperator,
   void onEventTime(
       std::shared_ptr<TimerHeapInternalTimer<WindowTimerKey, SliceEndNs>> timer)
       override;
+
+  /// SESSION event-time dispatch: the timer namespace carries the merged
+  /// window's [start, end).
+  void onEventTime(
+      std::shared_ptr<TimerHeapInternalTimer<WindowTimerKey, TimeWindowNs>>
+          timer) override;
 
   /// Processing-time trigger: fires all proc-time windows whose dueTs <=
   /// timestamp, deduplicated by lastTriggeredProcessingTime_. Called
@@ -185,6 +195,32 @@ class WindowAggregator : public StatefulOperator,
   /// (Event-time fires dispatch through the InternalTimerService in
   /// processWatermark -> advanceWatermark -> onEventTime.)
   void fireDue(int64_t progress);
+
+  /// SESSION advance: per row opens [ts, ts+gap), merges intersecting
+  /// in-flight windows (accumulators pinned to the surviving state
+  /// window, Flink MergingWindowSet), accumulates into that state
+  /// window and re-hangs the window timer to the merged window end
+  /// (Flink UnsliceWindowAggProcessor#processElement).
+  void advanceSession();
+
+  /// Fires one merged session window [windowStart, windowEnd): resolves
+  /// the state window through the persistent mapping (a miss is a stale
+  /// registration - merged-away or retired - and fires nothing), emits
+  /// from the state window's accumulator, then clears the accumulator
+  /// and retires the mapping entry (Flink cleanWindowIfNeeded).
+  void fireSessionWindow(
+      const RowContainerStateKey& key,
+      int64_t windowStart,
+      int64_t windowEnd);
+
+  /// Removes the (key, [start, end)) SESSION window timer - the merge
+  /// path's timer re-hang (Flink clears the merged-away windows'
+  /// triggers in the merge callback,
+  /// MergingWindowProcessFunction.java:178-182).
+  void unregisterSessionFire(
+      const RowContainerStateKey& key,
+      int64_t windowStart,
+      int64_t windowEnd);
 
   /// Fires one (key, windowEnd) window: reads the accumulator
   /// read-only, emits the result row (+I), clears the window state.
@@ -260,6 +296,9 @@ class WindowAggregator : public StatefulOperator,
       stateHandle_;
   std::unique_ptr<InternalTimerService<WindowTimerKey, SliceEndNs>>
       timerService_;
+  /// SESSION only: timers over the merged-window namespace.
+  std::unique_ptr<InternalTimerService<WindowTimerKey, TimeWindowNs>>
+      sessionTimerService_;
 
   /// Proc-time fire index (wake-up + task-thread firing only; see the
   /// class comment for why proc timers stay out of the framework's
@@ -322,10 +361,45 @@ class WindowAggregator : public StatefulOperator,
   /// read at this offset is the live count.
   int32_t countStarOffset_ = -1;
 
+  /// Merges one source accumulator row into a target accumulator row via
+  /// the intermediate (extractAccumulators -> addSingleGroupIntermediate
+  /// Results) path; the source row is left untouched. Used by the
+  /// SESSION merge (operator-owned; the HOP path uses the batched
+  /// mergeAccumulatorRowsBatch instead).
+  void mergeAccumulatorRows(char* targetRow, char* sourceRow);
+
+  /// Lazily-built single-row intermediate columns backing
+  /// mergeAccumulatorRows (the SESSION merge); one column per aggregate.
+  std::vector<VectorPtr> mergeScratchColumns_;
+
   /// Reused single-argument vector for the per-aggregate merge call
   /// (see mergeRow; the restore path consumes the input
   /// synchronously).
   std::vector<VectorPtr> singleIntermediateArg_{1};
+
+  /// SESSION only: accumulators keyed by the pinned state-window
+  /// namespace (Flink MergingWindowSet's "state window"); null for the
+  /// aligned types, which use state_.
+  HeapAggregatingState<RowContainerStateKey, TimeWindowNs>* sessionState_ =
+      nullptr;
+  /// Ownership of sessionState_.
+  std::shared_ptr<AggregatingState<RowContainerStateKey, TimeWindowNs>>
+      sessionStateHandle_;
+
+  /// SESSION only: the persistent actual-window -> state-window mapping
+  /// (Flink's "session-window-mapping" MapState; the in-flight window
+  /// set is rebuilt from it per key per batch). Null for the aligned
+  /// types.
+  std::shared_ptr<
+      MapState<RowContainerStateKey, SliceEndNs, TimeWindowNs, TimeWindowNs>>
+      mappingState_;
+
+  /// SESSION only: (key row, start, end) -> the state window's
+  /// accumulator row, mirrored at every session state mutation
+  /// (row()/remove()); read-only peeks in the merge and fire paths go
+  /// through this cache, keeping the framework HeapAggregatingState
+  /// untouched except for forEachEntry.
+  std::map<std::tuple<const char*, int64_t, int64_t>, char*> sessionRowCache_;
 
   static constexpr vector_size_t kZeroIndex = 0;
 };
