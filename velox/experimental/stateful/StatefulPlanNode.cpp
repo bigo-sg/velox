@@ -377,11 +377,18 @@ const std::vector<core::PlanNodePtr>& GroupWindowAggsHandlerNode::sources()
 folly::dynamic GroupWindowAggsHandlerNode::serialize() const {
   auto obj = core::PlanNode::serialize();
   obj["outputType"] = outputType_->serialize();
+  obj["aggregates"] = folly::dynamic::array;
+  for (const auto& aggregate : aggregates_) {
+    obj["aggregates"].push_back(aggregate.serialize());
+  }
+  obj["countStarIndex"] = countStarIndex_;
   return obj;
 }
 
 void GroupWindowAggsHandlerNode::addDetails(std::stringstream& stream) const {
   stream << "output: " << outputType_->toString();
+  stream << ", countStarIndex: " << countStarIndex_;
+  stream << ", aggregates: " << aggregates_.size();
 }
 
 // static
@@ -390,8 +397,16 @@ core::PlanNodePtr GroupWindowAggsHandlerNode::create(
     void* context) {
   auto planNodeId = obj["id"].asString();
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
+  std::vector<core::AggregationNode::Aggregate> aggregates;
+  for (const auto& aggregate : obj["aggregates"]) {
+    aggregates.push_back(
+        core::AggregationNode::Aggregate::deserialize(aggregate, context));
+  }
   return std::make_shared<const GroupWindowAggsHandlerNode>(
-      planNodeId, outputType);
+      planNodeId,
+      outputType,
+      std::move(aggregates),
+      static_cast<int32_t>(obj["countStarIndex"].asInt()));
 }
 
 const std::vector<core::PlanNodePtr>& GroupWindowAggregationNode::sources()
@@ -402,22 +417,33 @@ const std::vector<core::PlanNodePtr>& GroupWindowAggregationNode::sources()
 folly::dynamic GroupWindowAggregationNode::serialize() const {
   auto obj = core::PlanNode::serialize();
   obj["aggregation"] = aggregation_->serialize();
-  obj["keySelectorSpec"] = keySelectorSpec_->serialize();
-  obj["sliceAssignerSpec"] = sliceAssignerSpec_->serialize();
+  // KeyedStateSpec::serialize() writes no name field; the deserializer
+  // dispatches on obj["name"], so stamp the registry name here.
+  auto specObj = keyedStateSpec_->serialize();
+  specObj["name"] = "KeyedStateSpec";
+  obj["keyedStateSpec"] = std::move(specObj);
+  obj["inputType"] = inputType_->serialize();
   obj["allowedLateness"] = allowedLateness_;
   obj["produceUpdates"] = produceUpdates_;
   obj["rowtimeIndex"] = rowtimeIndex_;
   obj["isEventTime"] = isEventTime_;
   obj["windowType"] = windowType_;
+  obj["gap"] = gap_;
+  obj["size"] = size_;
+  obj["slide"] = slide_;
+  obj["windowStartIndex"] = windowStartIndex_;
+  obj["windowEndIndex"] = windowEndIndex_;
   obj["outputType"] = outputType_->serialize();
   return obj;
 }
 
 void GroupWindowAggregationNode::addDetails(std::stringstream& stream) const {
   stream << "aggregation: " << aggregation_->toString();
-  stream << ", keySelector: " << keySelectorSpec_->toString();
-  stream << ", sliceAssigner: " << sliceAssignerSpec_->toString();
+  stream << ", keyChannels: " << keyedStateSpec_->keyChannels().size();
   stream << ", windowType: " << windowType_;
+  stream << ", gap: " << gap_;
+  stream << ", size: " << size_;
+  stream << ", slide: " << slide_;
   stream << ", output: " << outputType_->toString();
 }
 
@@ -428,23 +454,25 @@ core::PlanNodePtr GroupWindowAggregationNode::create(
   auto planNodeId = obj["id"].asString();
   auto aggregation = ISerializable::deserialize<GroupWindowAggsHandlerNode>(
       obj["aggregation"], context);
-  auto keySelectorSpec =
-      ISerializable::deserialize<core::PartitionFunctionSpec>(
-          obj["keySelectorSpec"], context);
-  auto sliceAssignerSpec =
-      ISerializable::deserialize<core::PartitionFunctionSpec>(
-          obj["sliceAssignerSpec"], context);
+  auto keyedStateSpec =
+      ISerializable::deserialize<KeyedStateSpec>(obj["keyedStateSpec"]);
+  auto inputType = ISerializable::deserialize<RowType>(obj["inputType"]);
   auto outputType = ISerializable::deserialize<RowType>(obj["outputType"]);
   return std::make_shared<const GroupWindowAggregationNode>(
       planNodeId,
       aggregation,
-      keySelectorSpec,
-      sliceAssignerSpec,
+      keyedStateSpec,
+      std::move(inputType),
       obj["allowedLateness"].asInt(),
       obj["produceUpdates"].asBool(),
       obj["rowtimeIndex"].asInt(),
       obj["isEventTime"].asBool(),
       obj["windowType"].asInt(),
+      obj["gap"].asInt(),
+      obj["size"].asInt(),
+      obj["slide"].asInt(),
+      obj["windowStartIndex"].asInt(),
+      obj["windowEndIndex"].asInt(),
       outputType);
 }
 

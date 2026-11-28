@@ -18,6 +18,7 @@
 
 #include "velox/experimental/stateful/state/State.h"
 #include "velox/experimental/stateful/state/StateDescriptor.h"
+#include "velox/experimental/stateful/state/StateKey.h"
 #include "velox/experimental/stateful/window/Window.h"
 #include "velox/vector/ComplexVector.h"
 
@@ -31,7 +32,7 @@ class WindowTrigger {
   virtual void open(std::shared_ptr<TriggerContext> ctx) = 0;
 
   virtual bool onElement(
-      uint32_t key,
+      const RowContainerStateKey& key,
       RowVectorPtr element,
       int64_t timestamp,
       TimeWindow window) = 0;
@@ -46,11 +47,11 @@ class WindowTrigger {
 
   // Use TriggerContext instead of OnMergeContext.
   virtual void onMerge(
-      uint32_t key,
+      const RowContainerStateKey& key,
       TimeWindow window,
       std::shared_ptr<TriggerContext> mergeContext) = 0;
 
-  virtual void clear(uint32_t key, TimeWindow window) = 0;
+  virtual void clear(const RowContainerStateKey& key, TimeWindow window) = 0;
 
   virtual int64_t triggerTime(TimeWindow window);
 
@@ -63,7 +64,7 @@ class AfterEndOfWindow : public WindowTrigger {
   void open(std::shared_ptr<TriggerContext> ctx);
 
   bool onElement(
-      uint32_t key,
+      const RowContainerStateKey& key,
       RowVectorPtr element,
       int64_t timestamp,
       TimeWindow window) override;
@@ -72,12 +73,12 @@ class AfterEndOfWindow : public WindowTrigger {
 
   bool onEventTime(TimeWindow window, int64_t time) override;
 
-  void clear(uint32_t key, TimeWindow window) override;
+  void clear(const RowContainerStateKey& key, TimeWindow window) override;
 
   bool canMerge() override;
 
   void onMerge(
-      uint32_t key,
+      const RowContainerStateKey& key,
       TimeWindow window,
       std::shared_ptr<TriggerContext> mergeContext) override;
 };
@@ -87,7 +88,7 @@ class TriggerContext : public std::enable_shared_from_this<TriggerContext> {
   virtual void open() = 0;
 
   virtual bool onElement(
-      uint32_t key,
+      const RowContainerStateKey& key,
       RowVectorPtr row,
       int64_t timestamp,
       TimeWindow window) = 0;
@@ -96,7 +97,7 @@ class TriggerContext : public std::enable_shared_from_this<TriggerContext> {
 
   virtual bool onEventTime(TimeWindow window, int64_t time) = 0;
 
-  virtual void onMerge(uint32_t key, TimeWindow window) = 0;
+  virtual void onMerge(const RowContainerStateKey& key, TimeWindow window) = 0;
 
   virtual int64_t getCurrentProcessingTime() = 0;
 
@@ -105,22 +106,28 @@ class TriggerContext : public std::enable_shared_from_this<TriggerContext> {
   // TODO: support it
   // MetricGroup getMetricGroup()
   virtual void registerProcessingTimeTimer(
-      uint32_t key,
+      const RowContainerStateKey& key,
       TimeWindow window,
       int64_t time) = 0;
 
-  virtual void
-  registerEventTimeTimer(uint32_t key, TimeWindow window, int64_t time) = 0;
+  virtual void registerEventTimeTimer(
+      const RowContainerStateKey& key,
+      TimeWindow window,
+      int64_t time) = 0;
 
-  virtual void
-  deleteProcessingTimeTimer(uint32_t key, TimeWindow window, int64_t time) = 0;
+  virtual void deleteProcessingTimeTimer(
+      const RowContainerStateKey& key,
+      TimeWindow window,
+      int64_t time) = 0;
 
-  virtual void
-  deleteEventTimeTimer(uint32_t key, TimeWindow window, int64_t time) = 0;
+  virtual void deleteEventTimeTimer(
+      const RowContainerStateKey& key,
+      TimeWindow window,
+      int64_t time) = 0;
 
   virtual int getShiftTimeZone() = 0;
 
-  virtual void clear(uint32_t key, TimeWindow window) = 0;
+  virtual void clear(const RowContainerStateKey& key, TimeWindow window) = 0;
 
   virtual StatePtr getPartitionedState(StateDescriptor& stateDescriptor) = 0;
 

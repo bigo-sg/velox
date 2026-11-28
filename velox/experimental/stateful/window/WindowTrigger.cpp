@@ -29,7 +29,7 @@ void AfterEndOfWindow::open(std::shared_ptr<TriggerContext> ctx) {
 }
 
 bool AfterEndOfWindow::onElement(
-    uint32_t key,
+    const RowContainerStateKey& key,
     RowVectorPtr element,
     int64_t timestamp,
     TimeWindow window) {
@@ -50,7 +50,9 @@ bool AfterEndOfWindow::onEventTime(TimeWindow window, int64_t time) {
   return time == triggerTime(window);
 }
 
-void AfterEndOfWindow::clear(uint32_t key, TimeWindow window) {
+void AfterEndOfWindow::clear(
+    const RowContainerStateKey& key,
+    TimeWindow window) {
   ctx_->deleteEventTimeTimer(key, window, triggerTime(window));
 }
 
@@ -59,7 +61,7 @@ bool AfterEndOfWindow::canMerge() {
 }
 
 void AfterEndOfWindow::onMerge(
-    uint32_t key,
+    const RowContainerStateKey& key,
     TimeWindow window,
     std::shared_ptr<TriggerContext> mergeContext) {
   ctx_->registerEventTimeTimer(key, window, triggerTime(window));

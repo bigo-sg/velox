@@ -15,30 +15,30 @@
  */
 #include "velox/experimental/stateful/window/WindowProcessFunction.h"
 #include <cstdint>
+#include "velox/experimental/stateful/window/GroupWindowAggsHandler.h"
 #include "velox/experimental/stateful/window/MergingWindowSet.h"
 
 namespace facebook::velox::stateful {
 
 MergingWindowProcessFunction::MergingWindowProcessFunction(
     std::shared_ptr<MergingWindowAssigner> windowAssigner,
-    exec::Operator* windowAggregator,
-    int64_t allowedLateness)
+    GroupWindowAggsHandler* windowAggregator,
+    int64_t allowedLateness,
+    std::shared_ptr<SessionWindowMappingState> mapping)
     : WindowProcessFunction<TimeWindow>(
           windowAssigner,
           windowAggregator,
-          allowedLateness) {}
+          allowedLateness),
+      mapping_(std::move(mapping)) {}
 
 void MergingWindowProcessFunction::open(
     std::shared_ptr<FunctionContext<TimeWindow>> ctx) {
   WindowProcessFunction<TimeWindow>::open(ctx);
-  StateDescriptor mappingStateDescriptor("session-window-mapping");
-  std::shared_ptr<MapState<uint32_t, int, TimeWindow, TimeWindow>>
-      windowMapping = std::dynamic_pointer_cast<
-          MapState<uint32_t, int, TimeWindow, TimeWindow>>(
-          ctx->getPartitionedState(mappingStateDescriptor));
+  // The operator injects the typed mapping handle (no
+  // getPartitionedState round trip through the state handler).
   mergingWindows_ = std::make_shared<MergingWindowSet>(
       std::dynamic_pointer_cast<MergingWindowAssigner>(windowAssigner_),
-      windowMapping);
+      mapping_);
   mergingFunction_ = std::make_shared<MergingFunction>(
       std::make_shared<DefaultAccMergingConsumer>(ctx, windowAggregator_),
       ctx,
@@ -47,11 +47,10 @@ void MergingWindowProcessFunction::open(
 }
 
 std::vector<TimeWindow> MergingWindowProcessFunction::assignStateNamespace(
-    uint32_t key,
-    RowVectorPtr inputRow,
+    const RowContainerStateKey& key,
     int64_t timestamp) {
   std::vector<TimeWindow> elementWindows =
-      windowAssigner_->assignWindows(inputRow, timestamp);
+      windowAssigner_->assignWindows(nullptr, timestamp);
   mergingWindows_->initializeCache(key);
   reuseActualWindows_.clear();
   for (TimeWindow window : elementWindows) {
@@ -68,16 +67,19 @@ std::vector<TimeWindow> MergingWindowProcessFunction::assignStateNamespace(
       reuseActualWindows_.push_back(actualWindow);
     }
   }
-  std::vector<TimeWindow> affectedWindows(reuseActualWindows_.size());
+  // The state windows of the kept actual windows, in the same order; the
+  // vector is reserved empty (no pre-filled default TimeWindow(-1, -1)
+  // entries - the ghost-window bug: a default-constructed window must never
+  // reach state resolution).
+  std::vector<TimeWindow> affectedWindows;
+  affectedWindows.reserve(reuseActualWindows_.size());
   for (TimeWindow actual : reuseActualWindows_) {
     affectedWindows.push_back(mergingWindows_->getStateWindow(key, actual));
   }
   return affectedWindows;
 }
 
-std::vector<TimeWindow> MergingWindowProcessFunction::assignActualWindows(
-    RowVectorPtr inputRow,
-    int64_t timestamp) {
+std::vector<TimeWindow> MergingWindowProcessFunction::assignActualWindows() {
   return reuseActualWindows_;
 }
 
@@ -97,21 +99,26 @@ void MergingWindowProcessFunction::cleanWindowIfNeeded(
   }
 }
 
-void MergingWindowProcessFunction::prepareAggregateAccumulatorForEmit(
-    uint32_t key,
+char* MergingWindowProcessFunction::prepareAggregateAccumulatorForEmit(
+    const RowContainerStateKey& key,
     TimeWindow window) {
-  TimeWindow stateWindow =
-      mergingWindows_->getStateWindow(ctx_->currentKey(), window);
-  RowVectorPtr acc = ctx_->getWindowAccumulators(stateWindow);
-  if (!acc) {
-    acc = windowAggregator_->createAccumulators();
+  TimeWindow stateWindow = mergingWindows_->getStateWindow(key, window);
+  // Existence read: an empty window reports nullptr and never materializes
+  // state (the empty-window suppression).
+  return ctx_->getWindowAccumulators(stateWindow);
+}
+
+void MergingWindowProcessFunction::clearCache() {
+  if (mergingWindows_) {
+    mergingWindows_->clearCache();
   }
-  windowAggregator_->setAccumulators(stateWindow, acc);
 }
 
 void MergingWindowProcessFunction::close() {
   WindowProcessFunction<TimeWindow>::close();
-  mergingWindows_->close();
+  if (mergingWindows_) {
+    mergingWindows_->close();
+  }
   mergingFunction_.reset();
   mergingWindows_.reset();
 }
@@ -119,26 +126,59 @@ void MergingWindowProcessFunction::close() {
 DefaultAccMergingConsumer::DefaultAccMergingConsumer(
     std::shared_ptr<FunctionContext<TimeWindow>> ctx,
     GroupWindowAggsHandler* windowAggregator)
-    : ctx_(ctx), windowAggregator_(windowAggregator) {}
+    : ctx_(std::move(ctx)), windowAggregator_(windowAggregator) {}
 
 void DefaultAccMergingConsumer::accept(
     TimeWindow stateWindowResult,
     std::vector<TimeWindow> stateWindowsToBeMerged) {
-  RowVectorPtr targetAcc = ctx_->getWindowAccumulators(stateWindowResult);
-  if (targetAcc == nullptr) {
-    targetAcc = windowAggregator_->createAccumulators();
-  }
-  windowAggregator_->setAccumulators(stateWindowResult, targetAcc);
+  // The merge result's state window hosts the merged accumulators; a miss
+  // materializes a fresh initialized row.
+  char* target = ctx_->getOrCreateWindowAccumulators(stateWindowResult);
   for (TimeWindow w : stateWindowsToBeMerged) {
-    RowVectorPtr acc = ctx_->getWindowAccumulators(w);
+    char* acc = ctx_->getWindowAccumulators(w);
     if (acc != nullptr) {
-      windowAggregator_->merge(w, acc);
+      windowAggregator_->mergeAccumulators(target, acc);
     }
     // clear merged window
     ctx_->clearWindowState(w);
     ctx_->clearPreviousState(w);
   }
-  targetAcc = windowAggregator_->getAccumulators();
-  ctx_->setWindowAccumulators(stateWindowResult, targetAcc);
 }
+
+std::vector<TimeWindow> GeneralWindowProcessFunction::assignStateNamespace(
+    const RowContainerStateKey& key,
+    int64_t timestamp) {
+  // Non-merging path: the assigned windows are both the actual and the
+  // state windows (the namespace IS the window). Late windows are dropped
+  // here, exactly like the merging path — the caller only sees kept
+  // windows, in the same order for both assignStateNamespace and
+  // assignActualWindows.
+  std::vector<TimeWindow> windows =
+      windowAssigner_->assignWindows(nullptr, timestamp);
+  reuseWindows_.clear();
+  for (const auto& window : windows) {
+    if (!isWindowLate(window)) {
+      reuseWindows_.push_back(window);
+    }
+  }
+  return reuseWindows_;
+}
+
+void GeneralWindowProcessFunction::cleanWindowIfNeeded(
+    TimeWindow window,
+    int64_t currentTime) {
+  if (isCleanupTime(window, currentTime)) {
+    ctx_->clearTrigger(window);
+    ctx_->clearWindowState(window);
+  }
+}
+
+char* GeneralWindowProcessFunction::prepareAggregateAccumulatorForEmit(
+    const RowContainerStateKey& key,
+    TimeWindow window) {
+  // Existence read under the window's own namespace (the empty-window
+  // suppression — a miss stays a miss).
+  return ctx_->getWindowAccumulators(window);
+}
+
 } // namespace facebook::velox::stateful

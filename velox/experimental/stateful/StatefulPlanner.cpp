@@ -376,39 +376,24 @@ StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(
     const StatefulPlanNode& planNode) {
   std::vector<StatefulOperatorPtr> targets =
       transformStatefulOperators(planNode.targets());
+  VELOX_CHECK(
+      targets.empty(), "GroupWindowAggregationNode should have no targets");
 
   auto windowAggNode =
       std::dynamic_pointer_cast<const GroupWindowAggregationNode>(
           planNode.node());
   VELOX_CHECK(windowAggNode, "Failed to cast to GroupWindowAggregationNode");
 
+  // The window facilities (session assigner, merging process function,
+  // typed keyed state) are built by the operator from the node's window
+  // parameters; no assigner is hardcoded here anymore.
   auto op = transformOperator(windowAggNode->aggregation());
-
-  std::unique_ptr<KeySelector> keySelector = std::make_unique<KeySelector>(
-      windowAggNode->keySelectorSpec()->create(INT_MAX, true), op->pool());
-  std::unique_ptr<KeySelector> sliceAssigner = std::make_unique<KeySelector>(
-      windowAggNode->sliceAssignerSpec()->create(INT_MAX, true), op->pool());
-  std::unique_ptr<SliceAssigner> windowAssigner =
-      std::make_unique<SliceAssigner>(
-          std::move(sliceAssigner),
-          0,
-          0,
-          0,
-          Window::getType(windowAggNode->windowType()),
-          windowAggNode->rowtimeIndex());
 
   return std::make_unique<GroupWindowAggregator>(
       std::unique_ptr<GroupWindowAggsHandler>(
           dynamic_cast<GroupWindowAggsHandler*>(op.release())),
-      // TODO: support window parameters
-      std::make_unique<SessionWindowAssigner>(10, windowAggNode->isEventTime()),
       std::move(targets),
-      std::move(keySelector),
-      std::move(windowAssigner),
-      windowAggNode->allowedLateness(),
-      windowAggNode->produceUpdates(),
-      windowAggNode->rowtimeIndex(),
-      windowAggNode->isEventTime());
+      windowAggNode);
 }
 
 StatefulOperatorPtr StatefulPlanner::transformStreamRankOperator(
