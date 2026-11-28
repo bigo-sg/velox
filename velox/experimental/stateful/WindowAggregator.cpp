@@ -51,15 +51,20 @@ class NoopProcessingTimeScheduler : public ProcessingTimeScheduler {
 } // namespace
 
 WindowAggregator::WindowAggregator(
+    std::unique_ptr<exec::Operator> localAggregator,
     std::vector<StatefulOperatorPtr> targets,
     std::shared_ptr<const StreamWindowAggregationNode> node,
     exec::DriverCtx* driverCtx)
     : StatefulOperator(
           std::make_unique<EmptyOperator>(0, driverCtx, node),
           std::move(targets)),
-      node_(std::move(node)) {}
+      node_(std::move(node)),
+      localAggregator_(std::move(localAggregator)) {}
 
 void WindowAggregator::initialize() {
+  if (localAggregator_) {
+    localAggregator_->initialize();
+  }
   const WindowType wt = static_cast<WindowType>(node_->windowType());
   // SESSION / CUMULATE and the two-stage local-global split are
   // planned follow-up PRs; running them through the aligned-window
@@ -171,6 +176,7 @@ void WindowAggregator::initialize() {
   // empty-window check stays disabled and zero-count windows emit).
   countStarIndex_ =
       findCountStarIndex(aggNode->aggregates(), wt == WindowType::HOP);
+  isPartialInput_ = aggNode->step() == core::AggregationNode::Step::kFinal;
   aggregates_ = makeAggregateInfos(
       aggNode->aggregates(),
       inputType,
@@ -178,7 +184,8 @@ void WindowAggregator::initialize() {
       numLeadingColumns_,
       op()->operatorCtx()->driverCtx()->queryConfig(),
       memoryPool(),
-      core::AggregationNode::Step::kSingle);
+      isPartialInput_ ? core::AggregationNode::Step::kFinal
+                      : core::AggregationNode::Step::kSingle);
 }
 
 void WindowAggregator::initializeState() {
@@ -206,7 +213,8 @@ void WindowAggregator::initializeStateBackend(StateBackend* stateBackend) {
       node_->offset(),
       Window::getType(node_->windowType()),
       node_->rowtimeIndex(),
-      tz_);
+      tz_,
+      /*attached=*/isPartialInput_);
 
   // Aggregate functions were created in initialize() (op() available from
   // the EmptyOperator set in the constructor).
@@ -290,6 +298,13 @@ void WindowAggregator::advance() {
 
   const auto numRows = input_->size();
   if (numRows == 0) {
+    input_.reset();
+    keyedBackend_->advance();
+    return;
+  }
+
+  if (isPartialInput_) {
+    advancePartialInput();
     input_.reset();
     keyedBackend_->advance();
     return;
@@ -488,6 +503,9 @@ void WindowAggregator::close() {
   // Flush trailing proc-time windows (bounded input).
   fireDue(std::numeric_limits<int64_t>::max());
   StatefulOperator::close();
+  if (localAggregator_) {
+    localAggregator_->close();
+  }
   input_.reset();
   state_ = nullptr;
   stateHandle_.reset();
@@ -675,6 +693,94 @@ void WindowAggregator::flushPendingTimers(int64_t watermark) {
     timerService_->advanceWatermark(watermark);
   }
   firedThisPass_.clear();
+}
+
+void WindowAggregator::advancePartialInput() {
+  // Mirrors the single-stage slicing loop: the only deltas are the
+  // sliceEnd coming from the attached column (the assigner is in
+  // attached mode, so assignSliceEnd takes the windowEnd column
+  // values) and the accumulation merging intermediate columns via
+  // addIntermediateResults instead of consuming raw input.
+  auto sliceEndToData = sliceAssigner_->assignSliceEnd(input_);
+  for (const auto& [sliceEnd, sliceData] : sliceEndToData) {
+    SliceEndNs ns(sliceEnd);
+
+    // Late check: same two-phase semantics as the single-stage path.
+    if (node_->isEventTime() &&
+        WindowTimezoneUtil::isWindowFired(sliceEnd, currentProgress_, tz_)) {
+      int64_t lastWindowEnd = sliceAssigner_->getLastWindowEnd(sliceEnd);
+      if (WindowTimezoneUtil::isWindowFired(
+              lastWindowEnd, currentProgress_, tz_)) {
+        lateDroppedRows_ += sliceData->size();
+        continue;
+      }
+    }
+
+    keySelector_->probe(sliceData);
+    const auto distinctKeys = keySelector_->distinctKeys();
+    const auto sliceNumDistinct =
+        static_cast<vector_size_t>(distinctKeys.size());
+    const auto sliceNumRows = sliceData->size();
+
+    stateRows_.resize(sliceNumDistinct);
+    state_->rows(
+        folly::Range<const RowContainerStateKey*>(
+            distinctKeys.data(), static_cast<size_t>(sliceNumDistinct)),
+        ns,
+        stateRows_.data());
+    // Mirror the live slice rows into the operator-owned cache.
+    for (vector_size_t d = 0; d < sliceNumDistinct; ++d) {
+      sliceRowCache_[{distinctKeys[d].row(), sliceEnd}] = stateRows_[d];
+    }
+
+    rowToDistinct_.clear();
+    for (vector_size_t d = 0; d < sliceNumDistinct; ++d) {
+      rowToDistinct_[distinctKeys[d].row()] = d;
+    }
+    rowGroups_.resize(sliceNumRows);
+    const auto perRowKeys = keySelector_->keys();
+    for (vector_size_t row = 0; row < sliceNumRows; ++row) {
+      rowGroups_[row] = stateRows_[rowToDistinct_[perRowKeys[row].row()]];
+    }
+
+    const SelectivityVector allRows(sliceNumRows);
+    std::vector<std::optional<column_index_t>> maskChannels;
+    maskChannels.reserve(aggregates_.size());
+    for (const auto& aggregate : aggregates_) {
+      maskChannels.push_back(aggregate.mask);
+    }
+    exec::AggregationMasks masks(std::move(maskChannels));
+    masks.addInput(sliceData, allRows);
+    for (size_t i = 0; i < aggregates_.size(); ++i) {
+      auto& aggregate = aggregates_[i];
+      const auto* activeRows = masks.activeRows(i);
+      aggregate.function->addIntermediateResults(
+          rowGroups_.data(),
+          activeRows != nullptr ? *activeRows : allRows,
+          std::vector<VectorPtr>{sliceData->childAt(aggregate.inputs[0])},
+          false /* mayPushdown */);
+    }
+
+    int64_t fireWindowEnd = sliceEnd;
+    if (node_->isEventTime()) {
+      const int64_t sliceSize = sliceAssigner_->getSliceEndInterval();
+      while (WindowTimezoneUtil::isWindowFired(
+          fireWindowEnd, currentProgress_, tz_)) {
+        if (fireWindowEnd > std::numeric_limits<int64_t>::max() - sliceSize) {
+          fireWindowEnd = std::numeric_limits<int64_t>::max();
+          break;
+        }
+        fireWindowEnd += sliceSize;
+      }
+    }
+    for (vector_size_t d = 0; d < sliceNumDistinct; ++d) {
+      registerFire(
+          distinctKeys[d],
+          stateRows_[d],
+          sliceAssigner_->getWindowStart(fireWindowEnd),
+          fireWindowEnd);
+    }
+  }
 }
 
 void WindowAggregator::emitWindowResult(

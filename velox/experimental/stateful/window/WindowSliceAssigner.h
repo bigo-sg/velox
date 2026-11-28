@@ -39,19 +39,26 @@ namespace facebook::velox::stateful {
 /// untouched (still used by the legacy group-window operator).
 class WindowSliceAssigner {
  public:
+  /// 'attached' = the two-stage global side (Flink
+  /// SliceAttachedWindowingStrategy): the rowtime column already
+  /// carries the slice end assigned by the local stage, so
+  /// assignSliceEnd takes the column value directly instead of
+  /// computing it from the timestamp.
   WindowSliceAssigner(
       int64_t size,
       int64_t step,
       int64_t offset,
       WindowType windowType,
       int rowtimeIndex,
-      const tzdb::time_zone* shiftTimeZone)
+      const tzdb::time_zone* shiftTimeZone,
+      bool attached = false)
       : size_(size),
         step_(step),
         offset_(offset),
         windowType_(windowType),
         rowtimeIndex_(rowtimeIndex),
-        shiftTimeZone_(shiftTimeZone) {
+        shiftTimeZone_(shiftTimeZone),
+        attached_(attached) {
     // SliceSize per window type (matching Flink SliceAssigners):
     // TUMBLE -> size, HOP -> gcd(size, step), CUMULATE -> step.
     switch (windowType_) {
@@ -95,6 +102,9 @@ class WindowSliceAssigner {
   WindowType windowType_;
   int rowtimeIndex_;
   const tzdb::time_zone* shiftTimeZone_;
+  /// Two-stage global side: the rowtime column carries the slice end
+  /// assigned locally.
+  bool attached_ = false;
   int64_t sliceSize_ = 0;
 };
 

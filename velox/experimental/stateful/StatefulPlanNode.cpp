@@ -313,6 +313,8 @@ folly::dynamic StreamWindowAggregationNode::serialize() const {
   specObj["name"] = "KeyedStateSpec";
   obj["keyedStateSpec"] = specObj;
   obj["shiftTimeZone"] = shiftTimeZone_;
+  obj["localAgg"] = localAgg_ ? localAgg_->serialize() : nullptr;
+  obj["isLocalAgg"] = isLocalAgg_;
   obj["size"] = size_;
   obj["step"] = step_;
   obj["offset"] = offset_;
@@ -329,6 +331,7 @@ void StreamWindowAggregationNode::addDetails(std::stringstream& stream) const {
   stream << "aggregation: " << aggregation_->toString();
   stream << ", keySelector: " << keySelectorSpec_->toString();
   stream << ", sliceAssigner: " << sliceAssignerSpec_->toString();
+  stream << ", isLocalAgg: " << isLocalAgg_;
   stream << ", windowType: " << windowType_;
   stream << ", output: " << outputType_->toString();
 }
@@ -357,13 +360,20 @@ core::PlanNodePtr StreamWindowAggregationNode::create(
   if (obj.count("shiftTimeZone") && !obj["shiftTimeZone"].isNull()) {
     shiftTimeZone = obj["shiftTimeZone"].asString();
   }
+  std::shared_ptr<const core::AggregationNode> localAgg;
+  if (obj.count("localAgg") && !obj["localAgg"].isNull()) {
+    localAgg = ISerializable::deserialize<core::AggregationNode>(
+        obj["localAgg"], context);
+  }
   return std::make_shared<const StreamWindowAggregationNode>(
       planNodeId,
       aggregation,
+      localAgg,
       keySelectorSpec,
       sliceAssignerSpec,
       keyedStateSpec,
       shiftTimeZone,
+      obj["isLocalAgg"].asBool(),
       obj["size"].asInt(),
       obj["step"].asInt(),
       obj["offset"].asInt(),

@@ -444,11 +444,13 @@ class StreamWindowAggregationNode : public core::PlanNode {
   StreamWindowAggregationNode(
       const core::PlanNodeId& id,
       std::shared_ptr<const core::AggregationNode>& aggregationNode,
+      std::shared_ptr<const core::AggregationNode>& localAgg,
       const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec,
       const std::shared_ptr<const core::PartitionFunctionSpec>&
           sliceAssignerSpec,
       const std::shared_ptr<const KeyedStateSpec>& keyedStateSpec,
       std::string shiftTimeZone,
+      bool isLocalAgg,
       int64_t size,
       int64_t step,
       int64_t offset,
@@ -460,10 +462,12 @@ class StreamWindowAggregationNode : public core::PlanNode {
       int windowEndIndex)
       : PlanNode(id),
         aggregation_(std::move(aggregationNode)),
+        localAgg_(std::move(localAgg)),
         keySelectorSpec_(std::move(keySelectorSpec)),
         sliceAssignerSpec_(std::move(sliceAssignerSpec)),
         keyedStateSpec_(std::move(keyedStateSpec)),
         shiftTimeZone_(std::move(shiftTimeZone)),
+        isLocalAgg_(isLocalAgg),
         size_(size),
         step_(step),
         offset_(offset),
@@ -480,6 +484,20 @@ class StreamWindowAggregationNode : public core::PlanNode {
 
   const std::shared_ptr<const core::AggregationNode>& aggregation() const {
     return aggregation_;
+  }
+
+  /// The local pre-aggregation node (the two-stage local side carries
+  /// one from the planner; the global node and the single-stage node
+  /// carry none).
+  const std::shared_ptr<const core::AggregationNode>& localAgg() const {
+    return localAgg_;
+  }
+
+  /// True on the two-stage local node (the local pre-aggregation that
+  /// flushes partials on the watermark); false on the single-stage and
+  /// the global nodes.
+  bool isLocalAgg() const {
+    return isLocalAgg_;
   }
 
   const std::shared_ptr<const core::PartitionFunctionSpec>& keySelectorSpec()
@@ -550,10 +568,12 @@ class StreamWindowAggregationNode : public core::PlanNode {
   void addDetails(std::stringstream& stream) const override;
 
   const std::shared_ptr<const core::AggregationNode> aggregation_;
+  const std::shared_ptr<const core::AggregationNode> localAgg_;
   const std::shared_ptr<const core::PartitionFunctionSpec> keySelectorSpec_;
   const std::shared_ptr<const core::PartitionFunctionSpec> sliceAssignerSpec_;
   const std::shared_ptr<const KeyedStateSpec> keyedStateSpec_;
   const std::string shiftTimeZone_;
+  bool isLocalAgg_;
   int64_t size_;
   int64_t step_;
   int64_t offset_;

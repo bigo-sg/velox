@@ -96,6 +96,7 @@ class WindowAggregator : public StatefulOperator,
                          public Triggerable<WindowTimerKey, SliceEndNs> {
  public:
   WindowAggregator(
+      std::unique_ptr<exec::Operator> localAggregator,
       std::vector<StatefulOperatorPtr> targets,
       std::shared_ptr<const StreamWindowAggregationNode> node,
       exec::DriverCtx* driverCtx);
@@ -223,6 +224,13 @@ class WindowAggregator : public StatefulOperator,
       int64_t windowStart,
       int64_t windowEnd);
 
+  /// The two-stage global advance: input is the local partials
+  /// [keys, intermediates, windowEnd]; the slice end comes from the
+  /// attached column and intermediates merge via
+  /// addIntermediateResults. Separate from the single-stage advance()
+  /// so the raw accumulation path keeps its codegen (W1 lesson).
+  void advancePartialInput();
+
   /// Flushes the timer registrations deferred during an event-time
   /// dispatch (the HOP fire chain re-registers the next window from
   /// onEventTime; the dispatch holds the Triggerable mutex, which a
@@ -251,6 +259,7 @@ class WindowAggregator : public StatefulOperator,
   void checkInputRowKinds(const StreamRecord& record) const;
 
   const std::shared_ptr<const StreamWindowAggregationNode> node_;
+  std::unique_ptr<exec::Operator> localAggregator_;
   std::vector<exec::AggregateInfo> aggregates_;
   std::unique_ptr<HeapKeyedStateBackend<RowContainerStateKey>> keyedBackend_;
   std::unique_ptr<KeySelector> keySelector_;
@@ -358,6 +367,12 @@ class WindowAggregator : public StatefulOperator,
   std::vector<char*> stateRows_;
   std::vector<char*> rowGroups_;
   std::unordered_map<const char*, vector_size_t> rowToDistinct_;
+
+  /// The two-stage global side: the input is the partial row [keys,
+  /// intermediates, windowEnd] and the accumulation merges intermediate
+  /// columns into the state rows (kFinal step) instead of accumulating
+  /// raw input (kSingle).
+  bool isPartialInput_ = false;
 
   /// The zero-argument COUNT call in the aggregate list (Flink's
   /// "count star"), used for empty-window suppression: a window whose
