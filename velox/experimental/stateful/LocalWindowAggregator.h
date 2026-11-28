@@ -13,58 +13,80 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#pragma once
-#include <cstdint>
 
+#pragma once
+
+#include <map>
+#include <memory>
+
+#include "velox/exec/AggregateInfo.h"
 #include "velox/experimental/stateful/KeySelector.h"
 #include "velox/experimental/stateful/StatefulOperator.h"
-#include "velox/experimental/stateful/StreamElement.h"
-#include "velox/experimental/stateful/window/SliceAssigner.h"
-#include "velox/experimental/stateful/window/WindowBuffer.h"
+#include "velox/experimental/stateful/StatefulPlanNode.h"
+#include "velox/experimental/stateful/state/KeyTable.h"
+#include "velox/experimental/stateful/window/WindowSliceAssigner.h"
 
 namespace facebook::velox::stateful {
 
-/// It is related to LocalSlicingWindowAggOperator in Flink.
-/// It aggregates the records when window fires.
+/// Local stage of the two-phase window TVF aggregation (Flink
 class LocalWindowAggregator : public StatefulOperator {
  public:
   LocalWindowAggregator(
-      std::unique_ptr<exec::Operator> op,
-      std::vector<std::unique_ptr<StatefulOperator>> targets,
-      std::unique_ptr<KeySelector> keySelector,
-      std::unique_ptr<SliceAssigner> sliceAssigner,
-      const int64_t windowInterval,
-      const bool useDayLightSaving,
-      RowTypePtr outputType);
+      std::vector<StatefulOperatorPtr> targets,
+      std::unique_ptr<WindowSliceAssigner> sliceAssigner,
+      std::shared_ptr<const StreamWindowAggregationNode> node,
+      exec::DriverCtx* driverCtx);
 
+  void initialize() override;
   void addInput(StreamElementPtr input) override;
-
   void advance() override;
 
-  void close() override;
-
+  /// Flushes every buffered slice that the watermark fires, then
   void processWatermark(int64_t timestamp) override {
-    processWatermarkInternal(timestamp);
+    flushFiredSlices(timestamp);
+    StatefulOperator::processWatermark(timestamp);
   }
+
+  void close() override;
 
   std::string name() const override {
     return "LocalWindowAggregator";
   }
 
  private:
-  void processWatermarkInternal(int64_t timestamp);
-  RowVectorPtr addWindowEndToVector(RowVectorPtr vector, int64_t sliceEnd);
+  /// Flushes all buffered entries when the earliest buffered sliceEnd
+  /// has fired (Flink RecordsWindowBuffer.advanceProgress flushes on
+  void flushFiredSlices(int64_t progress);
 
+  /// Emits one multi-row StreamRecord carrying every buffered
+  void flushAll();
+
+  /// Resolves (creating on first touch) the accumulator row for
+  char* accumulatorRow(const char* keyRow, int64_t sliceEnd);
+
+  const std::shared_ptr<const StreamWindowAggregationNode> node_;
+  std::unique_ptr<WindowSliceAssigner> sliceAssigner_;
+  std::vector<exec::AggregateInfo> aggregates_;
+
+  /// Detected at initialize only to reject (translation rejects it
+  bool keyless_ = false;
+  RowTypePtr declaredInputType_;
+
+  /// Probe-based keying over an operator-owned table.
+  std::unique_ptr<KeyTable> keyTable_;
   std::unique_ptr<KeySelector> keySelector_;
-  std::unique_ptr<SliceAssigner> sliceAssigner_;
-  WindowBufferPtr windowBuffer_;
-  const int64_t windowInterval_;
-  const bool useDayLightSaving_;
-  const int shiftTimeZone_ = 0; // TODO: support time zone shift
-  RowTypePtr outputType_;
 
+  /// Accumulator rows: aggregates only, the same layout as the global
+  std::unique_ptr<exec::RowContainer> accRows_;
+
+  /// sliceEnd -> key row -> accumulator row.
+  std::map<int64_t, std::map<const char*, char*>> entries_;
+
+  const tzdb::time_zone* tz_ = nullptr;
   RowVectorPtr input_;
-  int64_t currentWatermark_ = 0;
-  int64_t nextTriggerWatermark_ = 0;
+
+  std::unordered_map<const char*, vector_size_t> rowToDistinct_;
+  std::vector<char*> rowGroups_;
 };
+
 } // namespace facebook::velox::stateful

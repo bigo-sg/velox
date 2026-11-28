@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #pragma once
 
 #include <cstdint>
@@ -30,30 +31,28 @@ class time_zone;
 namespace facebook::velox::stateful {
 
 /// Zone-aware slice assigner owned by the window TVF aggregation
-/// operator: rows are reinterpreted in the shift time zone's wall clock
 /// before boundary alignment (Flink semantics), a null rowtime fails
 /// loud (Flink SliceAssigners#assignSliceEnd throws; silently dropping
-/// rows would under-count windows), and the slice size follows the
 /// Flink-per-window-type mapping (TUMBLE -> size, HOP -> gcd(size,
-/// step), CUMULATE -> step). The framework SliceAssigner stays
-/// untouched (still used by the legacy group-window operator).
 class WindowSliceAssigner {
  public:
+  /// 'attached' = the two-stage global side (Flink
   WindowSliceAssigner(
       int64_t size,
       int64_t step,
       int64_t offset,
       WindowType windowType,
       int rowtimeIndex,
-      const tzdb::time_zone* shiftTimeZone)
+      const tzdb::time_zone* shiftTimeZone,
+      bool attached = false)
       : size_(size),
         step_(step),
         offset_(offset),
         windowType_(windowType),
         rowtimeIndex_(rowtimeIndex),
-        shiftTimeZone_(shiftTimeZone) {
+        shiftTimeZone_(shiftTimeZone),
+        attached_(attached) {
     // SliceSize per window type (matching Flink SliceAssigners):
-    // TUMBLE -> size, HOP -> gcd(size, step), CUMULATE -> step.
     switch (windowType_) {
       case WindowType::HOP:
         sliceSize_ = std::gcd(size_, step_);
@@ -75,7 +74,6 @@ class WindowSliceAssigner {
   }
 
   /// The last window end owning the slice ending at 'sliceEnd'
-  /// (TUMBLE: the window itself; HOP: the slice belongs to windows up
   /// to sliceEnd - sliceSize + size, Flink SliceAssigners).
   int64_t getLastWindowEnd(int64_t sliceEnd) {
     if (windowType_ == WindowType::HOP) {
@@ -95,6 +93,8 @@ class WindowSliceAssigner {
   WindowType windowType_;
   int rowtimeIndex_;
   const tzdb::time_zone* shiftTimeZone_;
+  /// Two-stage global side: the rowtime column carries the slice end
+  bool attached_ = false;
   int64_t sliceSize_ = 0;
 };
 

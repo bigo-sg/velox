@@ -43,6 +43,7 @@
 #include "velox/experimental/stateful/EmptyOperator.h"
 #include "velox/experimental/stateful/GroupWindowAggregator.h"
 #include "velox/experimental/stateful/KeySelector.h"
+#include "velox/experimental/stateful/LocalWindowAggregator.h"
 #include "velox/experimental/stateful/RowKind.h"
 #include "velox/experimental/stateful/SchemaWithRowKindNode.h"
 #include "velox/experimental/stateful/StatefulCalcOperator.h"
@@ -340,8 +341,35 @@ StatefulOperatorPtr StatefulPlanner::transformStreamWindowAggregationOperator(
       "(windowType={})",
       windowAggNode->windowType());
 
-  return std::make_unique<WindowAggregator>(
-      std::move(targets), windowAggNode, ctx_);
+  if (windowAggNode->isLocalAgg()) {
+    // The local stage keys through its own probe-based key table (the
+    // deprecated partition()-based KeySelector merged distinct keys
+    // under hash collisions); only the slice assigner is shared with
+    // the plan.
+    std::unique_ptr<WindowSliceAssigner> sliceAssigner =
+        std::make_unique<WindowSliceAssigner>(
+            windowAggNode->size(),
+            windowAggNode->step(),
+            windowAggNode->offset(),
+            Window::getType(windowAggNode->windowType()),
+            windowAggNode->rowtimeIndex(),
+            WindowTimezoneUtil::locateTimeZone(windowAggNode->shiftTimeZone()));
+    return std::make_unique<LocalWindowAggregator>(
+        std::move(targets), std::move(sliceAssigner), windowAggNode, ctx_);
+  } else {
+    // The two-stage global node carries no localAgg (it IS the global
+    // side); the single-stage event-time node carries one from the
+    // legacy local-pre-aggregation design. transformOperator would
+    // dereference a null PlanNodePtr.
+    auto windowAggregator = std::make_unique<WindowAggregator>(
+        windowAggNode->isEventTime() && windowAggNode->localAgg()
+            ? transformOperator(windowAggNode->localAgg())
+            : nullptr,
+        std::move(targets),
+        windowAggNode,
+        ctx_);
+    return windowAggregator;
+  }
 }
 
 StatefulOperatorPtr StatefulPlanner::transformGroupWindowAggregationOperator(
