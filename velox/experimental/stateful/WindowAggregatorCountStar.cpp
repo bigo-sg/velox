@@ -13,15 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 #include "velox/experimental/stateful/WindowAggregator.h"
 #include "velox/vector/ComplexVector.h"
 
 namespace facebook::velox::stateful {
 
 // Count star detection (Flink indexOfCountStar): the first
-// zero-argument UNFILTERED COUNT call (AggregateUtil requires
-// filterArg < 0 - a filtered COUNT(*) is not a count star, the
-// empty-window check stays disabled and zero-count windows emit).
 // Hopping windows require one - Flink checkArgument.
 int32_t findCountStarIndex(
     const std::vector<core::AggregationNode::Aggregate>& aggregates,
@@ -45,9 +43,7 @@ int32_t findCountStarIndex(
 }
 
 // Empty-window check on an accumulator row (Flink
-// WindowIsEmptySupplier): true when the count star reads 0. With no
 // count star in the query the check is disabled (Flink returns false
-// when indexOfCountStar < 0).
 bool countStarIsZero(const char* row, int32_t countStarOffset) {
   if (countStarOffset < 0) {
     return false;
@@ -56,8 +52,6 @@ bool countStarIsZero(const char* row, int32_t countStarOffset) {
 }
 
 // The count star accumulator column must be a never-null inline int64
-// (SimpleNumericAggregate<bool, int64_t, int64_t>), so a raw read at
-// the captured offset is the live count.
 int32_t countStarColumnOffset(TypeKind intermediateKind, int32_t offset) {
   VELOX_CHECK_EQ(
       intermediateKind,
