@@ -38,13 +38,17 @@ namespace facebook::velox::stateful {
 /// backend parameters (maxParallelism has that one source), and building
 /// there gives the backend ownership of the key table before the first
 /// input arrives. The spec is the plan-side half of that handshake.
+///
+/// An empty key set declares global state, as Flink does for keyless
+/// aggregation (one constant key): every row shares the backend's one key
+/// row, whose key group is 0, so the operator must run on the subtask that
+/// owns key group 0 - in practice parallelism 1, which the planner decides.
 class KeyedStateSpec : public ISerializable {
  public:
   KeyedStateSpec(
       std::vector<column_index_t> keyChannels,
       std::vector<TypePtr> keyTypes)
       : keyChannels_(std::move(keyChannels)), keyTypes_(std::move(keyTypes)) {
-    VELOX_CHECK(!keyChannels_.empty(), "A keyed state needs a key channel");
     VELOX_CHECK_EQ(
         keyChannels_.size(),
         keyTypes_.size(),

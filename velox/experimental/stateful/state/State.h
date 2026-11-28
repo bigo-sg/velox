@@ -22,11 +22,8 @@
 #include <string>
 #include "velox/common/base/Exceptions.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
+#include "velox/experimental/stateful/state/Namespace.h"
 #include "velox/vector/ComplexVector.h"
-
-namespace facebook::velox::exec {
-class RowContainer;
-} // namespace facebook::velox::exec
 
 namespace facebook::velox::stateful {
 
@@ -87,38 +84,49 @@ void checkEntryKeyGroup(const K& key, int32_t keyGroupId) {
 /// acc types. On a miss the state materializes a fresh row and initializes
 /// it through the operator-registered callback (the operator wraps
 /// Aggregate::initializeNewGroups over its own aggregates; a batch of misses
-/// initializes through one callback); the state layer
-/// has zero dependency on AggregateInfo. The operator drives addRawInput
-/// itself with its own aggregate metadata; the state never orchestrates
-/// accumulation. Relevant to Flink AggregatingState.
+/// initializes through one callback). The state layer has zero dependency on
+/// AggregateInfo: it wires the descriptor's aggregate functions to the
+/// accumulator layout once at creation (see AggregatingStateDescriptor) and
+/// otherwise never calls them; the operator drives addRawInput itself with
+/// its own aggregate metadata, and the state never orchestrates accumulation.
+/// Relevant to Flink AggregatingState.
+///
+/// The row handles rows()/row() return are opaque to the caller: they go to
+/// the aggregate functions and back to remove(), and are never dereferenced
+/// or inspected through a RowContainer - the storage behind them is the
+/// state's own. A handle stays valid until the next rows()/row() call on
+/// the same state or the next commit()/reclaim() on the backend; a caller
+/// that needs a row across either fetches it again.
 ///
 /// The API is batch and explicit: keys may repeat (per-row use, 1:1 with the
 /// input rows fed to addRawInput) or be deduplicated (distinct use for join
 /// build / rank / sorted aggregation). A single implementation covers both
 /// granularities; repeated keys return the same row pointer.
-template <typename K, typename N>
+///
+/// The namespace dimension rides the runtime Namespace contract: methods
+/// take the namespace base type, and creation receives the namespace
+/// serializer as a runtime object, in the shape of Flink's
+/// createInternalState. Neither an operator nor a backend then depends on a
+/// concrete namespace type at compile time.
+template <typename K>
 class AggregatingState : public State {
  public:
-  /// Batch lookup of value row pointers under namespace 'ns'. outRows[i]
+  /// Batch lookup of value row handles under namespace 'ns'. outRows[i]
   /// receives the value row for keys[i]; a miss creates a new row in the
-  /// value RowContainer, inserts it into the state table, and the batch's
-  /// new rows are initialized together via one descriptor init callback.
+  /// value storage, inserts it into the state table, and the batch's new
+  /// rows are initialized together via one descriptor init callback.
   /// outRows is caller-owned (out
   /// parameter, reused across batches for zero allocation on the hot path).
   virtual void
-  rows(folly::Range<const K*> keys, const N& ns, char** outRows) = 0;
+  rows(folly::Range<const K*> keys, const Namespace& ns, char** outRows) = 0;
 
   /// Single-key lookup, e.g. for timer callbacks. Same miss semantics as
   /// rows().
-  virtual char* row(const K& key, const N& ns) = 0;
+  virtual char* row(const K& key, const Namespace& ns) = 0;
 
-  /// Drops the entry of (key, ns) and returns its accumulator row to the
-  /// value container; a miss is a no-op.
-  virtual void remove(const K& key, const N& ns) = 0;
-
-  /// The value RowContainer holding the accumulator rows. Created by the
-  /// state from the descriptor's acc types, not by the operator.
-  virtual exec::RowContainer* valueRows() = 0;
+  /// Drops the entry of (key, ns); a miss is a no-op. Any handle to the
+  /// dropped row is invalid afterwards.
+  virtual void remove(const K& key, const Namespace& ns) = 0;
 };
 
 // This class is relevant to Flink org.apache.flink.api.common.MapState.

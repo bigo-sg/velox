@@ -28,12 +28,12 @@ namespace facebook::velox::stateful {
 /// and the bucket index is key.keyGroup() - startKeyGroup, so the bucket
 /// index is the key group and snapshotting can stream bucket by bucket
 /// without recomputing hashes. Layer 2 is a StateMap keyed by the composite
-/// (K, N). All StateMaps are created eagerly at construction, as in Flink
+/// (K, N), with the namespace erased to the Namespace contract. All
+/// StateMaps are created eagerly at construction, as in Flink
 /// org.apache.flink.runtime.state.heap.StateTable.
 /// @param <K> type of key, a StateKey subclass
-/// @param <N> type of namespace, a Namespace subclass
 /// @param <S> type of state, a nullable pointer type (miss is nullptr)
-template <typename K, typename N, typename S>
+template <typename K, typename S>
 class StateTable {
  public:
   /// 'observer', when set, is notified of every entry existence change in
@@ -51,15 +51,15 @@ class StateTable {
   }
 
   /// Returns the state for (key, ns) or nullptr on a miss.
-  S get(const K& key, const N& ns) {
+  S get(const K& key, const Namespace& ns) {
     return bucket(key).get(key, ns);
   }
 
-  void put(const K& key, const N& ns, S state) {
+  void put(const K& key, const Namespace& ns, S state) {
     bucket(key).put(key, ns, state);
   }
 
-  void remove(const K& key, const N& ns) {
+  void remove(const K& key, const Namespace& ns) {
     bucket(key).remove(key, ns);
   }
 
@@ -90,7 +90,7 @@ class StateTable {
 
   /// Returns the StateMap of one key group; the snapshot path streams
   /// bucket by bucket. 'keyGroup' must be inside the sub-range.
-  StateMap<K, N, S>& stateMapForKeyGroup(uint32_t keyGroup) {
+  StateMap<K, S>& stateMapForKeyGroup(uint32_t keyGroup) {
     VELOX_CHECK(
         keyGroup >= startKeyGroup_ &&
             keyGroup < startKeyGroup_ + buckets_.size(),
@@ -102,11 +102,11 @@ class StateTable {
   }
 
  private:
-  StateMap<K, N, S>& bucket(const K& key) {
+  StateMap<K, S>& bucket(const K& key) {
     return stateMapForKeyGroup(static_cast<uint32_t>(key.keyGroup()));
   }
 
   const uint32_t startKeyGroup_;
-  std::vector<StateMap<K, N, S>> buckets_;
+  std::vector<StateMap<K, S>> buckets_;
 };
 } // namespace facebook::velox::stateful

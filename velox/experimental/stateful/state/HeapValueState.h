@@ -38,12 +38,13 @@ template <typename K, typename N, typename V>
 class HeapValueState : public ValueState<K, N, V> {
  public:
   HeapValueState(
-      std::shared_ptr<StateTable<K, N, V>> stateTable,
+      std::shared_ptr<StateTable<K, V>> stateTable,
       const ValueStateDescriptor<V>& descriptor,
-      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer)
       : stateTable_(std::move(stateTable)),
         keySerializer_(std::move(keySerializer)),
-        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        nsSerializer_(std::move(nsSerializer)),
         valueSerializer_(std::dynamic_pointer_cast<TypeSerializer<V>>(
             descriptor.serializer())) {
     // The StringView serializer's deserialize() returns a view borrowing the
@@ -86,7 +87,7 @@ class HeapValueState : public ValueState<K, N, V> {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
         writeEntryFrames(
             writer,
-            nsSerializer_->serialize(entry->namespace_),
+            nsSerializer_->serialize(*entry->namespace_),
             keySerializer_->serialize(entry->key_),
             valueSerializer_->serialize(entry->state_));
         ++entryCount;
@@ -102,7 +103,7 @@ class HeapValueState : public ValueState<K, N, V> {
     const auto key = keySerializer_->deserialize(frames.key);
     checkEntryKeyGroup(key, keyGroupId);
     const auto value = valueSerializer_->deserialize(frames.payload);
-    stateTable_->put(key, ns, value);
+    stateTable_->put(key, *ns, value);
   }
 
   std::string namespaceSchemaId() const override {
@@ -114,9 +115,9 @@ class HeapValueState : public ValueState<K, N, V> {
   }
 
  private:
-  std::shared_ptr<StateTable<K, N, V>> stateTable_;
+  std::shared_ptr<StateTable<K, V>> stateTable_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
-  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
   std::shared_ptr<TypeSerializer<V>> valueSerializer_;
 };
 } // namespace facebook::velox::stateful

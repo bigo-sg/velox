@@ -15,8 +15,11 @@
  */
 #pragma once
 #include <cstdint>
+#include <vector>
 
+#include "folly/Range.h"
 #include "velox/core/PlanNode.h"
+#include "velox/experimental/stateful/RowKind.h"
 #include "velox/vector/SimpleVector.h"
 
 namespace facebook::velox::stateful {
@@ -194,5 +197,12 @@ class StreamRecord : public StreamElement {
 };
 
 using StreamRecordPtr = std::shared_ptr<StreamRecord>;
+
+// Builds the rowKind column of a changelog record from per-row kinds.
+// Production code cannot use the test-only VectorMaker, so changelog-emitting
+// operators share this helper instead of filling the flat vector by hand.
+SimpleVectorPtr<int8_t> makeRowKindVector(
+    memory::MemoryPool* pool,
+    folly::Range<const RowKind*> kinds);
 
 } // namespace facebook::velox::stateful

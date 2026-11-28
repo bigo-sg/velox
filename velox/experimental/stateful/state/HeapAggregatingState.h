@@ -22,7 +22,9 @@
 #include <utility>
 #include <vector>
 
+#include "velox/common/base/Exceptions.h"
 #include "velox/common/memory/ByteStream.h"
+#include "velox/exec/Aggregate.h"
 #include "velox/exec/RowContainer.h"
 #include "velox/experimental/stateful/state/CheckpointStream.h"
 #include "velox/experimental/stateful/state/NamespaceSerializer.h"
@@ -39,22 +41,28 @@ namespace facebook::velox::stateful {
 /// AggregatingState on the heap storage: the value is a char* row of a value
 /// RowContainer in accumulator layout, built from the descriptor's
 /// accumulator array so that aggregate functions read and write their slots
-/// in place (the same layout HashAggregation rows use). On a miss the state
-/// materializes a fresh row, inserts it into the state table, and constructs
-/// the accumulators through the descriptor's init callback — one batched
-/// call per rows() batch of misses (the operator wraps
-/// Aggregate::initializeNewGroups over its own aggregates). The state never
-/// calls any Aggregate method itself. Relevant to Flink
-/// HeapAggregatingState.
+/// in place (the same layout HashAggregation rows use). At construction the
+/// state wires the descriptor's aggregate functions to that layout -
+/// allocator and row offsets - so the functions are ready for the first
+/// rows() call; this is the only thing the state does with the functions. On
+/// a miss the state materializes a fresh row, inserts it into the state
+/// table, and constructs the accumulators through the descriptor's init
+/// callback — one batched call per rows() batch of misses (the operator
+/// wraps Aggregate::initializeNewGroups over its own aggregates). The state
+/// never orchestrates accumulation. Relevant to Flink HeapAggregatingState.
+/// The namespace dimension rides the runtime Namespace contract: methods
+/// take the namespace base type, the backend hands the state its namespace
+/// serializer at creation, and the state admits only namespaces of its
+/// serializer's kind (see checkNamespace).
 /// @param <K> type of key, a StateKey subclass
-/// @param <N> type of namespace, a Namespace subclass
-template <typename K, typename N>
-class HeapAggregatingState : public AggregatingState<K, N> {
+template <typename K>
+class HeapAggregatingState : public AggregatingState<K> {
  public:
   HeapAggregatingState(
-      std::shared_ptr<StateTable<K, N, char*>> stateTable,
+      std::shared_ptr<StateTable<K, char*>> stateTable,
       const AggregatingStateDescriptor& descriptor,
-      std::shared_ptr<TypeSerializer<K>> keySerializer)
+      std::shared_ptr<TypeSerializer<K>> keySerializer,
+      std::shared_ptr<NamespaceSerializer> nsSerializer)
       : stateTable_(std::move(stateTable)),
         valueRows_(std::make_unique<exec::RowContainer>(
             // No key or dependent columns: keys live in the backend's key
@@ -72,11 +80,30 @@ class HeapAggregatingState : public AggregatingState<K, N> {
         mergeRow_(descriptor.mergeRow()),
         pool_(descriptor.memoryPool()),
         keySerializer_(std::move(keySerializer)),
-        nsSerializer_(NamespaceSerializerTraits<N>::create()),
+        nsSerializer_(std::move(nsSerializer)),
+        nsKind_(nsSerializer_->kind()),
         valueSchemaId_(
-            "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {}
+            "presto-agg:" + spillTypesSchema(descriptor.spillTypes())) {
+    // Wire each aggregate function to its accumulator column: the string
+    // allocator and the row offsets are this container's, so addRawInput on
+    // a row handle works from the first rows() call.
+    const auto& aggregates = descriptor.aggregates();
+    for (size_t i = 0; i < aggregates.size(); ++i) {
+      aggregates[i]->setAllocator(&valueRows_->stringAllocator());
+      const auto column = valueRows_->columnAt(static_cast<int32_t>(i));
+      aggregates[i]->setOffsets(
+          column.offset(),
+          column.nullByte(),
+          column.nullMask(),
+          column.initializedByte(),
+          column.initializedMask(),
+          valueRows_->rowSizeOffset());
+    }
+  }
 
-  void rows(folly::Range<const K*> keys, const N& ns, char** outRows) override {
+  void rows(folly::Range<const K*> keys, const Namespace& ns, char** outRows)
+      override {
+    checkNamespace(ns);
     std::vector<char*> newRows;
     for (size_t i = 0; i < keys.size(); ++i) {
       if (char* value = stateTable_->get(keys[i], ns)) {
@@ -93,7 +120,8 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     }
   }
 
-  char* row(const K& key, const N& ns) override {
+  char* row(const K& key, const Namespace& ns) override {
+    checkNamespace(ns);
     if (char* value = stateTable_->get(key, ns)) {
       return value;
     }
@@ -103,11 +131,16 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return newRow;
   }
 
-  exec::RowContainer* valueRows() override {
+  /// The value RowContainer holding the accumulator rows. Not part of the
+  /// state interface: operators treat the rows() handles as opaque, and the
+  /// container is reachable for the heap storage's own bookkeeping (tests
+  /// read its row count, the checkpoint plane serializes its rows).
+  exec::RowContainer* valueRows() {
     return valueRows_.get();
   }
 
-  void remove(const K& key, const N& ns) override {
+  void remove(const K& key, const Namespace& ns) override {
+    checkNamespace(ns);
     // The accumulator row lives in the value container, not in the state
     // table: return it before dropping the entry (a miss removes nothing).
     if (char* valueRow = stateTable_->get(key, ns)) {
@@ -139,7 +172,7 @@ class HeapAggregatingState : public AggregatingState<K, N> {
       for (auto entry = head; entry != nullptr; entry = entry->next_) {
         writeEntryFrames(
             writer,
-            nsSerializer_->serialize(entry->namespace_),
+            nsSerializer_->serialize(*entry->namespace_),
             keySerializer_->serialize(entry->key_),
             serializeRow(entry->state_));
         ++entryCount;
@@ -190,10 +223,10 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     mergeRow_(row, columns);
     // Last write wins on a duplicate restore, as in Flink; the row the put
     // replaces goes back to the value container instead of leaking.
-    if (char* valueRow = stateTable_->get(key, ns)) {
+    if (char* valueRow = stateTable_->get(key, *ns)) {
       valueRows_->eraseRows(folly::Range<char**>(&valueRow, 1));
     }
-    stateTable_->put(key, ns, row);
+    stateTable_->put(key, *ns, row);
   }
 
   std::string namespaceSchemaId() const override {
@@ -205,6 +238,18 @@ class HeapAggregatingState : public AggregatingState<K, N> {
   }
 
  private:
+  /// The use-time guard of the runtime namespace: the state was created
+  /// under one namespace kind (its serializer's), and a namespace of another
+  /// kind fails here rather than being probed with.
+  void checkNamespace(const Namespace& ns) const {
+    VELOX_CHECK_EQ(
+        ns.kind(),
+        nsKind_,
+        "This state holds namespaces of kind {} and cannot take one of kind {}",
+        nsKind_,
+        ns.kind());
+  }
+
   /// Serializes one value row: each accumulator column is extracted into a
   /// one-row intermediate vector (Accumulator::extractForSpill — the same
   /// extraction spilling uses) and framed as [4-byte little-endian length +
@@ -239,14 +284,15 @@ class HeapAggregatingState : public AggregatingState<K, N> {
     return "(" + schema + ")";
   }
 
-  std::shared_ptr<StateTable<K, N, char*>> stateTable_;
+  std::shared_ptr<StateTable<K, char*>> stateTable_;
   std::unique_ptr<exec::RowContainer> valueRows_;
   AggregatingStateDescriptor::InitRowsCallback initializeRows_;
   AggregatingStateDescriptor::MergeRowCallback mergeRow_;
   serializer::presto::PrestoVectorSerde serde_;
   memory::MemoryPool* pool_;
   std::shared_ptr<TypeSerializer<K>> keySerializer_;
-  std::shared_ptr<TypeSerializer<N>> nsSerializer_;
+  std::shared_ptr<NamespaceSerializer> nsSerializer_;
+  const uint32_t nsKind_;
   const std::string valueSchemaId_;
 };
 } // namespace facebook::velox::stateful
